@@ -1543,16 +1543,22 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
         {plan ? (
           <div className="relative flex-1 min-h-0">
+            {/* El "papel" del plan: dibujos de financiera muy tenues, fijos detrás de la tabla. */}
+            <div aria-hidden className="fondo-finanzas pointer-events-none absolute inset-0" />
             {/* Shimmer de recálculo — barrido suave mientras se recalcula el plan */}
             {calculando && (
               <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
                 <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-foreground/[0.06] to-transparent animate-[shimmer-sweep_1.1s_ease-in-out_infinite]" />
               </div>
             )}
-            <div className={`h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
+            <div className={`relative h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
-              <div className="relative isolate">
+              /* Centrada en el panel, también en ALTO (pedido de Fernando, 25/09/2026): con pocas
+                 cuotas quedaba pegada arriba y el resto era vacío. `min-h-full` + `justify-center`
+                 la centra cuando entra y, cuando no, crece con el contenido y scrollea normal (sin
+                 cortar la parte de arriba). Con cargos no lleva margen lateral: necesita el ancho. */
+              <div className={`relative isolate flex min-h-full flex-col justify-center py-8 ${hayCargoCols ? "" : "px-4"}`}>
               {/* Halo de luz detrás de la tabla: le da profundidad sin competir con los números. */}
               <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[42rem] max-w-full -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/15 blur-3xl" />
               {/* El canal lateral sale de una regla sola: la primera y la última celda toman
@@ -1565,7 +1571,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                  topa en 48rem; con cargos usa todo el ancho con celdas más angostas, y `min-w-max`
                  impide que se aplasten (si igual no entran —pantalla chica— el panel scrollea de
                  costado en vez de montar un número sobre otro). */}
-              <table className={`relative z-10 ${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2 text-xs [&_tfoot_td]:text-sm [&_tbody_td.brillo-cuota]:text-[14px]" : "mx-auto w-full max-w-[56rem] text-sm"} [&_tbody_td]:py-3 border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
+              {/* La tabla va sobre una TARJETA semitransparente: el dibujo del fondo es textura y no
+                  puede competir con los números. `overflow-clip` y no `hidden`: el segundo crea un
+                  contenedor de scroll y rompe el encabezado pegajoso. */}
+              <div className={`relative z-10 mx-auto overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${hayCargoCols ? "w-full min-w-max" : "w-full max-w-[56rem]"}`}>
+              <table className={`w-full ${hayCargoCols ? "[&_th]:px-2 [&_td]:px-2 text-xs [&_tfoot_td]:text-sm [&_tbody_td.brillo-cuota]:text-[14px]" : "text-sm"} [&_tbody_td]:py-3 border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
@@ -1647,6 +1657,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   )}
                 </tfoot>
               </table>
+              </div>
               </div>
             ) : (
               /* ── Vista cliente: solo cuotas a cubrir ── */
@@ -1841,9 +1852,11 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
     destello del encabezado va solo en el PRIMER bloque: una sola luz animada por pantalla.
   */
   return (
-    <div className="relative isolate">
+    <div className="relative isolate flex min-h-full flex-col justify-center px-4 py-8">
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[42rem] max-w-full -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/15 blur-3xl" />
-      <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : "mx-auto max-w-xl"}>
+      {/* Sobre una tarjeta semitransparente, igual que la del operador (ver ahí el porqué). */}
+      <div className={`relative z-10 mx-auto w-full overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${dividir ? "max-w-[64rem]" : "max-w-xl"}`}>
+      <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : ""}>
         {bloques.map((bloque, i) => (
           // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
           <div key={i} className={i === 1 ? "lg:border-l lg:border-border/50" : ""}>
@@ -1894,7 +1907,7 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
         lejísimos de la columna que resume. Ahora comparten caja y el importe cae justo
         debajo de la columna "A pagar".
       */}
-      <div className={`sticky bottom-0 z-20 bg-card ${dividir ? "" : "mx-auto max-w-xl"}`}>
+      <div className="sticky bottom-0 z-20 bg-card">
         <div className="flex items-baseline justify-between gap-4 border-t-2 border-primary/50 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/25 px-4 py-4">
           <span className="text-[11px] font-bold uppercase tracking-widest text-foreground">
             {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
@@ -1916,6 +1929,7 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
           </>
         )}
       </div>
+      </div>{/* fin tarjeta */}
     </div>
   );
 }

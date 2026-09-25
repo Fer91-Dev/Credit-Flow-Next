@@ -349,6 +349,20 @@ summary:focus-visible,
 }
 .animate-fila-plan { animation: fila-plan 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Fondo del plan de pagos: motivos de financiera en línea fina, al estilo del fondo de WhatsApp.
+   El dibujo (public/patrones/finanzas.svg) es una MÁSCARA: el color lo pone `background-color`,
+   así sigue al tema —claro u oscuro— sin tener dos archivos. Muy tenue a propósito: es textura,
+   no contenido; la tabla va encima en una tarjeta semitransparente. */
+.fondo-finanzas {
+  background-color: color-mix(in oklab, var(--foreground) 6%, transparent);
+  -webkit-mask-image: url("/patrones/finanzas.svg");
+  mask-image: url("/patrones/finanzas.svg");
+  -webkit-mask-size: 320px 320px;
+  mask-size: 320px 320px;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+}
+
 /* Brillo del número que se paga: una luz del color de marca alrededor de la cifra, no un
    subrayado. Es la columna que el cliente mira primero. */
 .brillo-cuota { text-shadow: 0 0 14px color-mix(in oklab, var(--primary) 55%, transparent); }
