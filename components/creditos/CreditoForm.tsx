@@ -1833,8 +1833,16 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
   /** Canal lateral: alinea las celdas de los extremos con el encabezado del panel (px-4). */
   const canal = "[&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4";
 
+  /*
+    El MISMO tratamiento que la vista del operador, adaptado a sus tres columnas (pedido de
+    Fernando, 25/09/2026: "la cliente es aburrida, no resalta la cuota"): halo de luz detrás,
+    filas que entran en cascada, el número de cuota en una pastilla del color de marca y la
+    columna "A pagar" con la franja, el degradé y el brillo de la cuota del operador. El
+    destello del encabezado va solo en el PRIMER bloque: una sola luz animada por pantalla.
+  */
   return (
-    <div>
+    <div className="relative isolate">
+      <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[42rem] max-w-full -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/15 blur-3xl" />
       <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : "mx-auto max-w-xl"}>
         {bloques.map((bloque, i) => (
           // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
@@ -1842,20 +1850,27 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
             <table className={`w-full text-sm border-separate border-spacing-0 ${canal}`}>
               <thead className="sticky top-0 z-10 bg-muted">
                 <tr>
-                  <th className={`${th} w-14`}>Cuota</th>
+                  <th className={`${th} w-20`}>Cuota</th>
                   <th className={th}>Vence</th>
-                  <th className={`${th} text-right`}>A pagar</th>
+                  <th className={`${COL_PAGA_TH} !px-4`}>{i === 0 && <LuzEncabezado />}A pagar</th>
                 </tr>
               </thead>
               <tbody>
-                {bloque.map((row) => (
-                  <tr key={row.nro} className={`hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}>
-                    <td className={`${td} font-mono text-muted-foreground`}>
-                      <span className="text-foreground">{row.nro}</span><span className="text-muted-foreground/50">/{total}</span>
+                {bloque.map((row, idx) => (
+                  <tr
+                    key={`${row.nro}-${row.cuotaTotal}`}
+                    style={{ animationDelay: `${Math.min(idx + i * bloque.length, 24) * 35}ms` }}
+                    className={`animate-fila-plan hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}
+                  >
+                    <td className={`${td} font-mono`}>
+                      <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-primary/15 px-2 text-xs font-bold text-primary ring-1 ring-inset ring-primary/25">
+                        {row.nro}
+                      </span>
+                      <span className="ml-1 text-xs text-muted-foreground/50">/{total}</span>
                     </td>
                     <td className={`${td} text-foreground`}>{fmtDate(row.fecha)}</td>
                     {/* El importe es LO QUE SE DICE en voz alta: es el dato de la fila. */}
-                    <td className={`${td} text-right font-mono text-[15px] font-bold text-foreground`}>${n2(row.cuotaTotal)}</td>
+                    <td className={`${COL_PAGA_TD} !px-4 !py-3`}>${n2(row.cuotaTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1880,11 +1895,11 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
         debajo de la columna "A pagar".
       */}
       <div className={`sticky bottom-0 z-20 bg-card ${dividir ? "" : "mx-auto max-w-xl"}`}>
-        <div className="flex items-baseline justify-between gap-4 border-t-2 border-primary/40 bg-primary/5 px-4 py-4">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
+        <div className="flex items-baseline justify-between gap-4 border-t-2 border-primary/50 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/25 px-4 py-4">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-foreground">
             {comisionUpfront > 0 ? "Total de las cuotas" : "Total a pagar"}
           </span>
-          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-xl font-black text-foreground"}`}>
+          <span className={`font-mono tabular-nums ${comisionUpfront > 0 ? "text-sm font-semibold text-foreground" : "text-2xl font-black text-foreground brillo-cuota"}`}>
             ${n2(totalCuotas)}
           </span>
         </div>
@@ -1894,9 +1909,9 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
               <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Comisión de otorgamiento (al firmar)</span>
               <span className="font-mono text-sm tabular-nums text-foreground">${n2(comisionUpfront)}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-4 border-t border-primary/30 bg-primary/5 px-4 py-4">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
-              <span className="font-mono text-xl font-black tabular-nums text-foreground">${n2(totalAPagar)}</span>
+            <div className="flex items-baseline justify-between gap-4 border-t border-primary/40 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/25 px-4 py-4">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-foreground">Total a pagar</span>
+              <span className="font-mono text-2xl font-black tabular-nums text-foreground brillo-cuota">${n2(totalAPagar)}</span>
             </div>
           </>
         )}
