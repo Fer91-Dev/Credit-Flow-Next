@@ -68,8 +68,8 @@ function LuzEncabezado() {
    primero: franja del color de marca arriba, fondo en degradé, bordes a los dos lados y la
    cifra con un brillo leve (`brillo-cuota`, globals.css). */
 const COL_PAGA_TH = "relative overflow-hidden px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary bg-gradient-to-b from-primary/30 to-primary/10 border-b border-border border-x border-x-primary/30 shadow-[inset_0_2px_0_0_var(--primary)]";
-const COL_PAGA_TD = "px-3 py-2.5 text-right font-mono font-bold text-[15px] text-foreground bg-primary/[0.1] border-x border-primary/30 tabular-nums brillo-cuota";
-const COL_PAGA_TF = "px-3 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-primary/[0.2] border-x border-primary/30 tabular-nums brillo-cuota";
+const COL_PAGA_TD = "px-3 py-2.5 text-right font-mono font-bold text-[16px] text-foreground bg-primary/[0.1] border-x border-primary/30 tabular-nums brillo-cuota";
+const COL_PAGA_TF = "px-3 py-3.5 text-right font-bold font-mono text-[16px] text-foreground bg-primary/[0.2] border-x border-primary/30 tabular-nums brillo-cuota";
 
 const CUENTA_DESEMBOLSO_LABEL: Record<CuentaCaja, string> = {
   efectivo: "Efectivo",
@@ -1565,7 +1565,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                  topa en 48rem; con cargos usa todo el ancho con celdas más angostas, y `min-w-max`
                  impide que se aplasten (si igual no entran —pantalla chica— el panel scrollea de
                  costado en vez de montar un número sobre otro). */}
-              <table className={`relative z-10 ${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2" : "mx-auto w-full max-w-[48rem]"} text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
+              <table className={`relative z-10 ${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2 text-xs [&_tfoot_td]:text-sm [&_tbody_td.brillo-cuota]:text-[14px]" : "mx-auto w-full max-w-[56rem] text-sm"} [&_tbody_td]:py-3 border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
@@ -1618,11 +1618,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <tfoot className="sticky bottom-0 z-10 bg-card">
                   <tr className="border-t-2 border-primary/40 bg-primary/5">
                     <td colSpan={2} className="px-2.5 py-4 text-[10px] font-bold text-foreground uppercase tracking-widest">Totales</td>
-                    <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
-                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
-                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-primary tabular-nums">${n2(montoNum)}</td>
+                    <td className={hayCargoCols ? "px-2.5 py-3.5 text-right font-bold font-mono text-base text-foreground tabular-nums" : COL_PAGA_TF}>${n2(plan.totalPagado)}</td>
+                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-base text-warning tabular-nums">${n2(plan.totalIntereses)}</td>
+                    <td className="px-2.5 py-3.5 text-right font-bold font-mono text-base text-primary tabular-nums">${n2(montoNum)}</td>
                     {cargoCols.map(col => (
-                      <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-sm text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
+                      <td key={col.key} className="px-2.5 py-3.5 text-right font-bold font-mono text-base text-foreground bg-warning/10 tabular-nums">${n2(col.key === "iva" ? plan.totalIva : col.key === "seguro" ? plan.totalSeguro : plan.totalGastos)}</td>
                     ))}
                     {hayCargoCols && <td className={COL_PAGA_TF}>${n2(totalCuotasCliente)}</td>}
                     <td className="px-2.5 py-3.5 text-right font-mono text-muted-foreground/30 tabular-nums">$ 0,00</td>
