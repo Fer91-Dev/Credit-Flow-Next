@@ -11,7 +11,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { refrescarNotificaciones, useConfiguracion, useMiPerfilVendedor, useMiCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
+import { refrescarNotificaciones, useConfiguracion, useMiPerfilVendedor, useMiCaja, useVendedorCaja, useFinanciera, type CuentaCaja, type Producto } from "@/lib/swr";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatNumero, parseMontoInput, maskMontoInput, numeroAInput, formatFecha, formatMonto, formatCreditoNumero, nombreCompleto, hoyComercial, cn } from "@/lib/utils";
@@ -118,7 +118,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // botón "Otorgar" se habilita.
   const refrescarSaldo = async () => {
     setRefrescandoCaja(true);
-    try { await refrescarCaja(); } finally { setRefrescandoCaja(false); }
+    try { await Promise.all([refrescarCaja(), refrescarCajaVendedor()]); } finally { setRefrescandoCaja(false); }
   };
   const confirm = useConfirm();
   const toast = useToast();
@@ -181,6 +181,24 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
   // ── Riesgo / originación (motor base: todos los planes; la verificación de bureau es lo premium) ──
   const tieneRiesgo = true;
   const esAdmin = !perfil; // useMiPerfilVendedor devuelve null para admin; el vendedor trae ficha
+
+  /*
+    🔴 DE QUÉ CAJA SALE EL DESEMBOLSO: la MISMA que controla y descuenta el servidor.
+    Si el admin le atribuye el crédito a un vendedor, la plata sale de la caja de ESE vendedor
+    (POST /api/creditos: `assertFondosSuficientesTx` con su vendedorId). La pantalla miraba
+    siempre la principal: con la principal llena y el vendedor vacío dejaba otorgar y el
+    servidor lo rechazaba; al revés, bloqueaba un otorgamiento válido (25/09/2026).
+  */
+  const vendedorElegido = esAdmin && formData.vendedor_id ? formData.vendedor_id : null;
+  const { caja: cajaVendedorElegido, mutate: refrescarCajaVendedor } = useVendedorCaja(vendedorElegido);
+  const cajaDesembolso = vendedorElegido ? cajaVendedorElegido : miCaja;
+  const nombreVendedorElegido = vendedorElegido ? vendedores.find((v) => v.id === vendedorElegido)?.nombre ?? "ese vendedor" : null;
+  /** A quién se le dice qué hacer cuando no alcanza: depende de quién opera y de qué caja. */
+  const comoConseguirFondos = !esAdmin
+    ? "pedí una entrega al administrador."
+    : nombreVendedorElegido
+      ? `registrá una entrega a la caja de ${nombreVendedorElegido}.`
+      : "registrá un ingreso en la caja principal.";
   const [riesgoEval, setRiesgoEval] = useState<EvalRiesgo | null>(null);
   const [riesgoLoading, setRiesgoLoading] = useState(false);
   const [autorizarRiesgo, setAutorizarRiesgo] = useState(false);
@@ -438,9 +456,9 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
       return `El capital supera tu límite de otorgamiento (${formatMonto(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
     // Fondos disponibles en la cuenta de desembolso (solo créditos de dinero; el producto no desembolsa).
-    // miCaja = la caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal).
-    if (!esProducto && !creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
-      return `No hay saldo suficiente en la caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${formatMonto(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Cargá fondos a la caja o cambiá la forma de desembolso.`;
+    // cajaDesembolso = la caja de la que sale la plata (ver arriba): la misma que controla el servidor.
+    if (!esProducto && !creditoId && cajaDesembolso && monto > (cajaDesembolso.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
+      return `Saldo insuficiente en ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${formatMonto(cajaDesembolso.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}): ${comoConseguirFondos}`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
@@ -601,7 +619,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
   // Aviso reactivo de fondos: depende del monto INGRESADO y de la cuenta elegida.
   const montoIngresado = parseMonto(formData.monto_original);
-  const dispDesembolso = miCaja ? (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0) : null;
+  const dispDesembolso = cajaDesembolso ? (cajaDesembolso.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0) : null;
   // Crédito de producto: no hay desembolso de efectivo → nunca hay "fondos insuficientes".
   const fondosInsuficientes = !esProducto && !creditoId && dispDesembolso != null && montoIngresado > dispDesembolso;
 
@@ -844,8 +862,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       {/* ── IZQUIERDA: parámetros del crédito (calculadora colapsable) ── */}
       <form
         onSubmit={handleSubmit}
-        className={`flex flex-col w-full md:w-[340px] xl:w-[400px] shrink-0 border-r border-edge bg-card/40 transition-[margin] duration-300 ease-in-out ${
-          calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[340px] xl:-ml-[400px]"
+        className={`flex flex-col w-full md:w-[340px] xl:w-[360px] 2xl:w-[400px] shrink-0 border-r border-edge bg-card/40 transition-[margin] duration-300 ease-in-out ${
+          calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[340px] xl:-ml-[360px] 2xl:-ml-[400px]"
         }`}
         aria-hidden={!calcAbierta}
       >
@@ -997,11 +1015,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 required readOnly={esProducto || condicionesBloqueadas}
                 tabIndex={condicionesBloqueadas ? -1 : undefined}
                 aria-invalid={!!errorCapital}
-                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && miCaja && !condicionesBloqueadas ? "pr-10" : ""} ${esProducto || condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
+                className={`pl-9 text-lg font-bold font-mono tabular-nums ${!esProducto && cajaDesembolso && !condicionesBloqueadas ? "pr-10" : ""} ${esProducto || condicionesBloqueadas ? "opacity-70 cursor-not-allowed" : ""} ${errorCapital ? "border-destructive focus:border-destructive focus:ring-destructive/25" : ""}`}
               />
               {/* Refrescar saldo de la caja: ícono sutil dentro del campo (recarga parcial, sin F5).
                   Delicado y semitransparente, al estilo de los íconos del sidebar. */}
-              {!esProducto && miCaja && !condicionesBloqueadas && (
+              {!esProducto && cajaDesembolso && !condicionesBloqueadas && (
                 <button
                   type="button"
                   onClick={refrescarSaldo}
@@ -1039,9 +1057,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 </Select>
               </Field>
               {/* Disponible en la cuenta elegida (el refrescar vive en el ícono del campo Capital) */}
-              {miCaja ? (
+              {cajaDesembolso ? (
                 <div className={`-mt-1.5 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs ${fondosInsuficientes ? "bg-destructive/10" : "bg-muted/25"}`}>
-                  <span className="text-muted-foreground">Disponible en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}</span>
+                  <span className="text-muted-foreground">
+                    Disponible en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}
+                    {nombreVendedorElegido && <> · caja de {nombreVendedorElegido}</>}
+                  </span>
                   <span className={`font-mono font-semibold tabular-nums ${fondosInsuficientes ? "text-destructive" : "text-foreground"}`}>{formatMonto(dispDesembolso ?? 0)}</span>
                 </div>
               ) : (
@@ -1051,7 +1072,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
                   <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
-                    <b>Saldo insuficiente.</b> Faltan <span className="font-mono font-semibold">{formatMonto(Math.max(0, montoIngresado - (dispDesembolso ?? 0)))}</span>: pedí una entrega al administrador.
+                    <b>Saldo insuficiente.</b> Faltan <span className="font-mono font-semibold">{formatMonto(Math.max(0, montoIngresado - (dispDesembolso ?? 0)))}</span>: {comoConseguirFondos}
                   </span>
                 </div>
               )}
@@ -1518,16 +1539,33 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                  el mismo `px-4` que el encabezado del panel, así la tabla queda alineada con
                  "Plan de pagos" y con el botón Imprimir. Va sobre la tabla y no celda por
                  celda porque las columnas de cargos aparecen y desaparecen según la config. */
-              <table className="w-full text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4">
+              /* 🔴 EL ANCHO SIGUE A LAS COLUMNAS (pedido de Fernando, 25/09/2026). Con `w-full`
+                 siempre, sin cargos las 6 columnas ocupaban 504 px de contenido estiradas a 832:
+                 más de 300 px de huecos entre números que se leen juntos. Sin cargos la tabla se
+                 topa en 48rem; con cargos usa todo el ancho con celdas más angostas, y `min-w-max`
+                 impide que se aplasten (si igual no entran —pantalla chica— el panel scrollea de
+                 costado en vez de montar un número sobre otro). */
+              <table className={`${hayCargoCols ? "w-full min-w-max [&_th]:px-2 [&_td]:px-2" : "w-full max-w-[48rem]"} text-xs border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
                     <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border w-9">#</th>
-                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">Vencimiento</th>
+                    <th className="px-2.5 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">{hayCargoCols ? "Vence" : "Vencimiento"}</th>
                     <th className={hayCargoCols ? "px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border" : COL_PAGA_TH}>Cuota</th>
                     <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-warning border-b border-border">Interés</th>
                     <th className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-primary border-b border-border">Capital</th>
                     {cargoCols.map(col => (
-                      <th key={col.key} className="px-2.5 py-2.5 text-right text-[11px] font-bold uppercase tracking-wider text-foreground bg-warning/5 border-b border-border align-bottom">{col.label}</th>
+                      <th key={col.key} title={col.label} className="whitespace-nowrap px-2.5 py-2.5 text-right text-[11px] font-bold uppercase leading-tight tracking-wider text-foreground bg-warning/5 border-b border-border align-bottom">
+                        {/* Corto y en DOS renglones —el nombre arriba, la alícuota abajo— para que la
+                            columna mida lo que miden sus números y entren todas. El nombre completo
+                            queda en el globo y en el PDF, que no tienen ese apuro. */}
+                        {(() => {
+                          const corto = col.label.replace("Gastos administrativos", "Gastos adm.");
+                          const i = corto.lastIndexOf(" ");
+                          return i > 0 && corto.slice(i + 1).includes("%")
+                            ? <>{corto.slice(0, i)}<br />{corto.slice(i + 1)}</>
+                            : corto;
+                        })()}
+                      </th>
                     ))}
                     {/* Mismo nombre que en la vista cliente: es literalmente el mismo número. */}
                     {hayCargoCols && <th className={COL_PAGA_TH}>A pagar</th>}
