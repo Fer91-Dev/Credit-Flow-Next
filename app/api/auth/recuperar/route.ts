@@ -11,12 +11,17 @@ import type { NextRequest } from "next/server";
 // nodemailer necesita el runtime de Node (no Edge).
 export const runtime = "nodejs";
 
-// Mensaje de éxito. NOTA de seguridad: por decisión de producto (herramienta interna, pocos
-// usuarios, cuentas creadas por el admin) se OPTA por revelar si el email existe (mejor UX). El
-// riesgo de enumeración se acota con el rate limit por IP de más abajo. En un SaaS público
-// convendría volver a la respuesta genérica (anti-enumeración, OWASP A07).
+/**
+ * 🔴 LA MISMA RESPUESTA EXISTA O NO EL EMAIL (decisión de Fernando, 25/09/2026, auditoría H-M1).
+ *
+ * Antes se informaba "Este email no pertenece a ningún usuario", por decisión de producto: era
+ * una herramienta interna de pocos usuarios. Dejó de alcanzar por dos motivos: CreditFlow va
+ * camino a ser para varias financieras, y la barrera en la que se apoyaba (el límite por IP)
+ * se esquiva detrás de un nginx. Con la respuesta que distingue, cualquiera arma la lista de
+ * emails del equipo para mandarles phishing dirigido.
+ */
 const OK_ENVIADO = {
-  message: "Te enviamos las instrucciones a tu correo. Revisá tu bandeja de entrada (y la carpeta de spam).",
+  message: "Si ese email está registrado, te enviamos las instrucciones. Revisá tu bandeja de entrada (y la carpeta de spam).",
 };
 
 /**
@@ -28,12 +33,20 @@ const OK_ENVIADO = {
  * 🔴 Y TAMPOCO EL `Host` (auditoría 25/09/2026, H-A2). El respaldo era `req.nextUrl.origin`,
  * que sale del encabezado `Host` — y ese también lo escribe quien hace el pedido. Es el mismo
  * ataque que el de `Origin`, por otra puerta. Vercel lo neutraliza porque solo entrega pedidos
- * con sus dominios; detrás de un nginx no. En producción la URL es la configurada o ninguna:
- * sin ella el mail no sale (y queda en el log), que es mejor que mandarlo con un link ajeno.
+ * con sus dominios; detrás de un nginx no.
+ *
+ * Por orden: la configurada; si no, la que Vercel pone en el entorno (la dirección oficial del
+ * proyecto o de la rama de preview: la escribe la plataforma, no el pedido); y si no hay ninguna
+ * de las dos, en producción NINGUNA — el mail no sale y queda en el log, que es mejor que
+ * mandarlo con un link ajeno. En el VPS no existen las de Vercel: ahí va `NEXT_PUBLIC_APP_URL`.
  */
 function getBaseUrl(req: NextRequest): string | null {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
   if (configured) return configured;
+  const deVercel = process.env.VERCEL_ENV === "preview"
+    ? process.env.VERCEL_BRANCH_URL
+    : process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (deVercel) return `https://${deVercel.replace(/\/+$/, "")}`;
   return process.env.NODE_ENV === "production" ? null : req.nextUrl.origin;
 }
 
@@ -68,7 +81,7 @@ function emailHtml(username: string | null, nombre: string | null, link: string)
  * Recuperación de acceso por email: manda UN correo con el nombre de usuario + un link
  * para crear una contraseña nueva. El link se genera con la Admin API de Supabase
  * (`generateLink type=recovery`) y el correo lo envía la app por Gmail (nodemailer).
- * Si el email no existe LO DICE, por decisión de producto (ver la nota de OK_ENVIADO).
+ * Responde lo mismo exista o no el email (ver la nota de OK_ENVIADO).
  *
  * Body: { email }
  */
@@ -93,15 +106,14 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     return errorResponse("Demasiados intentos. Probá de nuevo en unos minutos.", "RATE_LIMITED", 429);
   }
 
-  // La cuenta debe existir y estar activa. Por decisión de producto se INFORMA si el email no
-  // pertenece a ningún usuario (ver nota de OK_ENVIADO). El rate limit de arriba acota el abuso.
+  // La cuenta debe existir y estar activa; si no, se contesta lo mismo que si existiera.
   const prof = await prisma.profiles.findFirst({
     where: { email },
     select: { username: true, full_name: true, activo: true, tenant_id: true },
   });
 
   if (!prof || !prof.activo) {
-    return errorResponse("Este email no pertenece a ningún usuario del sistema.", "EMAIL_NO_REGISTRADO", 404);
+    return successResponse(OK_ENVIADO);
   }
 
   try {
