@@ -985,7 +985,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
           <Field
             label="Capital ($)"
             required
-            hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint}
+            hint={esProducto ? "Definido por el producto (precio × cantidad)" : montoHint ? <span className="text-warning">{montoHint}</span> : undefined}
             error={errorCapital ?? undefined}
           >
             <div className="relative">
@@ -1398,7 +1398,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         </div>{/* fin área scrolleable */}
 
         {/* Acciones — barra fija al fondo del panel, separada de la zona de carga */}
-        <div className="shrink-0 flex items-center gap-2 justify-end border-t border-edge bg-muted/10 px-5 py-3.5">
+        <div className="shrink-0 flex items-center gap-2 justify-end md:justify-center border-t border-edge bg-muted/10 px-5 py-3.5">
           {/* Mobile: pasar a la vista del cronograma (en desktop se ven lado a lado) */}
           <button
             type="button" onClick={() => setCalcAbierta(false)}
@@ -1960,7 +1960,7 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
         <input
           type="text"
           autoComplete="off"
-          placeholder="Ingresá DNI o apellido y nombre…"
+          placeholder="DNI o apellido y nombre · F3 ver todos"
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); setVerTodos(false); }}
           onFocus={() => setOpen(true)}
@@ -1981,11 +1981,9 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
         )}
       </div>
 
-      <p className="mt-1 text-[10px] text-muted-foreground/50">
-        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">F3</kbd> ver todos ·{" "}
-        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">↑↓</kbd> moverse ·{" "}
-        <kbd className="rounded border border-border bg-muted/50 px-1 py-0.5 font-mono text-[9px] font-semibold">Enter</kbd> elegir
-      </p>
+      {/* El atajo va EN el placeholder (pedido de Fernando, 25/09/2026): la fila de teclas
+          debajo del campo ("F3 ver todos · ↑↓ moverse · Enter elegir") sumaba ruido. Flechas y
+          Enter siguen andando igual; son lo que cualquiera prueba en una lista. */}
 
       {open && (buscando || verTodos) && (
         <div ref={listaRef} className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-lg">
