@@ -26,7 +26,10 @@ export function NuevoCreditoView() {
   };
 
   return (
-    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
+    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-6.5rem)] lg:h-[calc(100dvh-3rem)] flex-col bg-background">
+      {/* Alto = pantalla − pie (3rem) y, por debajo de lg, también la barra superior móvil
+          (h-14 = 3,5rem). Sin ese descuento, en una tablet el botón "Otorgar crédito" quedaba
+          debajo del pie de página: existía pero no se veía (medido 25/09/2026, ancho 820). */}
       {/* Header de la sección — misma altura (76px) que el PageHeader y el branding del sidebar */}
       <div className="flex h-[76px] items-center justify-between gap-3 border-b border-edge px-5 shrink-0">
         <div className="flex items-center gap-3 min-w-0">

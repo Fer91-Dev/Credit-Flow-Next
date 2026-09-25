@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered, ArrowRight } from "lucide-react";
+import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered, ArrowRight, AlertTriangle } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
@@ -93,7 +93,6 @@ interface CreditoFormProps {
 const parseMonto = parseMontoInput;
 const formatMontoInput = maskMontoInput;
 const n2 = (num: number) => formatNumero(num, 2);
-const n0 = (num: number) => formatNumero(num, 0);
 
 const fmtDate = (d: Date) => formatFecha(d);
 
@@ -433,15 +432,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     }
     const monto = parseMonto(formData.monto_original);
     if (monto <= 0) return "Ingresá un capital válido";
-    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
-    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es ${formatMonto(simCfg.montoMin)}`;
+    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es ${formatMonto(simCfg.montoMax)}`;
     // Límite de otorgamiento del vendedor (al otorgar, no en edición). El admin no tiene tope.
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
-      return `El capital supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
+      return `El capital supera tu límite de otorgamiento (${formatMonto(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
     // Fondos disponibles en la cuenta de desembolso (solo créditos de dinero; el producto no desembolsa).
     // miCaja = la caja de la que desembolsa el usuario (vendedor: su caja; admin: caja principal).
     if (!esProducto && !creditoId && miCaja && monto > (miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0))
-      return `No hay saldo suficiente en la caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} ($${n0(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Cargá fondos a la caja o cambiá la forma de desembolso.`;
+      return `No hay saldo suficiente en la caja de ${CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${formatMonto(miCaja.saldos_por_cuenta[formData.cuenta_desembolso] ?? 0)}). Cargá fondos a la caja o cambiá la forma de desembolso.`;
     if (!formData.frecuencia) return "Seleccioná la frecuencia";
     const n = parseInt(formData.plazo_meses);
     if (isNaN(n) || n < 1) return "Indicá el número de cuotas";
@@ -655,10 +654,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     if (esProducto || !formData.monto_original) return null;
     const monto = parseMonto(formData.monto_original);
     if (monto <= 0) return null;
-    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es $${n0(simCfg.montoMin)}`;
-    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es $${n0(simCfg.montoMax)}`;
+    if (simCfg && simCfg.montoMin > 0 && monto < simCfg.montoMin) return `El capital mínimo es ${formatMonto(simCfg.montoMin)}`;
+    if (simCfg && simCfg.montoMax > 0 && monto > simCfg.montoMax) return `El capital máximo es ${formatMonto(simCfg.montoMax)}`;
     if (!creditoId && perfil?.limite_aprobacion != null && monto > perfil.limite_aprobacion)
-      return `Supera tu límite de otorgamiento ($${n0(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
+      return `Supera tu límite de otorgamiento (${formatMonto(perfil.limite_aprobacion)}). Requiere autorización de un administrador.`;
     return null;
   }, [esProducto, formData.monto_original, simCfg, creditoId, perfil?.limite_aprobacion]);
 
@@ -704,7 +703,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     : 0;
 
   const montoHint = simCfg && (simCfg.montoMin > 0 || simCfg.montoMax > 0)
-    ? `Permitido: $${n0(simCfg.montoMin)}${simCfg.montoMax > 0 ? ` – $${n0(simCfg.montoMax)}` : " o más"}`
+    ? `Permitido: ${formatMonto(simCfg.montoMin)}${simCfg.montoMax > 0 ? ` – ${formatMonto(simCfg.montoMax)}` : " o más"}`
     : "Aceptá miles y decimales: 350.000,52";
   // Total de cuotas (con cargos, ya redondeadas) para la vista cliente.
   const totalCuotasCliente = plan ? plan.totalCuotas : 0;
@@ -845,13 +844,15 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
       {/* ── IZQUIERDA: parámetros del crédito (calculadora colapsable) ── */}
       <form
         onSubmit={handleSubmit}
-        className={`flex flex-col w-full md:w-[300px] xl:w-[330px] shrink-0 border-r border-edge bg-card/40 transition-[margin] duration-300 ease-in-out ${
-          calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[300px] xl:-ml-[330px]"
+        className={`flex flex-col w-full md:w-[340px] xl:w-[400px] shrink-0 border-r border-edge bg-card/40 transition-[margin] duration-300 ease-in-out ${
+          calcAbierta ? "ml-0" : "-ml-[100%] md:-ml-[340px] xl:-ml-[400px]"
         }`}
         aria-hidden={!calcAbierta}
       >
         {/* Área de campos — scroll interno */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        {/* Aire entre bloques (pedido de Fernando, 25/09/2026: "está todo muy pegado"). Cada
+            sección es una tarjeta: el ojo separa "a quién" de "cuánto y cómo" sin leer títulos. */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
         {error && (
           <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-2.5 py-2 text-sm text-destructive">
             {error}
@@ -859,8 +860,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         )}
 
         {/* Prestatario */}
-        <section className="space-y-2">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Prestatario</p>
+        <section className="space-y-4 rounded-xl border border-border/70 bg-card p-4">
+          <p className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            <Emoji name="bust-in-silhouette" className="h-4 w-4" /> Prestatario
+          </p>
           <Field label="Cliente" required>
             {condicionesBloqueadas ? (
               // Un crédito otorgado no cambia de titular: eso no es editar, es otro crédito.
@@ -877,7 +880,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               />
             )}
           </Field>
-          <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-2.5" : ""}>
+          <div className={vendedores.length > 0 ? "grid grid-cols-2 gap-3" : ""}>
             <Field label="Tipo de crédito" required>
               <Select name="tipo_credito" value={formData.tipo_credito} onChange={set("tipo_credito")} required>
                 <option value="personal">Personal</option>
@@ -951,7 +954,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                       <option value="">Seleccioná un producto…</option>
                       {productosFiltrados.map(p => (
                         <option key={p.id} value={p.id} disabled={p.stock <= 0}>
-                          {p.nombre} — ${n0(p.precio)} ({p.stock} u.)
+                          {p.nombre} — {formatMonto(p.precio)} ({p.stock} u.)
                         </option>
                       ))}
                     </Select>
@@ -968,8 +971,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
         </section>
 
         {/* Condiciones */}
-        <section className="space-y-2">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Condiciones financieras</p>
+        <section className="space-y-4 rounded-xl border border-border/70 bg-card p-4">
+          <p className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            <Emoji name="dollar-banknote" className="h-4 w-4" /> Condiciones financieras
+          </p>
           {condicionesBloqueadas && (
             <p className="rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px] text-muted-foreground">
               Las condiciones quedaron firmes al otorgar. Para cambiarlas, <b>anulá</b> el crédito y otorgalo de nuevo, o <b>refinancialo</b> si ya cobró cuotas.
@@ -1035,25 +1040,26 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               </Field>
               {/* Disponible en la cuenta elegida (el refrescar vive en el ícono del campo Capital) */}
               {miCaja ? (
-                <p className="text-xs text-muted-foreground">
-                  Disponible en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}:{" "}
-                  <span className={`font-mono font-semibold ${fondosInsuficientes ? "text-destructive" : "text-foreground"}`}>${n0(dispDesembolso ?? 0)}</span>
-                </p>
+                <div className={`-mt-1.5 flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs ${fondosInsuficientes ? "bg-destructive/10" : "bg-muted/25"}`}>
+                  <span className="text-muted-foreground">Disponible en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]}</span>
+                  <span className={`font-mono font-semibold tabular-nums ${fondosInsuficientes ? "text-destructive" : "text-foreground"}`}>{formatMonto(dispDesembolso ?? 0)}</span>
+                </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Cuenta de la que sale el dinero prestado</p>
+                <p className="-mt-1.5 text-xs text-muted-foreground">Cuenta de la que sale el dinero prestado</p>
               )}
               {fondosInsuficientes && (
-                <p className="flex flex-wrap items-center gap-1 text-xs text-destructive">
-                  El capital (${n0(montoIngresado)}) supera el saldo de la caja en {CUENTA_DESEMBOLSO_LABEL[formData.cuenta_desembolso]} (${n0(dispDesembolso ?? 0)}). Pedí una entrega al administrador y tocá
-                  <RefreshCw className="inline h-3 w-3" aria-hidden />
-                  en el campo Capital para actualizar (sin recargar la página).
-                </p>
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span>
+                    <b>Saldo insuficiente.</b> Faltan <span className="font-mono font-semibold">{formatMonto(Math.max(0, montoIngresado - (dispDesembolso ?? 0)))}</span>: pedí una entrega al administrador.
+                  </span>
+                </div>
               )}
             </>
           )}
 
           {/* Frecuencia (ancha) · Cuotas (chica) · Tasa (chica) — tamaño según el valor */}
-          <div className="grid grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-4 gap-3">
             <div className="col-span-2">
               <Field label="Frecuencia" required>
                 <Select name="frecuencia" value={formData.frecuencia} onChange={set("frecuencia")} required
@@ -1141,7 +1147,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             {planSel?.coeficiente ? (
               <p className="col-span-3 self-center text-xs text-muted-foreground">
                 Coeficiente <span className="font-mono font-semibold text-foreground">{planSel.coeficiente}</span>
-                {" · "}cada $100.000 paga <span className="font-mono font-semibold text-foreground">${n0(100_000 * planSel.coeficiente)}</span> por {lbl.cuotaSingular}
+                {" · "}cada $100.000 paga <span className="font-mono font-semibold text-foreground">{formatMonto(100_000 * planSel.coeficiente)}</span> por {lbl.cuotaSingular}
               </p>
             ) : null}
           </div>
@@ -1149,7 +1155,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
         {/* ── Riesgo / originación (feature premium) ── */}
         {tieneRiesgo && !creditoId && (riesgoLoading || riesgoEval) && (
-          <section className="px-5 pb-5">
+          <section>
             {!riesgoEval ? (
               <div className="rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">Evaluando riesgo…</div>
             ) : (() => {
@@ -1634,11 +1640,11 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               <div className="flex items-center gap-5 shrink-0">
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">Intereses</p>
-                  <p className="text-sm font-bold text-warning font-mono leading-tight mt-0.5">${n0(plan.totalIntereses)}</p>
+                  <p className="text-sm font-bold text-warning font-mono leading-tight mt-0.5">{formatMonto(plan.totalIntereses)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">Total a pagar</p>
-                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(hayCargos ? totalAPagar : plan.totalPagado)}</p>
+                  <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">{formatMonto(hayCargos ? totalAPagar : plan.totalPagado)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground leading-tight">T.E.A.</p>
@@ -1656,7 +1662,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 {hayCargos && (
                   <div>
                     <p className="text-[10px] text-muted-foreground leading-tight">Cargos totales</p>
-                    <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">${n0(plan.totalCargos)}</p>
+                    <p className="text-sm font-bold text-foreground font-mono leading-tight mt-0.5">{formatMonto(plan.totalCargos)}</p>
                   </div>
                 )}
               </div>

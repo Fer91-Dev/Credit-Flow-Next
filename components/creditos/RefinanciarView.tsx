@@ -540,7 +540,7 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
   };
 
   return (
-    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-3rem)] flex-col bg-background">
+    <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex h-[calc(100dvh-6.5rem)] lg:h-[calc(100dvh-3rem)] flex-col bg-background">
       {/* Encabezado — misma altura (76px) que el PageHeader y el branding del sidebar */}
       <div className="flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge px-5">
         <div className="flex min-w-0 items-center gap-3">
