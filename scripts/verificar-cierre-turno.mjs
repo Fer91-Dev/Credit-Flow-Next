@@ -14,6 +14,7 @@
  * (contado = fondo = sistema) para probar el candado de período cerrado. Al final borra
  * todo lo que creó: actas, arqueos, movimientos, cliente y crédito de laboratorio.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

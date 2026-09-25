@@ -18,6 +18,7 @@
  *
  *   node --env-file=.env.local scripts/verificar-avisos-acuerdo.mjs
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const REF_PROD = "ilrvvfctzlcbhelxbsar";

@@ -9,6 +9,7 @@
  * necesitan quedan SALTEADAS y se avisa; el cableado del sistema se comprueba igual.
  * El orden del recorrido (puro) se prueba aparte: `npx tsx scripts/probar-recorrido.mts`.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "node:child_process";
 

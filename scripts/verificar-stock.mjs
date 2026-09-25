@@ -24,6 +24,7 @@
  * Los datos quedan en el producto `PRUEBA-STOCK`, que se crea acá y se borra al final si
  * puede (no se puede si quedó atado a un crédito, y eso también se comprueba).
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

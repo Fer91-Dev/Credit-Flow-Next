@@ -1,3 +1,4 @@
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 /**
  * VERIFICADOR DEL CICLO DE VIDA DEL CRÉDITO — de punta a punta, por la API real.
  *

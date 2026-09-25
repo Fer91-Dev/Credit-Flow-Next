@@ -9,6 +9,7 @@
  * También deja PRENDIDAS las reglas de la escalera, porque con los defaults (apagadas) no
  * hay nada que ver: todo se permite. Los valores quedan anotados abajo para poder volver.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const REF_PROD = "ilrvvfctzlcbhelxbsar";

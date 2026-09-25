@@ -9,6 +9,7 @@
  *
  * Uso:  docker compose exec app node scripts/seed-cliente-riesgo.mjs
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();

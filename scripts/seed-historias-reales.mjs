@@ -36,6 +36,7 @@
  * naturalmente alcanzables, que además es más creíble: una financiera con diez clientes es
  * joven y no tiene créditos de seis meses.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

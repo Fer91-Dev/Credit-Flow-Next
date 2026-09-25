@@ -19,6 +19,7 @@
  * La configuración de cobranza se toca (el %, y se abre el cobro pasado el umbral para poder
  * cobrar los casos) y se DEVUELVE exacta al terminar, aunque algo falle.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

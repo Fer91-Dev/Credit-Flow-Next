@@ -1,3 +1,4 @@
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 /**
  * SIEMBRA 10 CLIENTES QUE PARECEN REALES — por la API, no escribiendo en la base.
  *

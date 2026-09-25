@@ -13,6 +13,7 @@
  * Uso (dentro del contenedor):  docker compose exec app node scripts/seed-catalogo.mjs
  * Para regenerar el JSON desde la DB actual: ver el bloque comentado al pie.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

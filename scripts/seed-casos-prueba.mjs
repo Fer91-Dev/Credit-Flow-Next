@@ -1,3 +1,4 @@
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 /**
  * Casos de prueba CONTROLADOS para desarrollo. Uno por escenario, ninguno de relleno.
  *

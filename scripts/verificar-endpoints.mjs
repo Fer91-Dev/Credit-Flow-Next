@@ -33,6 +33,7 @@
  * entrar) y `/api/cron` (lo llama un scheduler sin sesión, y se protege con su propio
  * `CRON_SECRET`, fail-closed en producción).
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";

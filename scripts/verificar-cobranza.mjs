@@ -24,6 +24,7 @@
  *
  * Los datos quedan en la zona `PRUEBA-COBRANZA`.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

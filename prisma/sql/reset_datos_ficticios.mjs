@@ -48,6 +48,7 @@
  * abajo, `NODE_ENV` y el ref del proyecto Supabase.
  * ============================================================================
  */
+import "../../scripts/solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";

@@ -28,6 +28,7 @@
  * pantallas recalculan desde `proximo_pago`. Si un agregado leyera el cache, mostraría la mora
  * de la última vez que corrió el cron — y dependería de que un job se haya ejecutado.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

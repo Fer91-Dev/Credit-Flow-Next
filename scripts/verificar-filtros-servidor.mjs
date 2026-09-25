@@ -16,6 +16,7 @@
  *
  *   QA_PASSWORD="$(cat qa.pass)" node --env-file=.env.local scripts/verificar-filtros-servidor.mjs
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const REF_PROD = "ilrvvfctzlcbhelxbsar";

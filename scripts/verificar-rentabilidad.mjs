@@ -14,6 +14,7 @@
  * Acá se suman directo de `movimientos_caja`, sin pasar por `comisionesDeCaja`, y se exige
  * que la pantalla dé lo mismo y que la neta cierre con todas sus partes.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

@@ -14,6 +14,7 @@
  * Requiere el bucket creado (scripts/setup-storage.mjs) y
  * NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY en el entorno.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 

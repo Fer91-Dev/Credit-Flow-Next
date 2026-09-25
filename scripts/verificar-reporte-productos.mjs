@@ -18,6 +18,7 @@
  * Crea sus propios créditos de producto por la API (así mueven stock de verdad) y los borra
  * al final, también por la API, que es la que repone el stock. La base queda como estaba.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

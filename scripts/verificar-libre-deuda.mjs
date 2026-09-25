@@ -30,6 +30,7 @@
  * UTC— la cubre `auditar-api.mjs`, que la revisa en las 98 rutas y ya demostró que salta.
  * Acá se verifica que el PDF exista, sea un PDF y se llame como el crédito en pantalla.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

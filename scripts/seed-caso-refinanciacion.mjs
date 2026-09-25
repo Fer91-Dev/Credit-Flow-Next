@@ -28,6 +28,7 @@
  * registrado en la auditoría. En la vida real ese cobro habría entrado antes de que el crédito
  * cayera; acá no se puede viajar en el tiempo, así que se usa la autorización.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

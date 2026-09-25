@@ -23,6 +23,7 @@
  * Para borrarlo después: es un cliente más, se elimina desde la pantalla de Clientes (arrastra
  * su crédito) o con el reset. El DNI es el 30111222 para poder encontrarlo.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

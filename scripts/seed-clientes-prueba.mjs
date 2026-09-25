@@ -6,6 +6,7 @@
  * Uso:  docker compose exec app node scripts/seed-clientes-prueba.mjs
  * (No borra nada; para limpiar usar `npm run reset:test -- --confirm`.)
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const p = new PrismaClient();

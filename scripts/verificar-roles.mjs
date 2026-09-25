@@ -29,6 +29,7 @@
  * Lo que sigue prohibido es LISTAR la cartera ajena: es información de comisiones y de
  * competencia interna.
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

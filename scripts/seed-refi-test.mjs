@@ -12,6 +12,7 @@
  * Tras correrlo: Ctrl+Shift+R en el navegador (no hace falta restart).
  * Para limpiar luego: npm run reset:test -- --confirm
  */
+import "./solo-dev.mjs"; // corta si la base no es la de DEV (ver solo-dev.mjs)
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
