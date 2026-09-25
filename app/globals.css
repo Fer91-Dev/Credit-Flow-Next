@@ -344,10 +344,20 @@ summary:focus-visible,
 /* Filas del plan de pagos: entran en cascada cada vez que el plan se recalcula (la fila se
    vuelve a montar porque su `key` lleva el importe). La demora la pone cada fila en línea. */
 @keyframes fila-plan {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fila-plan { animation: fila-plan 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* Suave a propósito (pedido de Fernando, 25/09/2026: "sale como un rayo"): medio segundo por fila. */
+.animate-fila-plan { animation: fila-plan 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* La TARJETA del plan, la primera vez que aparece (o al cambiar de vista): se desvanece hacia
+   adentro subiendo apenas. Solo al montarse — al recalcular se re-animan las filas, no la
+   tarjeta entera, que sería un parpadeo en cada tecla. */
+@keyframes aparece-plan {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-aparece-plan { animation: aparece-plan 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 /* Fondo del plan de pagos: motivos de financiera en línea fina, al estilo del fondo de WhatsApp.
    El dibujo (public/patrones/finanzas.svg) es una MÁSCARA: el color lo pone `background-color`,
@@ -369,8 +379,8 @@ summary:focus-visible,
 
 @media (prefers-reduced-motion: reduce) {
   .animate-heartbeat, .animate-pulse-ring,
-  .animate-brillo-barra, .animate-entrada, .animate-latido-vivo, .animate-fila-plan { animation: none; }
-  .animate-fila-plan { opacity: 1; transform: none; }
+  .animate-brillo-barra, .animate-entrada, .animate-latido-vivo, .animate-fila-plan, .animate-aparece-plan { animation: none; }
+  .animate-fila-plan, .animate-aparece-plan { opacity: 1; transform: none; }
   /* Sin la entrada animada la tarjeta tiene que quedar VISIBLE, no en su estado inicial. */
   .animate-entrada { opacity: 1; transform: none; }
 }

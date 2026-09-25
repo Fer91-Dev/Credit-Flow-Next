@@ -1574,7 +1574,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               {/* La tabla va sobre una TARJETA semitransparente: el dibujo del fondo es textura y no
                   puede competir con los números. `overflow-clip` y no `hidden`: el segundo crea un
                   contenedor de scroll y rompe el encabezado pegajoso. */}
-              <div className={`relative z-10 mx-auto overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${hayCargoCols ? "w-full min-w-max" : "w-full max-w-[56rem]"}`}>
+              <div className={`animate-aparece-plan relative z-10 mx-auto overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${hayCargoCols ? "w-full min-w-max" : "w-full max-w-[56rem]"}`}>
               <table className={`w-full ${hayCargoCols ? "[&_th]:px-2 [&_td]:px-2 text-xs [&_tfoot_td]:text-sm [&_tbody_td.brillo-cuota]:text-[14px]" : "text-sm"} [&_tbody_td]:py-3 border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
@@ -1609,7 +1609,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                   {plan.cuotas.map((row, idx) => (
                     <tr
                       key={`${row.nro}-${row.cuotaTotal}-${row.saldo}`}
-                      style={{ animationDelay: `${Math.min(idx, 24) * 35}ms` }}
+                      style={{ animationDelay: `${260 + Math.min(idx, 24) * 80}ms` }}
                       className={`animate-fila-plan hover:bg-muted/20 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}
                     >
                       <td className="px-2.5 py-2.5 text-muted-foreground/50 font-mono tabular-nums">{row.nro}</td>
@@ -1671,15 +1671,21 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
             </div>{/* fin scroll tabla */}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-8 text-center">
-            <div className="h-20 w-20 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-center">
-              <Emoji name="calendar" className="h-9 w-9 opacity-40" />
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-sm font-semibold text-muted-foreground">Simulá el plan de pagos</p>
-              <p className="text-xs text-muted-foreground/50 max-w-[280px] leading-relaxed">
-                Completá capital, tasa, frecuencia y número de cuotas para ver el cronograma completo.
-              </p>
+          <div className="relative flex-1 flex flex-col items-center justify-center px-8 text-center">
+            {/* El mismo "papel" que el plan: la pantalla vacía ya se ve como el lugar donde va a
+                aparecer. El mensaje va sobre una tarjetita para que el dibujo no lo tape. */}
+            <div aria-hidden className="fondo-finanzas pointer-events-none absolute inset-0" />
+            <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[36rem] max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-3xl" />
+            <div className="relative flex flex-col items-center gap-4 rounded-2xl bg-card/85 px-10 py-8 shadow-2xl ring-1 ring-border backdrop-blur-sm">
+              <div className="h-20 w-20 rounded-2xl bg-muted/30 border border-border/50 flex items-center justify-center">
+                <Emoji name="calendar" className="h-9 w-9 opacity-60" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-foreground">Simulá el plan de pagos</p>
+                <p className="text-xs text-muted-foreground max-w-[280px] leading-relaxed">
+                  Completá capital, tasa, frecuencia y número de cuotas para ver el cronograma completo.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -1855,7 +1861,7 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
     <div className="relative isolate flex min-h-full flex-col justify-center px-4 py-8">
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 -z-10 h-72 w-[42rem] max-w-full -translate-x-1/2 -translate-y-1/3 rounded-full bg-primary/15 blur-3xl" />
       {/* Sobre una tarjeta semitransparente, igual que la del operador (ver ahí el porqué). */}
-      <div className={`relative z-10 mx-auto w-full overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${dividir ? "max-w-[64rem]" : "max-w-xl"}`}>
+      <div className={`animate-aparece-plan relative z-10 mx-auto w-full overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${dividir ? "max-w-[64rem]" : "max-w-xl"}`}>
       <div className={dividir ? "grid grid-cols-1 lg:grid-cols-2" : ""}>
         {bloques.map((bloque, i) => (
           // La medianera solo existe cuando hay dos columnas de verdad; apilado no separa nada.
@@ -1872,7 +1878,7 @@ function PlanCliente({ cuotas, totalCuotas, comisionUpfront, totalAPagar }: {
                 {bloque.map((row, idx) => (
                   <tr
                     key={`${row.nro}-${row.cuotaTotal}`}
-                    style={{ animationDelay: `${Math.min(idx + i * bloque.length, 24) * 35}ms` }}
+                    style={{ animationDelay: `${260 + Math.min(idx + i * bloque.length, 24) * 80}ms` }}
                     className={`animate-fila-plan hover:bg-muted/20 transition-colors ${row.nro % 2 === 0 ? "bg-muted/5" : ""}`}
                   >
                     <td className={`${td} font-mono`}>
