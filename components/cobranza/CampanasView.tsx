@@ -405,42 +405,84 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
   }
 
   const est = ESTADO_META[campana.estado];
+  const CanalIcon = CANAL_ICON[campana.canal];
+  const ofertaDet = campana.promo_tipo === "quita_interes" ? vigenciaOferta(campana.promo_vence) : null;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ChevronLeft className="h-4 w-4" /> Campañas
-        </button>
-        <div className="flex items-center gap-2">
-          <StatusBadge label={est.label} variant={est.variant} />
-          {campana.estado === "borrador" && (
-            <button onClick={() => cambiarEstado("activa")} disabled={busy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success border border-success/30 text-xs font-medium hover:bg-success/20 disabled:opacity-50 transition-colors">
-              <Play className="h-3.5 w-3.5" /> Activar
+      {/*
+        ENCABEZADO EN UNA SOLA TARJETA (pedido de Fernando, 25/09/2026: "está todo mal
+        ordenado"). Antes el volver, el estado y el botón flotaban sueltos en una fila y el
+        nombre en otra, lejos de su acción. Ahora: volver + identidad a la izquierda, estado +
+        acción a la derecha, y la oferta con su vigencia como chip (antes era una nota al pie,
+        debajo de la tabla, donde nadie la veía antes de ofrecer).
+      */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <button
+              onClick={onBack}
+              title="Volver a campañas"
+              aria-label="Volver a campañas"
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
             </button>
-          )}
-          {campana.estado === "activa" && (
-            <button onClick={() => cambiarEstado("finalizada")} disabled={busy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Finalizar
-            </button>
-          )}
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/20">
+              <CanalIcon className="h-4 w-4 text-primary" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold leading-tight text-foreground">{campana.nombre}</h2>
+              {/* Quién la armó y cuándo: una quita ofrecida a un grupo de clientes tiene que
+                  tener nombre y fecha a la vista, no solo en la auditoría. */}
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {campana.creado_por_nombre
+                  ? <>Creada por <span className="font-medium text-foreground">{campana.creado_por_nombre}</span></>
+                  : "Autor no registrado"}
+                {" · "}{fmtDate(campana.created_at)}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <StatusBadge label={TIPO_LABEL[campana.tipo ?? "mora"]} variant={campana.tipo === "refinanciacion" ? "warning" : "muted"} />
+                {ofertaDet && (
+                  <StatusBadge
+                    label={`−${campana.promo_valor}% punitorios · ${ofertaDet.texto}`}
+                    variant={ofertaDet.vigente ? "success" : "muted"}
+                  />
+                )}
+              </div>
+              {campana.descripcion && <p className="mt-2 text-sm text-muted-foreground">{campana.descripcion}</p>}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <StatusBadge label={est.label} variant={est.variant} />
+            {campana.estado === "borrador" && (
+              <button onClick={() => cambiarEstado("activa")} disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-success px-4 py-2 text-sm font-medium text-success-foreground transition-opacity hover:opacity-90 disabled:opacity-50">
+                <Play className="h-4 w-4" /> Activar
+              </button>
+            )}
+            {campana.estado === "activa" && (
+              <button onClick={() => cambiarEstado("finalizada")} disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/[0.06] px-4 py-2 text-sm font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/10 hover:ring-primary/40 disabled:opacity-50">
+                <CheckCircle2 className="h-4 w-4" /> Finalizar
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div>
-        <h2 className="text-lg font-semibold text-foreground">{campana.nombre}</h2>
-        {/* Quién la armó y cuándo (pedido de Fernando, 25/09/2026): una quita ofrecida a un grupo
-            de clientes tiene que tener nombre y fecha a la vista, no solo en la auditoría. */}
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {campana.creado_por_nombre
-            ? <>Creada por <span className="font-medium text-foreground">{campana.creado_por_nombre}</span></>
-            : "Autor no registrado"}
-          {" · "}{fmtDate(campana.created_at)}
-        </p>
-        {campana.descripcion && <p className="mt-1 text-sm text-muted-foreground">{campana.descripcion}</p>}
-      </div>
+      {/*
+        La promo con fecha pasada NO se puede aplicar: el endpoint la rechaza con el mismo
+        `promoVigenteAl`. Decir "válida hasta el 18/09" el día 19 mandaba al cobrador a
+        ofrecer un descuento que el sistema le iba a negar. La vigente ya la dice el chip.
+      */}
+      {campana.promo_vence && !promoVigenteAl(campana.promo_vence, hoyComercial()) && (
+        <Nota compacta acento="warning" titulo="La promoción venció">
+          Venció el <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>, así que el descuento
+          {campana.promo_tipo === "quita_interes" ? ` del ${campana.promo_valor}% del interés de mora` : ""} ya no se aplica:
+          el acuerdo que se cargue desde acá va con la deuda completa. Para volver a ofrecerlo, armá una campaña nueva.
+        </Nota>
+      )}
 
       {/*
         EL ENVÍO. Va acá arriba, entre el nombre y los números: es la acción de la pantalla.
@@ -559,25 +601,6 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
         )}
       />
 
-      {/*
-        La promo con fecha pasada NO se puede aplicar: el endpoint la rechaza con el mismo
-        `promoVigenteAl`. Decir "válida hasta el 18/09" el día 19 mandaba al cobrador a
-        ofrecer un descuento que el sistema le iba a negar.
-      */}
-      {campana.promo_vence && (
-        promoVigenteAl(campana.promo_vence, hoyComercial()) ? (
-          <Nota compacta acento="primary">
-            Promoción válida hasta <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>
-            {campana.promo_tipo === "quita_interes" && <span className="text-success"> · descuento {campana.promo_valor}% del interés de mora</span>}
-          </Nota>
-        ) : (
-          <Nota compacta acento="warning" titulo="La promoción venció">
-            Venció el <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>, así que el descuento
-            {campana.promo_tipo === "quita_interes" ? ` del ${campana.promo_valor}% del interés de mora` : ""} ya no se aplica:
-            el acuerdo que se cargue desde acá va con la deuda completa. Para volver a ofrecerlo, armá una campaña nueva.
-          </Nota>
-        )
-      )}
     </div>
   );
 }
