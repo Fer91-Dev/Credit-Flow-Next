@@ -104,9 +104,9 @@ const BTN_BARRA =
  *  · OPERACIONES (acordar / refinanciar / cobrar): botones con relleno de su color; Cobrar
  *    sólido, porque es la acción del día a día.
  */
-const GRUPO_BARRA =
-  "inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 " +
-  "shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.18)] empty:hidden";
+// Sin recuadro (Fernando, 27/09/2026: «quitale el borde que los encierra, se ven feos así
+// amontonados»): los grupos se separan por el espacio de la barra, no por una caja.
+const GRUPO_BARRA = "inline-flex shrink-0 items-center gap-1 empty:hidden";
 const BTN_OPERACION =
   "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold " +
   "shadow-sm ring-1 ring-inset transition-all hover:-translate-y-px hover:shadow-md";
@@ -1518,7 +1518,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               costado, con el mismo `.fila-deslizable` de las pestañas de Cobranzas.
             */}
             <div
-              className="fila-deslizable flex w-full items-center gap-3 sm:w-auto sm:overflow-visible"
+              // Renglón propio, con los botones CENTRADOS en el ancho de la tarjeta (Fernando,
+              // 27/09/2026). En el celular sigue deslizándose de costado.
+              className="fila-deslizable flex w-full items-center gap-5 sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2 sm:overflow-visible"
               onClick={(e) => e.stopPropagation()}
               role="presentation"
             >
@@ -1671,6 +1673,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 crédito nuevo. El botón en verde-índigo del acuerdo y el ámbar de la
                 refinanciación dicen lo mismo con el color.
               */}
+              <div className="inline-flex shrink-0 items-center gap-2" role="group" aria-label="Operaciones">
               {acordable && (
                 <Tooltip texto="Armar un plan de pago sobre lo vencido (el crédito sigue vivo)">
                   <Link
@@ -1763,6 +1766,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   </Link>
                 </Tooltip>
               )}
+              </div>
             </div>
           </summary>
           <div className="px-4 pb-4 pt-3">
