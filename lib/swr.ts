@@ -2192,6 +2192,8 @@ export interface DeudaConsolidada {
   capital: number;
   interes: number;
   cargos: number;
+  /** De `cargos`, lo que es interés de un acuerdo capitalizado (desglose, ya sumado). */
+  interesAcuerdo?: number;
   mora: number;
   total: number;
 }

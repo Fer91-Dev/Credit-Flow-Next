@@ -26,6 +26,12 @@ export interface DeudaConsolidada {
   interes: number;
   /** Cargos pendientes del período (IVA + seguro + gastos no cobrados). */
   cargos: number;
+  /**
+   * De esos `cargos`, cuánto es INTERÉS DE UN ACUERDO que se capitalizó en las cuotas (y
+   * quedó al romperse). Es un DESGLOSE: ya está sumado en `cargos` y en `total`, no se suma
+   * de nuevo. Existe para que la pantalla no lo llame "cargos" (Fernando, 27/09/2026).
+   */
+  interesAcuerdo: number;
   /** Mora devengada pendiente (punitorio acumulado de cuotas vencidas). */
   mora: number;
   /** Total adeudado = capital + interés + cargos + mora. */
@@ -94,6 +100,7 @@ export function calcularDeudaConsolidada(
   let capital = 0;
   let interes = 0;
   let cargos = 0;
+  let interesAcuerdo = 0;
   let mora = 0;
 
   let interesNoDevengado = 0;
@@ -131,6 +138,10 @@ export function calcularDeudaConsolidada(
     const cargosDevengados = round2(c.cargos - capitalizado + capitalizadoDevengado);
     interesNoDevengado = round2(interesNoDevengado + noNegativo(round2(capitalizado - capitalizadoDevengado)));
     const cargosPend = noNegativo(round2(cargosDevengados - c.pagadoCargos));
+    // Lo cobrado como cargos cubre primero los cargos propios; lo que falta del capitalizado
+    // devengado es interés del acuerdo todavía impago.
+    const propios = noNegativo(round2(c.cargos - capitalizado));
+    const acuerdoPend = Math.min(cargosPend, noNegativo(round2(capitalizadoDevengado - noNegativo(round2(c.pagadoCargos - propios)))));
     const capitalPend = noNegativo(round2(c.capital - c.pagadoCapital));
 
     const dias = diasAtraso(c.fechaVencimiento, hoy);
@@ -163,11 +174,12 @@ export function calcularDeudaConsolidada(
     capital = round2(capital + capitalPend);
     interes = round2(interes + interesPend);
     cargos = round2(cargos + cargosPend);
+    interesAcuerdo = round2(interesAcuerdo + acuerdoPend);
     mora = round2(mora + moraPend);
   }
 
   const total = round2(capital + interes + cargos + mora);
-  return { capital, interes, cargos, mora, total, interesNoDevengado };
+  return { capital, interes, cargos, interesAcuerdo, mora, total, interesNoDevengado };
 }
 
 /** Tipo de quita (condonación) aplicada sobre la deuda consolidada al refinanciar. */

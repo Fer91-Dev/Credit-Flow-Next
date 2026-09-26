@@ -798,7 +798,14 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       No se le cobra el tiempo que todavía no usó de esa cuota.
                     </p>
                   )}
-                  {preview.deuda.cargos > 0 && <Row label="Cargos pendientes" value={preview.deuda.cargos} signo="+" />}
+                  {/* El interés de un acuerdo capitalizado viaja dentro de "cargos": se separa para
+                      no llamar cargo a lo que no lo es (Fernando, 27/09/2026). La suma no cambia. */}
+                  {r2(preview.deuda.cargos - (preview.deuda.interesAcuerdo ?? 0)) > 0.004 && (
+                    <Row label="Cargos pendientes" value={r2(preview.deuda.cargos - (preview.deuda.interesAcuerdo ?? 0))} signo="+" />
+                  )}
+                  {(preview.deuda.interesAcuerdo ?? 0) > 0.004 && (
+                    <Row label="Interés por acuerdo roto" value={preview.deuda.interesAcuerdo ?? 0} signo="+" />
+                  )}
                   <Row label="Mora acumulada" value={preview.deuda.mora} accent="warning" signo="+" />
                   <div className="relative -mx-4 mt-1 flex items-center justify-between border-t border-warning/20 bg-warning/[0.04] px-4 pb-1 pt-2.5">
                     <span className="text-sm font-semibold text-foreground">Total que se consolida</span>
