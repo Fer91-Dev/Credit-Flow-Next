@@ -108,10 +108,28 @@ console.log(`config: tasa ${TASA}% TNA · acuerdo desde ${DIAS_ACUERDO} días ·
 const sello = Date.now().toString().slice(-5);
 let dni = 40000000 + Number(sello);
 
+/**
+ * Domicilios verosímiles (inventados) de Tucumán. Sin domicilio el PAGARÉ no se emite — y la
+ * cartera de prueba tiene que poder recorrer ese circuito también (pedido de Fernando,
+ * 27/09/2026: "sin clientes no puedo ver cómo se implementó el pagaré").
+ */
+const DOMICILIOS = [
+  ["Av. Mate de Luna 2450", "San Miguel de Tucumán"], ["San Martín 1180", "San Miguel de Tucumán"],
+  ["Av. Aconquija 1720", "Yerba Buena"], ["Laprida 845", "San Miguel de Tucumán"],
+  ["Av. Perón 3100", "Yerba Buena"], ["Congreso 612", "San Miguel de Tucumán"],
+  ["Av. Belgrano 2930", "San Miguel de Tucumán"], ["Sarmiento 455", "Tafí Viejo"],
+  ["Av. Independencia 1340", "Banda del Río Salí"], ["Las Heras 978", "San Miguel de Tucumán"],
+];
+let nDom = 0;
+
 /** Alta de cliente. El ingreso va alto a propósito: el motor de riesgo no es lo que se prueba acá. */
 async function cliente(nombre, apellido) {
+  const [direccion, localidad] = DOMICILIOS[nDom++ % DOMICILIOS.length];
   const r = await api("POST", "/api/clientes", {
-    nombre, apellido: `${apellido} ${sello}`, documento: String(++dni),
+    // El apellido va limpio (el sello queda en el DNI, que es lo que tiene que ser único):
+    // así el pagaré y la ficha se leen como los de un cliente de verdad.
+    nombre, apellido, documento: String(++dni),
+    direccion, localidad, provincia: "Tucumán",
     telefono: "3815" + String(500000 + (dni % 100000)), zona: "CARTERA-PRUEBA",
     tipo_credito: "personal", ingreso_mensual: 2_500_000, situacion_laboral: "relacion_dependencia",
   });
@@ -196,15 +214,35 @@ paso("CAPITAL INICIAL — la caja arranca en cero, como el día uno");
 paso("LOS 10 CASOS");
 // ════════════════════════════════════════════════════════════════════════════
 
+/*
+  REANUDAR: si una corrida se corta a la mitad (pasó el 27/09/2026 por falta de caja), los
+  casos ya creados NO se pueden borrar — sus créditos movieron caja y el sistema exige
+  anularlos, que los deja en la lista con los mismos nombres. Con `DESDE=5` los casos 1 a 4 se
+  toman de los créditos que ya existen (mismo apellido, misma zona, creados en la última hora).
+*/
+const DESDE = Number(process.env.DESDE ?? 1);
+async function existente(n, titulo, apellido) {
+  const c = await db.clientes.findFirst({
+    where: { apellido, zona: "CARTERA-PRUEBA", created_at: { gte: new Date(Date.now() - 3600_000) } },
+    orderBy: { created_at: "desc" },
+    select: { creditos: { select: { id: true }, orderBy: { created_at: "desc" }, take: 1 } },
+  });
+  const id = c?.creditos[0]?.id;
+  if (!id) throw new Error(`no encontré el caso ${n} (${apellido}) para reanudar`);
+  registrar(n, titulo, id, "ya existía (reanudado)");
+}
+
 // 1 — recién otorgado, al día.
-{
+if (DESDE > 1) await existente(1, "recién otorgado, al día", "Aldana");
+else {
   const c = await cliente("Rosa", "Aldana");
   const id = await otorgar(c, 250_000, 6, 0);
   registrar(1, "recién otorgado, al día", id, "6 cuotas mensuales, nada vencido");
 }
 
 // 2 — al día, con la primera cuota por vencer. Objetivo de la campaña de VENCIMIENTO.
-{
+if (DESDE > 2) await existente(2, "al día, vence en 3 días", "Barrios");
+else {
   const c = await cliente("Daniel", "Barrios");
   // La cuota 1 vence a 30 días del inicio: naciendo hace 27, vence en 3.
   const id = await otorgar(c, 180_000, 3, 27);
@@ -212,7 +250,8 @@ paso("LOS 10 CASOS");
 }
 
 // 3 — atraso leve + una promesa de pago. Objetivo de la campaña de MORA.
-{
+if (DESDE > 3) await existente(3, "10 días de atraso, con promesa de pago", "Colombo");
+else {
   const c = await cliente("Marta", "Colombo");
   const id = await otorgar(c, 200_000, 3, 40); // cuota 1 vencida hace 10 días
   const p = await gestionar(id, "llamada", "promesa_pago", "Dijo que pasa a pagar el viernes.",
@@ -221,7 +260,8 @@ paso("LOS 10 CASOS");
 }
 
 // 4 — atraso medio, con una gestión humana registrada.
-{
+if (DESDE > 4) await existente(4, "35 días de atraso, gestionado sin respuesta", "Ferreyra");
+else {
   const c = await cliente("Julio", "Ferreyra");
   const id = await otorgar(c, 320_000, 6, 65); // cuota 1 vencida hace 35
   const g = await gestionar(id, "whatsapp", "no_contesta", "Dos mensajes enviados, no contesta.");
@@ -314,7 +354,10 @@ paso("LOS 10 CASOS");
 
   const r = await api("POST", `/api/creditos/${viejo}/refinanciar`, {
     tasa: TASA, plazo_meses: plazoRefi(3), frecuencia: "mensual",
-    quita_tipo: "porcentaje", quita_valor: 10, honorarios_pct: 0,
+    quita_tipo: "porcentaje", quita_valor: 10,
+    // Dentro de la banda que fija la financiera: con honorarios activos, 0% se rechaza
+    // (pasó el 27/09/2026 con la banda 1%–5%). Se toma el piso, el caso más favorable al cliente.
+    honorarios_pct: prev.ok && prev.data.honorarios?.activo ? Number(prev.data.honorarios.min ?? 0) : 0,
     motivo: "Reestructuración acordada con el cliente.",
     ...(entregaId ? { entrega_pago_id: entregaId } : {}),
   });

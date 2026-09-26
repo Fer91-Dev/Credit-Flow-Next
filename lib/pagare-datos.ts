@@ -30,6 +30,7 @@ import {
   moraDelCredito,
   moraDesdeCronograma,
   esCreditoVivo,
+  esCreditoIncobrable,
   faltantesParaContrato,
   round2,
   type CargosConfig,
@@ -89,8 +90,14 @@ export async function datosPagare(
   const numero = formatCreditoNumero(credito.numero, conOrigen.refinancia_a_numero);
   const resumen = { id: credito.id, numero, doc_estado: credito.doc_estado, doc_emitido_en: credito.doc_emitido_en };
 
-  // Un crédito anulado, cancelado o ya refinanciado no se documenta: no hay deuda que respaldar.
-  if (!esCreditoVivo(credito.estado)) return { datos: null, faltantes: [], error: "NO_VIGENTE", credito: resumen };
+  /*
+    Un crédito anulado, cancelado o ya refinanciado no se documenta: no hay deuda que respaldar.
+    El INCOBRABLE sí: la deuda sigue viva y es justo el que va a legales, donde el abogado
+    necesita el pagaré y la información del art. 36 juntos.
+  */
+  if (!esCreditoVivo(credito.estado) && !esCreditoIncobrable(credito.estado)) {
+    return { datos: null, faltantes: [], error: "NO_VIGENTE", credito: resumen };
+  }
 
   const [config, docs, fin] = await Promise.all([
     getConfiguracion(tenantId), getDocumentosConfig(tenantId), getFinanciera(tenantId),

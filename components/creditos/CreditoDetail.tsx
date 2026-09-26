@@ -27,7 +27,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatFechaHora, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
+import { esCreditoVivo, esCreditoIncobrable, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
 
 /**
  * Un renglón de la cuenta del acuerdo: etiqueta a la izquierda, importe con signo a la
@@ -1514,8 +1514,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 >
                   Estado de cuenta
                 </button>
-                {/* El pagaré: solo mientras hay deuda que respaldar. */}
-                {esCreditoVivo(credito.estado) && (
+                {/* El pagaré: mientras hay deuda que respaldar (incluido el incobrable, que es el
+                    que va a legales). */}
+                {(esCreditoVivo(credito.estado) || esCreditoIncobrable(credito.estado)) && (
                   <PagareBoton
                     creditoId={credito.id}
                     className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
