@@ -231,8 +231,17 @@ function toDate(v: string | Date | null | undefined): Date | null {
 export function formatFecha(v: string | Date | null | undefined): string {
   const d = toDate(v);
   if (!d) return "—";
+  /*
+    Dos clases de valor llegan acá. Un día pelado (`@db.Date`, "2026-09-25") viene a
+    medianoche UTC y se lee en UTC: en hora argentina sería el día anterior. Un INSTANTE
+    (`created_at`) se lee en hora argentina: en UTC, lo creado entre las 21:00 y las 24:00
+    salía con fecha de MAÑANA (Fernando vio una campaña "creada el 26/09" el 25 a la noche).
+    Un instante justo a medianoche UTC en punto no pasa en la práctica.
+  */
+  const esDiaPelado = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0;
   return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    timeZone: esDiaPelado ? "UTC" : "America/Argentina/Buenos_Aires",
   }).format(d);
 }
 

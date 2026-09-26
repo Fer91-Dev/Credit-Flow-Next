@@ -511,13 +511,36 @@ await db.campanas_cobranza.update({
 });
 const E = await creditoEnMora("Cobranza", "UltimoDia", 200_000, 3, 45);
 await api("PATCH", `/api/cobranza/campanas/${CAMPID}`, { estado: "activa" });
-await db.campana_objetivo.create({
-  data: { tenant_id: (await db.creditos.findUnique({ where: { id: E.id }, select: { tenant_id: true } })).tenant_id, campana_id: CAMPID, credito_id: E.id },
-});
 const cuotasE = await db.cuotas.findMany({
   where: { credito_id: E.id }, orderBy: { nro: "asc" },
   select: { nro: true, fecha_vencimiento: true, cuota_total: true, capitalizado: true },
 });
+/*
+  El objetivo se inserta directo (la API solo agrega créditos al CREAR la campaña), pero con
+  la FOTO completa que arma la API: sin ella la fila quedaba con 0 días de mora, oferta
+  $0,00 y sin estado de envío, y en la pantalla de la campaña parecía un moroso que no debía
+  nada (Fernando lo vio el 25/09/2026).
+*/
+{
+  const creditoE = await db.creditos.findUnique({ where: { id: E.id }, select: { tenant_id: true, saldo_pendiente: true } });
+  const vencidasE = cuotasE.filter((q) => diasAtraso(q.fecha_vencimiento, hoyAR) > 0);
+  const moraE = r2(vencidasE.reduce((s, q) => s + moraDeCuota(baseMora(q), diasAtraso(q.fecha_vencimiento, hoyAR)), 0));
+  const vencidoE = r2(vencidasE.reduce((s, q) => s + nn(q.cuota_total), 0) + moraE);
+  const descuentoE = r2(moraE * PCT / 100);
+  await db.campana_objetivo.create({
+    data: {
+      tenant_id: creditoE.tenant_id, campana_id: CAMPID, credito_id: E.id,
+      saldo: nn(creditoE.saldo_pendiente),
+      dias_mora: vencidasE.length ? diasAtraso(vencidasE[0].fecha_vencimiento, hoyAR) : 0,
+      cuotas_vencidas: vencidasE.length,
+      interes_mora: moraE,
+      vencido: vencidoE,
+      oferta_monto: r2(vencidoE - descuentoE),
+      oferta_descuento: descuentoE,
+      envio_estado: "pendiente",
+    },
+  });
+}
 const miMoraE1 = r2(moraDeCuota(baseMora(cuotasE[0]), diasAtraso(cuotasE[0].fecha_vencimiento, hoyAR)) * (1 - PCT / 100));
 const cuotaE1 = (await api("GET", `/api/creditos/${E.id}/cuotas`)).data.cuotas.find((c) => c.nro === 1);
 const cobroE = await api("POST", "/api/pagos", {
