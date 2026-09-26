@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useSWRConfig } from "swr";
 import {
   Megaphone, Users, HandCoins, TrendingUp, ChevronLeft,
-  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2, Send, RefreshCcw,
+  Check, Play, CheckCircle2, Mail, Smartphone, Sparkles, Trash2, Loader2, Send, RefreshCcw, LayoutGrid, List,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useCampanas, useCampana, useConfiguracion, KEYS, type CampanaCobranza, type CampanaObjetivo, type CanalCampana, type EstadoCampana, useTramosMora } from "@/lib/swr";
@@ -26,6 +26,50 @@ const ESTADO_META: Record<EstadoCampana, { label: string; variant: "muted" | "su
   activa: { label: "Activa", variant: "success" },
   finalizada: { label: "Finalizada", variant: "primary" },
 };
+/**
+ * Una finalizada cuya oferta venció se muestra "Vencida": se cerró sola al pasar el último
+ * día (lib/campanas-cierre), no porque alguien la terminara.
+ */
+function estadoVisible(c: Pick<CampanaCobranza, "estado" | "promo_vence">): { label: string; variant: "muted" | "success" | "primary" } {
+  if (c.estado === "finalizada" && c.promo_vence && !promoVigenteAl(c.promo_vence, hoyComercial())) {
+    return { label: "Vencida", variant: "muted" };
+  }
+  return ESTADO_META[c.estado];
+}
+
+/** Borrar una campaña: lo usan la tarjeta y la fila, con la misma confirmación. */
+function useEliminarCampana() {
+  const { mutate: globalMutate } = useSWRConfig();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
+  /*
+    El servidor rechaza borrar una que ya se envió (ahí el registro de la oferta importa);
+    acá solo se muestra el motivo.
+  */
+  const eliminar = async (c: CampanaCobranza) => {
+    if (!(await confirm({
+      title: `¿Eliminar la campaña "${c.nombre}"?`,
+      description: "Se borra la campaña y su lista de destinatarios. Las gestiones ya registradas en cada crédito se conservan.",
+      confirmLabel: "Eliminar",
+      tone: "danger",
+    }))) return;
+    setBorrandoId(c.id);
+    try {
+      const res = await fetch(`/api/cobranza/campanas/${c.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error || "No se pudo eliminar"); return; }
+      toast.success("Campaña eliminada");
+      globalMutate(KEYS.campanas);
+    } catch {
+      toast.error("No se pudo conectar con el servidor");
+    } finally {
+      setBorrandoId(null);
+    }
+  };
+  return { eliminar, borrandoId };
+}
+
 const CANAL_ICON: Record<CanalCampana, ComponentType<{ className?: string }>> = {
   whatsapp: WhatsAppIcon, email: Mail, sms: Smartphone,
 };
@@ -38,6 +82,13 @@ export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
     se toca y filtra). Sin filtro se ven todas, y nada se atenúa.
   */
   const [filtro, setFiltro] = useState<EstadoCampana | null>(null);
+  // Tarjetas o filas (pedido de Fernando, 26/09/2026). Se recuerda por navegador, como en Equipo.
+  const [vista, setVista] = useState<"cards" | "tabla">("cards");
+  useEffect(() => {
+    try { const v = localStorage.getItem("cf:campanasVista"); if (v === "cards" || v === "tabla") setVista(v); } catch { /* sin storage: queda el default */ }
+  }, []);
+  const cambiarVista = (v: "cards" | "tabla") => { setVista(v); try { localStorage.setItem("cf:campanasVista", v); } catch { /* idem */ } };
+  const { eliminar, borrandoId } = useEliminarCampana();
 
   if (abierta) return <CampanaDetalle id={abierta} onBack={() => setAbierta(null)} />;
 
@@ -99,7 +150,7 @@ export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
         />
         <KpiCard
           icon="check-mark-button" label="Finalizadas" value={String(cuenta("finalizada"))} accent="primary"
-          sub="cerradas"
+          sub="cerradas o con la oferta vencida"
           onClick={cuenta("finalizada") > 0 ? () => alternar("finalizada") : undefined} active={filtro === "finalizada"}
         />
         <KpiCard
@@ -115,19 +166,109 @@ export function CampanasView({ onArmar }: { onArmar?: () => void } = {}) {
         </p>
         {/* La acción también arriba: con campañas ya creadas, el botón de Morosos queda a dos
             pestañas de distancia y no hay ninguna pista de que exista. */}
-        {onArmar && (
-          <button
-            onClick={onArmar}
-            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
-          >
-            <Megaphone className="h-4 w-4" /> Nueva campaña
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex h-10 items-center rounded-lg border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => cambiarVista("cards")}
+              title="Ver como tarjetas"
+              aria-pressed={vista === "cards"}
+              className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "cards" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => cambiarVista("tabla")}
+              title="Ver como filas"
+              aria-pressed={vista === "tabla"}
+              className={`flex h-9 w-9 items-center justify-center rounded-md transition-colors ${vista === "tabla" ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+          {onArmar && (
+            <button
+              onClick={onArmar}
+              className="flex h-10 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              <Megaphone className="h-4 w-4" /> Nueva campaña
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        {visibles.map((c) => <CampanaCard key={c.id} campana={c} onOpen={() => setAbierta(c.id)} />)}
-      </div>
+      {vista === "cards" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {visibles.map((c) => <CampanaCard key={c.id} campana={c} onOpen={() => setAbierta(c.id)} />)}
+        </div>
+      ) : (
+        <DataTable<CampanaCobranza>
+          rows={visibles}
+          rowKey={(c) => c.id}
+          onRowClick={(c) => setAbierta(c.id)}
+          pageSize={15}
+          zebra
+          empty={{ icon: "megaphone", title: "Sin campañas en este estado" }}
+          columns={[
+            {
+              header: "Campaña",
+              cell: (c) => {
+                const Canal = CANAL_ICON[c.canal];
+                return (
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-inset ring-primary/20">
+                      <Canal className="h-3.5 w-3.5 text-primary" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{c.nombre}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {c.creado_por_nombre ?? "Autor no registrado"} · {fmtDate(c.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              },
+            },
+            { header: "Tipo", cell: (c) => <span className="text-xs text-muted-foreground">{TIPO_LABEL[c.tipo ?? "mora"]}</span> },
+            {
+              header: "Oferta",
+              cell: (c) => {
+                const o = c.promo_tipo === "quita_interes" ? vigenciaOferta(c.promo_vence) : null;
+                return o
+                  ? <span className={`text-xs ${o.vigente ? "text-success" : "text-muted-foreground"}`}>−{c.promo_valor}% · {o.texto}</span>
+                  : <span className="text-muted-foreground/40">—</span>;
+              },
+            },
+            { header: "Estado", cell: (c) => { const e = estadoVisible(c); return <StatusBadge label={e.label} variant={e.variant} />; } },
+            { header: "Créditos", align: "right", mono: true, cell: (c) => c.metricas.alcance },
+            { header: "Enviados", align: "right", mono: true, cell: (c) => <>{c.metricas.enviados ?? 0}<span className="text-muted-foreground/60">/{c.metricas.alcance}</span></> },
+            { header: "Promesas", align: "right", mono: true, cell: (c) => c.metricas.promesas },
+            {
+              header: "Recuperado", align: "right", mono: true,
+              cell: (c) => c.tipo === "refinanciacion"
+                ? <span className="text-warning">{c.metricas.refinanciados ?? 0} refinanc.</span>
+                : <span className="font-semibold text-success">{formatMonto(c.metricas.recuperado)}</span>,
+            },
+            {
+              header: "", align: "right",
+              cell: (c) => (
+                <button
+                  type="button"
+                  onClick={() => eliminar(c)}
+                  disabled={borrandoId === c.id}
+                  title="Eliminar campaña"
+                  aria-label={`Eliminar la campaña ${c.nombre}`}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+                >
+                  {borrandoId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              ),
+            },
+          ]}
+          renderMobileCard={(c) => <CampanaCard campana={c} onOpen={() => setAbierta(c.id)} />}
+        />
+      )}
     </div>
   );
 }
@@ -149,40 +290,11 @@ function vigenciaOferta(vence: string | null): { texto: string; vigente: boolean
 }
 
 function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen: () => void }) {
-  const est = ESTADO_META[c.estado];
+  const est = estadoVisible(c);
   const Canal = CANAL_ICON[c.canal];
-  const { mutate: globalMutate } = useSWRConfig();
-  const confirm = useConfirm();
-  const toast = useToast();
-  const [borrando, setBorrando] = useState(false);
-
-  /**
-   * No había forma de borrar una campaña desde ninguna pantalla: el endpoint existía y la
-   * interfaz no lo ofrecía. Una prueba mal armada quedaba en la lista para siempre.
-   *
-   * El servidor rechaza borrar una que ya se envió (ahí el registro de la oferta importa);
-   * acá solo se muestra el motivo.
-   */
-  const eliminar = async () => {
-    if (!(await confirm({
-      title: `¿Eliminar la campaña "${c.nombre}"?`,
-      description: "Se borra la campaña y su lista de destinatarios. Las gestiones ya registradas en cada crédito se conservan.",
-      confirmLabel: "Eliminar",
-      tone: "danger",
-    }))) return;
-    setBorrando(true);
-    try {
-      const res = await fetch(`/api/cobranza/campanas/${c.id}`, { method: "DELETE" });
-      const json = await res.json();
-      if (!json.ok) { toast.error(json.error || "No se pudo eliminar"); return; }
-      toast.success("Campaña eliminada");
-      globalMutate(KEYS.campanas);
-    } catch {
-      toast.error("No se pudo conectar con el servidor");
-    } finally {
-      setBorrando(false);
-    }
-  };
+  const { eliminar: eliminarCampana, borrandoId } = useEliminarCampana();
+  const borrando = borrandoId === c.id;
+  const eliminar = () => eliminarCampana(c);
 
   const m = c.metricas;
   const esRefi = c.tipo === "refinanciacion";
@@ -284,6 +396,22 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
         </div>
       )}
     </div>
+  );
+}
+
+/** Qué pasó con el mensaje de un destinatario, para leer una campaña cerrada. */
+function ContactoHistorial({ objetivo: o }: { objetivo: CampanaObjetivo }) {
+  const meta: Record<string, { label: string; clase: string }> = {
+    enviado: { label: "Enviado", clase: "text-success" },
+    manual: { label: "Enviado a mano", clase: "text-success" },
+    error: { label: "No salió", clase: "text-destructive" },
+  };
+  const m = (o.envio_estado && meta[o.envio_estado]) || { label: "No se envió", clase: "text-muted-foreground" };
+  return (
+    <span className={`text-xs ${m.clase}`}>
+      {m.label}
+      {o.envio_at && o.envio_estado !== "error" && <span className="text-muted-foreground"> · {fmtDate(o.envio_at)}</span>}
+    </span>
   );
 }
 
@@ -404,7 +532,9 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
     );
   }
 
-  const est = ESTADO_META[campana.estado];
+  const est = estadoVisible(campana);
+  /** Finalizada = HISTORIAL de contacto: se lee, no se opera (ni envío, ni WhatsApp, ni promesas). */
+  const cerrada = campana.estado === "finalizada";
   const CanalIcon = CANAL_ICON[campana.canal];
   const ofertaDet = campana.promo_tipo === "quita_interes" ? vigenciaOferta(campana.promo_vence) : null;
 
@@ -472,19 +602,6 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       {/*
-        La promo con fecha pasada NO se puede aplicar: el endpoint la rechaza con el mismo
-        `promoVigenteAl`. Decir "válida hasta el 18/09" el día 19 mandaba al cobrador a
-        ofrecer un descuento que el sistema le iba a negar. La vigente ya la dice el chip.
-      */}
-      {campana.promo_vence && !promoVigenteAl(campana.promo_vence, hoyComercial()) && (
-        <Nota compacta acento="warning" titulo="La promoción venció">
-          Venció el <span className="font-semibold text-foreground">{fmtDate(campana.promo_vence)}</span>, así que el descuento
-          {campana.promo_tipo === "quita_interes" ? ` del ${campana.promo_valor}% del interés de mora` : ""} ya no se aplica:
-          el acuerdo que se cargue desde acá va con la deuda completa. Para volver a ofrecerlo, armá una campaña nueva.
-        </Nota>
-      )}
-
-      {/*
         EL ENVÍO. Va acá arriba, entre el nombre y los números: es la acción de la pantalla.
 
         🔴 Si el canal NO puede mandar solo, se DICE en vez de esconder el botón. Un botón que
@@ -492,7 +609,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
         buscando qué la enviaba: la API de Meta no estaba cargada, así que el envío era a mano
         y nadie se lo dijo.
       */}
-      {pendientesEnvio > 0 && (
+      {pendientesEnvio > 0 && !cerrada && (
         canalAutomatico ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/25 bg-success/[0.06] px-4 py-3">
             <p className="text-sm text-foreground">
@@ -557,21 +674,27 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
           },
           {
             header: "Promesa", align: "center",
-            cell: (o) => (
-              <button onClick={() => togglePromesa(o)} title="Marcar promesa de pago"
-                className={`h-6 w-6 rounded-md border inline-flex items-center justify-center transition-colors ${o.promesa_generada ? "bg-success/15 border-success/40 text-success" : "border-border text-muted-foreground/40 hover:bg-muted"}`}>
-                <Check className="h-3.5 w-3.5" />
-              </button>
-            ),
+            // Cerrada = historial: la promesa se lee, no se marca.
+            cell: (o) => cerrada
+              ? (o.promesa_generada ? <Check className="mx-auto h-4 w-4 text-success" /> : <span className="text-muted-foreground/40">—</span>)
+              : (
+                <button onClick={() => togglePromesa(o)} title="Marcar promesa de pago"
+                  className={`h-6 w-6 rounded-md border inline-flex items-center justify-center transition-colors ${o.promesa_generada ? "bg-success/15 border-success/40 text-success" : "border-border text-muted-foreground/40 hover:bg-muted"}`}>
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+              ),
           },
           {
-            header: "Contactar", align: "right",
-            cell: (o) => (
-              <button onClick={() => abrirWhatsapp(o)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${abiertos.has(o.id) ? "bg-success/10 text-success border-success/30" : "text-primary border-primary/20 hover:bg-primary/10"}`}>
-                <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
-              </button>
-            ),
+            header: cerrada ? "Contacto" : "Contactar", align: "right",
+            // Cerrada: en vez del botón, qué pasó con el mensaje de cada uno (el historial).
+            cell: (o) => cerrada
+              ? <ContactoHistorial objetivo={o} />
+              : (
+                <button onClick={() => abrirWhatsapp(o)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${abiertos.has(o.id) ? "bg-success/10 text-success border-success/30" : "text-primary border-primary/20 hover:bg-primary/10"}`}>
+                  <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
+                </button>
+              ),
           },
         ]}
         renderMobileCard={(o) => (
@@ -587,6 +710,12 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
               <span className="text-muted-foreground">Oferta</span>
               <span className="font-mono font-bold text-foreground">{formatMonto(o.oferta_monto)}{o.oferta_descuento > 0 && <span className="text-success font-normal"> (−{formatMonto(o.oferta_descuento)})</span>}</span>
             </div>
+            {cerrada ? (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{o.promesa_generada ? "Con promesa de pago" : "Sin promesa"}</span>
+                <ContactoHistorial objetivo={o} />
+              </div>
+            ) : (
             <div className="flex gap-2 pt-1">
               <button onClick={() => togglePromesa(o)}
                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${o.promesa_generada ? "bg-success/15 border-success/40 text-success" : "border-border text-muted-foreground"}`}>
@@ -597,6 +726,7 @@ function CampanaDetalle({ id, onBack }: { id: string; onBack: () => void }) {
                 <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
               </button>
             </div>
+            )}
           </div>
         )}
       />

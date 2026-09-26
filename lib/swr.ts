@@ -1217,6 +1217,7 @@ export interface CampanaObjetivo {
    * persona por wa.me), `error`, o null si todavía no se intentó.
    */
   envio_estado?: "pendiente" | "enviado" | "manual" | "error" | null;
+  envio_at?: string | null;
   credito: {
     id: string;
     numero: number | null;

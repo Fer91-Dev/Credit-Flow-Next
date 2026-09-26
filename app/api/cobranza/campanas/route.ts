@@ -4,6 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, interesMora, normalizarFrecuencia, calculateRecoveryOffer, diasMoraActual, type FrecuenciaDef, type ConfiguracionFinanciera, moraDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, topeMoraPorIncobrable, calcularDeudaConsolidada, sugerirOfertaCancelacion, resolverOfertaRecupero, calcularDeudaVencida, round2, deudaEnRevision, contactoBloqueado, resolverPlantillasMeta, promoVigenteAl, type CuotaParaImputar, cargosDeCuota, baseMoraDeCuota, reclamoDeCampana, audienciaDeCampana, type AudienciaCampana } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
+import { cerrarCampanasVencidas } from "@/lib/campanas-cierre";
 import { registrarAuditoria } from "@/lib/audit";
 import { hoyComercial, formatCreditoNumero } from "@/lib/utils";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
@@ -87,6 +88,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Campañas de cobranza: admin (todas) y vendedor (solo las suyas).
   const ctx = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = ctx;
+  await cerrarCampanasVencidas(tenantId);
 
   const campanas = await prisma.campanas_cobranza.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },

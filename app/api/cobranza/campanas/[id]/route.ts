@@ -3,8 +3,9 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
+import { cerrarCampanasVencidas, ofertaVencida } from "@/lib/campanas-cierre";
 import { diasMoraActual } from "@/lib/domain";
-import { hoyComercial } from "@/lib/utils";
+import { hoyComercial, formatFecha } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
 const ESTADOS = ["borrador", "activa", "finalizada"];
@@ -30,6 +31,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: { params: Prom
   const auth = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = auth;
   const { id } = await ctx.params;
+  await cerrarCampanasVencidas(tenantId);
 
   const campana = await prisma.campanas_cobranza.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(auth), id },
@@ -82,6 +84,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
     return errorResponse("Body JSON inválido", "INVALID_JSON", 400);
   }
 
+  await cerrarCampanasVencidas(tenantId);
   const campana = await prisma.campanas_cobranza.findFirst({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(auth), id },
   });
@@ -93,6 +96,10 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
       where: { ...withTenant(tenantId), id: body.objetivo_id, campana_id: id },
     });
     if (!objetivo) return errorResponse("Objetivo no encontrado", "NOT_FOUND", 404);
+    // Finalizada = historial: lo que pasó con cada destinatario ya no se reescribe.
+    if (campana.estado === "finalizada") {
+      return errorResponse("La campaña está finalizada: queda como historial.", "CAMPANA_FINALIZADA", 409);
+    }
 
     const actualizado = await prisma.campana_objetivo.update({
       where: { id: body.objetivo_id },
@@ -105,6 +112,18 @@ export const PATCH = withErrorHandler(async (req: NextRequest, ctx: { params: Pr
   if (body.estado) {
     if (!ESTADOS.includes(body.estado)) {
       return errorResponse(`estado debe ser uno de: ${ESTADOS.join(", ")}`, "INVALID_INPUT", 400);
+    }
+    /*
+      Una campaña finalizada es HISTORIAL (regla de Fernando, 26/09/2026): no se reactiva ni
+      vuelve a borrador. Y una con la oferta vencida ya no puede estar activa: el descuento
+      que promete no se aplica más. Para volver a ofrecer, se arma otra.
+    */
+    if (campana.estado === "finalizada" && body.estado !== "finalizada") {
+      return errorResponse("La campaña está finalizada: queda como historial. Para volver a ofrecer, armá una nueva.", "CAMPANA_FINALIZADA", 409);
+    }
+    if (ofertaVencida(campana.promo_vence) && body.estado !== "finalizada") {
+      await cerrarCampanasVencidas(tenantId);
+      return errorResponse(`La oferta venció el ${formatFecha(campana.promo_vence)}: la campaña quedó finalizada como historial.`, "CAMPANA_VENCIDA", 409);
     }
     const actualizada = await prisma.campanas_cobranza.update({
       where: { id },

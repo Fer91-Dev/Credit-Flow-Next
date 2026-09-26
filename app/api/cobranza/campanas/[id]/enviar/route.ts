@@ -10,6 +10,7 @@ import { enviarEmailTenant, motivoEmailNoDisponible, type EmailTenantConfig } fr
 import { enviarSmsTenant, motivoSmsNoDisponible, type SmsConfig } from "@/lib/sms";
 import { getFinanciera } from "@/lib/financiera";
 import { registrarAuditoria } from "@/lib/audit";
+import { cerrarCampanasVencidas } from "@/lib/campanas-cierre";
 import { creditosConAcuerdoVigente, cubiertoPorAcuerdo, situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import type { NextRequest } from "next/server";
 
@@ -39,6 +40,7 @@ export const POST = withErrorHandler(async (
   const auth = await requireRole(["admin", "vendedor"], req);
   const { tenantId } = auth;
   const { id } = await params;
+  await cerrarCampanasVencidas(tenantId);
 
   const campana = await prisma.campanas_cobranza.findFirst({
     where: { id, ...withTenant(tenantId), ...scopeCreditosVendedor(auth) },
@@ -61,6 +63,11 @@ export const POST = withErrorHandler(async (
   });
 
   if (!campana) return errorResponse("Campaña no encontrada", "NOT_FOUND", 404);
+  // Finalizada = historial: no sale ningún mensaje más (y si la oferta venció, el cierre de
+  // arriba ya la pasó a finalizada — no se le puede prometer a nadie un descuento muerto).
+  if (campana.estado === "finalizada") {
+    return errorResponse("La campaña está finalizada: no se envían más mensajes.", "CAMPANA_FINALIZADA", 409);
+  }
 
   /**
    * 🔴 EL CANDADO ANTI-REENVÍO PASÓ A SER POR DESTINATARIO.
