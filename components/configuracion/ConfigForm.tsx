@@ -500,6 +500,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       { opcion: "Pagaré: con monto impreso", efecto: "Va el total de las cuotas, en número y en letras." },
       { opcion: "Pagaré: en blanco", efecto: "El importe queda vacío (número y letras). En las condiciones se agrega la autorización del cliente para completarlo, al ejecutarlo, por lo que deba a esa fecha, nunca por más. Sin esa autorización escrita, un pagaré en blanco es fácil de impugnar." },
       { opcion: "Sin protesto", efecto: "Apagado, el título dice solo «PAGARÉ» y desaparece la frase «sin protesto»: para ejecutarlo hace falta un trámite notarial previo." },
+      { opcion: "Intereses desde la presentación (art. 5)", efecto: "Agrega al pagaré que, desde que se presenta al cobro hasta que se paga, la suma devenga el punitorio del crédito, con la tasa escrita (art. 5, Dec. Ley 5965/63). Así el pagaré respalda también la mora, sin depender de las condiciones. Corre desde la presentación y no desde la firma, porque las cuotas ya traen el interés del préstamo. Sin mora activa en el crédito no se imprime." },
       { opcion: "Ampliar la presentación a 5 años", efecto: "Apagado, no se imprime la cláusula y rige el plazo de la ley: un año para presentar un pagaré a la vista." },
       { opcion: "Caducidad de plazos", efecto: "En 0 no se imprime. Con 1 o más, dice cuántas cuotas impagas hacen exigible el total." },
       { opcion: "Jurisdicción", efecto: "Se imprime la cláusula con el tribunal cargado. Sin ella, el deudor puede discutir dónde se lo demanda." },
@@ -2823,6 +2824,12 @@ export function ConfigForm() {
                   desc="Evita el trámite notarial previo a ejecutar el pagaré."
                   checked={docs.sin_protesto}
                   onChange={v => setDocs({ sin_protesto: v })}
+                />
+                <NotifRow
+                  title="Intereses desde la presentación (art. 5)"
+                  desc="El pagaré mismo devenga el punitorio del crédito desde que se presenta al cobro hasta que se paga. Sin mora activa no se imprime."
+                  checked={docs.intereses_art5}
+                  onChange={v => setDocs({ intereses_art5: v })}
                 />
                 <NotifRow
                   title={`Ampliar la presentación del pagaré a ${docs.anios_presentacion} años`}

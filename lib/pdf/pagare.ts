@@ -173,6 +173,10 @@ export async function generarPagarePDF(d: DatosPagare): Promise<Uint8Array> {
   parrafo(t.cuerpo, { size: 11, interlinea: 18 });
   y -= 6;
   parrafo(t.lugarDePago, { size: 11, interlinea: 18 });
+  if (t.intereses) {
+    y -= 6;
+    parrafo(t.intereses, { size: 11, interlinea: 18 });
+  }
   if (t.presentacion) {
     y -= 6;
     parrafo(t.presentacion, { size: 9, interlinea: 14 });

@@ -33,6 +33,17 @@ export interface DocumentosConfig {
   /** Cláusula "sin protesto": evita el trámite notarial previo a ejecutar. */
   sin_protesto: boolean;
   /**
+   * El pagaré mismo devenga el punitorio desde su presentación (art. 5, Dec. Ley 5965/63).
+   *
+   * Sin esto el importe del pagaré con monto es fijo, y los punitorios solo se reclaman
+   * apoyándose en las condiciones firmadas. El art. 5 lo permite SOLO en pagarés a la vista y
+   * exige la tasa escrita en el papel — el nuestro es a la vista, y la tasa sale de la mora
+   * del crédito. Corre desde la PRESENTACIÓN, no desde la fecha del pagaré: desde la firma le
+   * cobraría interés dos veces a cuotas que ya traen el del préstamo adentro.
+   * Decidido por Fernando el 27/09/2026, prendido de fábrica.
+   */
+  intereses_art5: boolean;
+  /**
    * Amplía el plazo de presentación del pagaré a la vista (art. 36, Dec. Ley 5965/63).
    * Sin esta cláusula el plazo es mucho más corto — un pagaré guardado "por las dudas"
    * puede quedar fuera de término.
@@ -61,6 +72,7 @@ export const DOCUMENTOS_DEFAULT: DocumentosConfig = {
   actualiza_por_ipc: false,
   modo_pagare: "con_monto",
   sin_protesto: true,
+  intereses_art5: true,
   anios_presentacion: 5,
   cuotas_caducidad: 2,
   incluye_cesion_credito: false,
@@ -87,6 +99,7 @@ export function resolverDocumentos(raw: Partial<DocumentosConfig> | null | undef
     actualiza_por_ipc: bool(raw.actualiza_por_ipc, d.actualiza_por_ipc),
     modo_pagare: raw.modo_pagare === "sin_monto" ? "sin_monto" : "con_monto",
     sin_protesto: bool(raw.sin_protesto, d.sin_protesto),
+    intereses_art5: bool(raw.intereses_art5, d.intereses_art5),
     anios_presentacion: Math.round(num(raw.anios_presentacion, d.anios_presentacion, 1, 10)),
     cuotas_caducidad: Math.round(num(raw.cuotas_caducidad, d.cuotas_caducidad, 0, 24)),
     incluye_cesion_credito: bool(raw.incluye_cesion_credito, d.incluye_cesion_credito),

@@ -101,6 +101,8 @@ export interface TextoPagare {
   cuerpo: string;
   /** Dónde se paga. */
   lugarDePago: string;
+  /** Intereses del art. 5 desde la presentación. null = sin la cláusula (apagada o sin mora). */
+  intereses: string | null;
   /** Ampliación del plazo de presentación. null = sin la cláusula (rige el año de la ley). */
   presentacion: string | null;
   /** Leyenda del encabezado de las condiciones, si la entidad está autorizada por el BCRA. */
@@ -185,6 +187,17 @@ export function armarPagare(d: DatosPagare): TextoPagare {
   const lugarDePago =
     `Pagadero en ${d.acreedor.domicilio}${d.acreedor.localidad ? `, de la ciudad de ${d.acreedor.localidad}` : ""}` +
     `${d.acreedor.provincia ? `, Provincia de ${d.acreedor.provincia}` : ""}.`;
+  /*
+    ART. 5: el pagaré a la vista puede devengar intereses si la tasa está escrita en él. Es la
+    misma tasa de mora del crédito (congelada al otorgar), así que papel y sistema dicen lo
+    mismo. Desde la PRESENTACIÓN: desde la firma duplicaría el interés de las cuotas. Sin mora
+    activa no hay tasa que escribir, y el art. 5 da por no escrita una cláusula sin tasa.
+  */
+  const intereses = docs.intereses_art5 && d.mora.activa && d.mora.tasaDiaria > 0
+    ? `Desde su presentación al cobro y hasta su efectivo pago, esta suma devengará un interés punitorio del ` +
+      `${pct(d.mora.tasaDiaria)} diario, equivalente al ${pct(d.mora.tasaDiaria * 30)} mensual (art. 5, Dec. Ley 5965/63).`
+    : null;
+
   /*
     Sin la ampliación rige el plazo de la ley (un año desde el libramiento): no hay nada que
     declarar. Imprimir "se amplía a 1 año" sería una cláusula que no amplía nada.
@@ -373,6 +386,7 @@ export function armarPagare(d: DatosPagare): TextoPagare {
     lugarYFecha,
     cuerpo,
     lugarDePago,
+    intereses,
     presentacion,
     // Va en el encabezado, como dice Configuración → Documentos: es un dato de quién presta,
     // no una condición del préstamo.
