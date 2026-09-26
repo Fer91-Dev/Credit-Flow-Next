@@ -348,7 +348,10 @@ export function armarPagare(d: DatosPagare): TextoPagare {
 
   const cierre =
     `En ${lugar || "________________"}, a los ${dia(d.fechaOtorgamiento)} días del mes de ${mes(d.fechaOtorgamiento)} de ${anio(d.fechaOtorgamiento)}, ` +
-    "se firman dos ejemplares de un mismo tenor: uno para cada parte.";
+    "se firman dos ejemplares de estas condiciones, uno para cada parte. El pagaré se firma en un " +
+    // 🔴 Un pagaré firmado dos veces son DOS títulos por la misma deuda. Si alguien imprime
+    // el PDF dos veces para dar copia al cliente, la hoja 1 de la copia no se firma.
+    "único ejemplar, que conserva el acreedor.";
 
   return {
     titulo: docs.sin_protesto ? "PAGARÉ SIN PROTESTO" : "PAGARÉ",
