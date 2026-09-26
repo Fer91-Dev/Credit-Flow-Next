@@ -84,8 +84,12 @@ const BTN_ACCION =
  * chicas que las de un pie de página) para no pelearse con «Cobrar», que es la que importa.
  */
 const BTN_BARRA =
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium " +
-  "text-foreground/80 transition-all hover:bg-card hover:text-foreground hover:shadow-sm disabled:opacity-40";
+  "group inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium " +
+  "text-foreground/80 ring-1 ring-inset ring-transparent transition-all " +
+  // 🔴 El hover tiene que VERSE: con `bg-card` sobre el fondo del grupo no cambiaba casi nada
+  // y no se sabía qué botón se estaba por apretar (Fernando, 27/09/2026).
+  "hover:bg-primary/15 hover:text-primary hover:ring-primary/35 hover:shadow-sm " +
+  "disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-foreground/80 disabled:hover:ring-transparent";
 
 /**
  * 🔴 LA BARRA DEL CRÉDITO EN GRUPOS, NO BOTONES SUELTOS. Fernando (27/09/2026): «dale una
@@ -543,6 +547,15 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * enfrente con la plata en la mano no encontraba por dónde entrarla.
    */
   const puedeCobrar = esCreditoCobrable(credito.estado) && credito.saldo_pendiente > 0;
+  /*
+    🔴 COBRAR NO PUEDE ESTAR ACTIVO SI EL COBRO ESTÁ CERRADO. Fernando (27/09/2026): «el botón
+    de cobrar no debería estar activo si ese crédito no se cobra ahí, sino que me pide
+    refinanciar». Pasado el atraso de refinanciación obligatoria la terminal ya lo rechazaba
+    (`puedeCobrar` de lib/domain/recupero.ts, vía /cuotas), pero la ficha no preguntaba y
+    mandaba al operador a una pantalla que le decía que no. Se usa el MISMO veredicto: una
+    sola regla, dos lugares que la muestran.
+  */
+  const cobroCerrado = puedeCobrar && metaCuotas?.cobro?.permitido === false ? metaCuotas.cobro : null;
 
   /*
     El badge de estado vive en el encabezado de la página (`CreditoPagina`), que es donde
@@ -1524,7 +1537,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   disabled={!amortizacion}
                   className={BTN_BARRA}
                 >
-                  <UserRound className="h-3.5 w-3.5 text-muted-foreground" /> Cliente
+                  <UserRound className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" /> Cliente
                 </button>
                 </Tooltip>
                 <Tooltip texto="Cronograma completo con interés, capital, cargos y saldo (PDF)">
@@ -1533,7 +1546,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   disabled={!amortizacion}
                   className={BTN_BARRA}
                 >
-                  <Printer className="h-3.5 w-3.5 text-muted-foreground" /> Operador
+                  <Printer className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" /> Operador
                 </button>
                 </Tooltip>
                 {/*
@@ -1549,7 +1562,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     disabled={!amortizacion}
                     className={BTN_BARRA}
                   >
-                    <History className="h-3.5 w-3.5 text-muted-foreground" /> Plan original
+                    <History className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" /> Plan original
                   </button>
                   </Tooltip>
                 )}
@@ -1570,7 +1583,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   title="Estado de cuenta: qué está pagado y qué falta, cuota por cuota (PDF)"
                   className={BTN_BARRA}
                 >
-                  <ListChecks className="h-3.5 w-3.5 text-muted-foreground" /> Estado de cuenta
+                  <ListChecks className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" /> Estado de cuenta
                 </button>
                 {/* El pagaré: mientras hay deuda que respaldar (incluido el incobrable, que es el
                     que va a legales). */}
@@ -1600,7 +1613,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       ? `${credito.incobrable_bloqueo.motivo} ${credito.incobrable_bloqueo.sugerencia}`.trim()
                       : "Sacar la deuda de la cartera y darla por perdida"
                   }
-                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive disabled:cursor-not-allowed disabled:hover:!bg-transparent disabled:hover:!text-foreground/80`}
+                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive hover:!ring-destructive/35 disabled:cursor-not-allowed disabled:hover:!bg-transparent disabled:hover:!text-foreground/80`}
                 >
                   <Ban className="h-3.5 w-3.5" /> Dar por incobrable
                 </button>
@@ -1610,7 +1623,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   onClick={sinPlegar(() => handleIncobrable(false))}
                   disabled={incobrableBusy}
                   title="Sacarlo de incobrables y volver a gestionarlo como cualquier crédito"
-                  className={`${BTN_BARRA} hover:!bg-success/10 hover:!text-success`}
+                  className={`${BTN_BARRA} hover:!bg-success/10 hover:!text-success hover:!ring-success/35`}
                 >
                   {incobrableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Devolver al circuito
                 </button>
@@ -1619,7 +1632,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <button
                   onClick={sinPlegar(() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); })}
                   title="Deshacer el crédito: revierte el desembolso en la caja y queda el motivo registrado"
-                  className={`${BTN_BARRA} hover:!bg-warning/10 hover:!text-warning`}
+                  className={`${BTN_BARRA} hover:!bg-warning/10 hover:!text-warning hover:!ring-warning/35`}
                 >
                   <Ban className="h-3.5 w-3.5" /> Anular crédito
                 </button>
@@ -1629,7 +1642,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   onClick={sinPlegar(handleEliminarCredito)}
                   disabled={eliminarBusy}
                   title="Borrarlo del sistema. Solo se puede si nunca movió plata."
-                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive`}
+                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive hover:!ring-destructive/35`}
                 >
                   {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
                 </button>
@@ -1711,7 +1724,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 >
                   <button
                     onClick={() => onRefinanciar(credito)}
-                    className={`${BTN_OPERACION} bg-warning/15 text-warning ring-warning/40 hover:bg-warning/25`}
+                    className={`${BTN_OPERACION} ${cobroCerrado ? "bg-warning text-warning-foreground ring-warning/60 hover:bg-warning/90" : "bg-warning/15 text-warning ring-warning/40 hover:bg-warning/25"}`}
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
                     {credito.es_refinanciacion && <span className="text-warning/70">*</span>}
@@ -1733,7 +1746,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   </span>
                 </Tooltip>
               )}
-              {puedeCobrar && (
+              {cobroCerrado && (
+                <Tooltip texto={[cobroCerrado.motivo, cobroCerrado.sugerencia].filter(Boolean).join(" ")}>
+                  <span className="inline-flex shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted/30 px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 ring-1 ring-inset ring-border">
+                    <Wallet className="h-3.5 w-3.5" /> Cobrar
+                  </span>
+                </Tooltip>
+              )}
+              {puedeCobrar && !cobroCerrado && (
                 <Tooltip texto="Ir a la terminal de cobro con este cliente cargado">
                   <Link
                     href={`/pagos?cliente=${credito.cliente_id}`}

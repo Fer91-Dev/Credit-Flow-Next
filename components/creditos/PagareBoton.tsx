@@ -75,7 +75,7 @@ export function PagareBoton({ creditoId, className }: { creditoId: string; class
         title="Pagaré a la vista e información del art. 36 para imprimir y firmar (PDF)"
         className={className}
       >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />} Pagaré
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5 opacity-70 transition-opacity group-hover:opacity-100" />} Pagaré
       </button>
 
       <Dialog open={!!faltantes} onOpenChange={(o) => { if (!o) setFaltantes(null); }}>

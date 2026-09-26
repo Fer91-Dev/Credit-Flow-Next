@@ -811,6 +811,8 @@ export interface CuotasCredito {
    * por qué son más bajos. `null` = no hay ninguna.
    */
   promocion: { pct: number; campana: string; vence: string | null; ahorro: number } | null;
+  /** Si se puede cobrar hoy (misma regla que `POST /api/pagos`) y, si no, por qué. */
+  cobro?: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   frecuencia: string;
   frecuencia_label: { cuotaSingular: string; cuotaPlural: string; adjetivo: string; unidad: string };
   resumen: {
