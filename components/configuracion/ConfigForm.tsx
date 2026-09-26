@@ -63,7 +63,13 @@ const ordenLabel: Record<string, string> = {
  * parámetro por definición ("cuántas cuotas se pueden ofrecer") no muestra la mecánica;
  * un caso con plata sí, y es lo que pidió el usuario al configurar acuerdos por primera vez.
  */
-export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[] };
+/**
+ * `opciones`: qué hace CADA control del bloque, en pares opción → efecto. Para bloques donde lo
+ * que el usuario necesita saber es la consecuencia de cada casilla (Documentos: qué cambia en
+ * el papel que firma el cliente). Con opciones el globo se ensancha: en 320px el efecto
+ * quedaba en renglones de tres palabras.
+ */
+export type AyudaBloque = { titulo?: string; texto: string; ejemplo?: string; puntos?: string[]; opciones?: { opcion: string; efecto: string }[] };
 
 /**
  * Opciones del techo de mora.
@@ -489,13 +495,20 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   documentos: {
     titulo: "Documentos del crédito",
-    texto: "Lo que se imprime en el pagaré y en las condiciones del préstamo (botón «Pagaré» en la ficha de cada crédito). Se define una vez y vale para todos los créditos; los datos de cada operación (monto, cuotas, tasas) los completa el sistema solo.",
-    puntos: [
-      "Jurisdicción: ante qué tribunales se reclama si hay que ir a juicio. Sin esto, el deudor puede discutir dónde se lo demanda.",
-      "Punitorio mensual: el recargo por pagar tarde. En 0, atrasarse sale lo mismo que pagar a término.",
-      "Pagaré con monto: se imprime el total de las cuotas. En blanco: el importe queda vacío y las condiciones incluyen la autorización del cliente para completarlo, al ejecutarlo, con el saldo que deba a esa fecha (nunca por más).",
-      "Ampliación a 5 años: es el plazo para presentar un pagaré a la vista. Sin la cláusula, el plazo es mucho más corto.",
-      "Autorizada por el BCRA: solo si la financiera realmente lo está. Declararlo sin serlo es una infracción grave.",
+    texto: "Lo que se imprime en el pagaré y en las condiciones del préstamo (botón «Pagaré» en la ficha de cada crédito). Se define una vez y vale para todos los créditos; los datos de cada operación (monto, cuotas, tasas) los completa el sistema solo. Qué cambia en el papel cada opción:",
+    opciones: [
+      { opcion: "Pagaré: con monto impreso", efecto: "Va el total de las cuotas, en número y en letras." },
+      { opcion: "Pagaré: en blanco", efecto: "El importe queda vacío (número y letras). En las condiciones se agrega la autorización del cliente para completarlo, al ejecutarlo, por lo que deba a esa fecha, nunca por más. Sin esa autorización escrita, un pagaré en blanco es fácil de impugnar." },
+      { opcion: "Sin protesto", efecto: "Apagado, el título dice solo «PAGARÉ» y desaparece la frase «sin protesto»: para ejecutarlo hace falta un trámite notarial previo." },
+      { opcion: "Ampliar la presentación a 5 años", efecto: "Apagado, no se imprime la cláusula y rige el plazo de la ley: un año para presentar un pagaré a la vista." },
+      { opcion: "Caducidad de plazos", efecto: "En 0 no se imprime. Con 1 o más, dice cuántas cuotas impagas hacen exigible el total." },
+      { opcion: "Jurisdicción", efecto: "Se imprime la cláusula con el tribunal cargado. Sin ella, el deudor puede discutir dónde se lo demanda." },
+      { opcion: "Actualizar por IPC", efecto: "Agrega la cláusula de ajuste por inflación de lo adeudado en mora." },
+      { opcion: "Autorización a pedir informes", efecto: "Agrega la autorización a informar el comportamiento de pago (Ley 25.326)." },
+      { opcion: "Cesión de crédito", efecto: "Agrega la cláusula que permite ceder el crédito a un tercero." },
+      { opcion: "Entidad autorizada por el BCRA", efecto: "Aparece en el encabezado de las condiciones. Solo si la financiera tiene la autorización: declararlo sin tenerla es una infracción grave." },
+      { opcion: "Cláusulas adicionales", efecto: "Van al final, como «Otras condiciones»." },
+      { opcion: "Interés punitorio", efecto: "No se configura acá: sale de la mora que cobra el sistema (Motor financiero), así que el papel siempre coincide con lo que se cobra." },
     ],
   },
   notificaciones: {
@@ -3357,7 +3370,7 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
            forma de leer el final era scrollear la PÁGINA, que arrastraba todo el contenido
            de atrás. `overscroll-contain` es la otra mitad del arreglo — sin él, al llegar al
            final del globo el scroll se encadena al fondo y vuelve a moverse la página. */
-        <div className="absolute right-0 top-9 z-30 flex max-h-[min(70vh,32rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30">
+        <div className={`absolute right-0 top-9 z-30 flex max-h-[min(70vh,32rem)] ${ayuda.opciones ? "w-[28rem]" : "w-80"} max-w-[calc(100vw-2rem)] flex-col overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3.5 text-left shadow-2xl shadow-black/30`}>
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary">
             <HelpCircle className="h-3.5 w-3.5" /> {ayuda.titulo ?? "Ayuda"}
           </div>
@@ -3367,6 +3380,16 @@ export function HelpHint({ ayuda }: { ayuda: AyudaBloque }) {
               <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-primary">Ejemplo</p>
               <p className="text-xs leading-relaxed text-foreground/90">{ayuda.ejemplo}</p>
             </div>
+          )}
+          {ayuda.opciones && (
+            <dl className="mt-2.5 divide-y divide-border/60 rounded-lg border border-border/60">
+              {ayuda.opciones.map((o) => (
+                <div key={o.opcion} className="px-2.5 py-2">
+                  <dt className="text-xs font-semibold text-foreground">{o.opcion}</dt>
+                  <dd className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{o.efecto}</dd>
+                </div>
+              ))}
+            </dl>
           )}
           {ayuda.puntos && (
             <ul className="mt-2 space-y-1">
