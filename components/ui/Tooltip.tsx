@@ -29,6 +29,12 @@ import { createPortal } from "react-dom";
 export const DEMORA_TOOLTIP = 120;
 
 /**
+ * Cuánto se queda a la vista antes de irse solo. Proporcional a lo que hay para leer (unos
+ * 250 caracteres por minuto), con piso y techo. Lo usan los dos globos del SaaS.
+ */
+export const duracionTooltip = (texto: string) => Math.min(9000, Math.max(3500, 1200 + texto.length * 55));
+
+/**
  * 🔴 EL GLOBO SE DIBUJA EN EL BODY (portal). Adentro del flujo lo recortaba el `overflow` de
  * la tarjeta o de la barra que se desliza — aparecía cortado a la mitad, que es peor que no
  * tenerlo. Al ir al body, la posición se calcula con las coordenadas reales del disparador.
@@ -91,22 +97,48 @@ export function Tooltip({
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; abajo: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cierre = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * 🔴 LOS MISMOS ARREGLOS QUE `TooltipsNativos`, QUE ESTE COMPONENTE NO TENÍA.
+   *
+   * Fernando (27/09/2026): «sigo teniendo el problema que no se cierra la burbuja y me tapa
+   * el botón». El globo pegado se había arreglado en el de los `title` (se va solo, se va al
+   * apretar), pero los botones del plan —Cliente, Operador, Plan original— usan ESTE, que no
+   * tenía nada de eso. Y encima se abría con el FOCO: al hacer clic el botón queda enfocado,
+   * así que el globo quedaba abierto hasta hacer clic en otro lado.
+   *
+   *  · Se va solo, a los segundos que lleva leerlo.
+   *  · Se va al apretar, y no vuelve hasta que el mouse salga (`callado`).
+   *  · Con el foco se abre solo si se llegó con el TECLADO (`:focus-visible`): el foco que
+   *    deja un clic no es alguien pidiendo ayuda.
+   */
+  const callado = useRef(false);
+
+  const ocultar = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    if (cierre.current) clearTimeout(cierre.current);
+    setPos(null);
+  }, []);
 
   const ubicar = useCallback(() => {
     if (ref.current) setPos(ubicarTooltip(ref.current, lado === "abajo"));
   }, [lado]);
 
   const mostrar = useCallback(() => {
+    if (callado.current) return;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(ubicar, DEMORA_TOOLTIP);
-  }, [ubicar]);
+    if (cierre.current) clearTimeout(cierre.current);
+    timer.current = setTimeout(() => {
+      ubicar();
+      const largo = typeof texto === "string" ? texto : "";
+      cierre.current = setTimeout(() => { callado.current = true; setPos(null); }, duracionTooltip(largo));
+    }, DEMORA_TOOLTIP);
+  }, [ubicar, texto]);
 
-  const ocultar = useCallback(() => {
+  useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
-    setPos(null);
+    if (cierre.current) clearTimeout(cierre.current);
   }, []);
-
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   // Mientras está abierto: seguir al disparador si la página se mueve, y cerrarse con Escape.
   useEffect(() => {
@@ -133,9 +165,10 @@ export function Tooltip({
         // envolverlo no puede cambiar cómo se acomoda.
         className={`inline-flex ${className}`}
         onMouseEnter={mostrar}
-        onMouseLeave={ocultar}
-        onFocusCapture={mostrar}
-        onBlurCapture={ocultar}
+        onMouseLeave={() => { callado.current = false; ocultar(); }}
+        onPointerDownCapture={() => { callado.current = true; ocultar(); }}
+        onFocusCapture={(e) => { if ((e.target as Element).matches?.(":focus-visible")) mostrar(); }}
+        onBlurCapture={() => { callado.current = false; ocultar(); }}
         aria-describedby={pos ? id : undefined}
       >
         {children}

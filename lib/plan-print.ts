@@ -115,6 +115,11 @@ export interface PlanPrintData {
    * adentro, y va en el documento del cliente porque es lo que le permite comparar ofertas —
    * en Argentina, además, es de exhibición obligatoria. `null`/omitido → no se muestra.
    */
+  /**
+   * "Plan original": el cronograma como se pactó al otorgar, sin lo que un acuerdo le sumó
+   * después. Se dice en el título, para que nadie lo confunda con lo que se debe hoy.
+   */
+  original?: { acuerdoFirmado?: Date | string | null } | null;
   cft?: number | null;
   /** Co-branding: identidad de la financiera. Si trae nombre/logo, encabeza el documento
    *  con "powered by CreditFlow" al pie. Sin esto, se muestra la marca CreditFlow. */
@@ -142,7 +147,9 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const totalFinal = hayCargos || tieneCap ? data.totales.cuotaTotal : data.totales.cuota;
   const convLabel = data.convencion === "mensual" ? "T.M." : data.convencion === "efectiva_anual" ? "T.E.A." : "T.N.A.";
   const freqLabel = data.freqLabelPlural.charAt(0).toUpperCase() + data.freqLabelPlural.slice(1);
-  const seccionLabel = esOp ? "Cronograma de pagos" : "Su plan de cuotas";
+  const seccionLabel = data.original
+    ? `Plan original, como se pactó al otorgar${data.original.acuerdoFirmado ? ` · sin el interés del acuerdo del ${formatFecha(data.original.acuerdoFirmado)}` : ""}`
+    : esOp ? "Cronograma de pagos" : "Su plan de cuotas";
   const nCuotas = data.cuotas.length;
 
   // Columnas de cargos a discriminar. Si se pasan cargoCols, una por tipo activo;
@@ -226,7 +233,7 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Plan de pagos — CreditFlow</title>
+<title>${data.original ? "Plan original" : "Plan de pagos"} — CreditFlow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>

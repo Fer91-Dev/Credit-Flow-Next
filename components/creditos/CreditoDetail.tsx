@@ -245,6 +245,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     const propios = Math.max(0, cargosDeCuota(q) - cap);
     return Math.max(0, cap - Math.max(0, (q.pagado_cargos ?? 0) - propios));
   };
+  const tieneInteresAcuerdo = cuotas.some((q) => (q.capitalizado ?? 0) > 0.004);
   const interesAcuerdoVencido = cuotasVencidasArr.reduce((a, q) => a + acuerdoPendienteDe(q), 0);
   const cargosVencidos = cuotasVencidasArr.reduce((a, q) => a + pendienteCargosDe(q) - acuerdoPendienteDe(q), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
@@ -562,7 +563,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * vencimientos corridos meses (probado con CRD-000069: 10/09 en vez de 10/06). Las dos
    * vistas salen del mismo `/amortizacion`, que usa la `fecha_inicio` real del crédito.
    */
-  const imprimirPlan = (vista: "cliente" | "operador") => {
+  const imprimirPlan = (vista: "cliente" | "operador", original = false) => {
     const a = amortizacion;
     if (!a) return;
     /*
@@ -570,8 +571,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       en el plan reconstruido, que parte de los parámetros del otorgamiento. Sale de las
       cuotas GUARDADAS —las que se cobran— para que el papel diga lo mismo que la pantalla.
     */
-    const capDe = new Map(cuotas.map((q) => [q.nro, q.capitalizado ?? 0]));
-    const totalCap = cuotas.reduce((s, q) => s + (q.capitalizado ?? 0), 0);
+    // El PLAN ORIGINAL es justamente sin esto: el cronograma como se firmó al otorgar.
+    const capDe = new Map(cuotas.map((q) => [q.nro, original ? 0 : q.capitalizado ?? 0]));
+    const totalCap = original ? 0 : cuotas.reduce((s, q) => s + (q.capitalizado ?? 0), 0);
     imprimirPlanPagos({
       // El papel que se lleva el cliente dice de QUÉ crédito es y DE QUIÉN.
       numeroCredito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
@@ -641,6 +643,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       // Silvio una marca que no es la suya.
       financiera: financiera ? { nombre: financiera.nombre, logo_url: financiera.logo_url } : undefined,
       cft: a.parametros.cft_anual,
+      original: original ? { acuerdoFirmado: acuerdo?.fecha ?? null } : null,
     }, vista);
   };
 
@@ -1514,6 +1517,23 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   Operador
                 </button>
                 </Tooltip>
+                {/*
+                  PLAN ORIGINAL: solo si un acuerdo le sumó interés a las cuotas. Ahí "Cliente" y
+                  "Operador" imprimen lo que se cobra hoy, y este el cronograma como se pactó
+                  (Fernando, 27/09/2026). Sin acuerdo los dos planes son el mismo: un segundo
+                  botón que imprime lo mismo sería un camino de más.
+                */}
+                {tieneInteresAcuerdo && (
+                  <Tooltip texto="El cronograma como se pactó al otorgar, sin el interés que le sumó el acuerdo (PDF)">
+                  <button
+                    onClick={sinPlegar(() => imprimirPlan("operador", true))}
+                    disabled={!amortizacion}
+                    className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  >
+                    Plan original
+                  </button>
+                  </Tooltip>
+                )}
                 {/* El ESTADO DE CUENTA no es el plan: es lo pagado y lo que falta, hoy, cuota
                     por cuota. Sale de las mismas cuotas que dibuja la tabla de abajo. */}
                 <button

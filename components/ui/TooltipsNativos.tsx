@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BurbujaTooltip, ubicarTooltip, DEMORA_TOOLTIP } from "./Tooltip";
+import { BurbujaTooltip, ubicarTooltip, DEMORA_TOOLTIP, duracionTooltip } from "./Tooltip";
 
 /**
  * TODOS LOS `title=` DEL SAAS, DIBUJADOS CON EL ESTILO DEL SISTEMA.
@@ -104,7 +104,7 @@ export function TooltipsNativos() {
      * los mismos segundos que la explicación de por qué un botón está apagado. Unos 250
      * caracteres por minuto, con piso y techo para que ningún caso quede absurdo.
      */
-    const duracion = (texto: string) => Math.min(9000, Math.max(3500, 1200 + texto.length * 55));
+    const duracion = duracionTooltip;
 
     const preparar = (el: HTMLElement) => {
       if (yaMostrado.current === el) return; // ya se mostro y se cerro solo: no insistir
