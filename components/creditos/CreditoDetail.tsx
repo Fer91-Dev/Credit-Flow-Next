@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake, UserRound, History, ListChecks } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion, mutarCreditos, mutarPagos } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -84,8 +84,28 @@ const BTN_ACCION =
  * chicas que las de un pie de página) para no pelearse con «Cobrar», que es la que importa.
  */
 const BTN_BARRA =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium " +
-  "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40";
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium " +
+  "text-foreground/80 transition-all hover:bg-card hover:text-foreground hover:shadow-sm disabled:opacity-40";
+
+/**
+ * 🔴 LA BARRA DEL CRÉDITO EN GRUPOS, NO BOTONES SUELTOS. Fernando (27/09/2026): «dale una
+ * mejor visual a los botones, casi ni se notan; que realmente parezcan botones para las
+ * funciones sobre el crédito, no botones sueltos». Eran nueve rectángulos de 11px con borde
+ * gris, iguales entre sí: imprimir, anular y cobrar se leían con el mismo peso.
+ *
+ * Tres grupos, cada uno con su forma:
+ *  · DOCUMENTOS (imprimir): un bloque unido, como un control segmentado.
+ *  · ADMINISTRACIÓN (incobrable / anular / eliminar): otro bloque, con el color de peligro
+ *    recién al pasar el mouse — son acciones que se usan poco y no deben gritar.
+ *  · OPERACIONES (acordar / refinanciar / cobrar): botones con relleno de su color; Cobrar
+ *    sólido, porque es la acción del día a día.
+ */
+const GRUPO_BARRA =
+  "inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 " +
+  "shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.18)] empty:hidden";
+const BTN_OPERACION =
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold " +
+  "shadow-sm ring-1 ring-inset transition-all hover:-translate-y-px hover:shadow-md";
 
 /**
  * 🔴 UN BOTÓN DENTRO DE UN `<summary>` TAMBIÉN PLIEGA EL BLOQUE.
@@ -1497,24 +1517,23 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               )}
               {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
                   formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
-              <div className="inline-flex shrink-0 items-center gap-1">
-                <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+              <div className={GRUPO_BARRA} role="group" aria-label="Documentos">
                 <Tooltip texto="Plan de cuotas para entregarle al cliente (PDF)">
                 <button
                   onClick={sinPlegar(() => imprimirPlan("cliente"))}
                   disabled={!amortizacion}
-                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className={BTN_BARRA}
                 >
-                  Cliente
+                  <UserRound className="h-3.5 w-3.5 text-muted-foreground" /> Cliente
                 </button>
                 </Tooltip>
                 <Tooltip texto="Cronograma completo con interés, capital, cargos y saldo (PDF)">
                 <button
                   onClick={sinPlegar(() => imprimirPlan("operador"))}
                   disabled={!amortizacion}
-                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className={BTN_BARRA}
                 >
-                  Operador
+                  <Printer className="h-3.5 w-3.5 text-muted-foreground" /> Operador
                 </button>
                 </Tooltip>
                 {/*
@@ -1528,9 +1547,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <button
                     onClick={sinPlegar(() => imprimirPlan("operador", true))}
                     disabled={!amortizacion}
-                    className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                    className={BTN_BARRA}
                   >
-                    Plan original
+                    <History className="h-3.5 w-3.5 text-muted-foreground" /> Plan original
                   </button>
                   </Tooltip>
                 )}
@@ -1549,16 +1568,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   })}
                   disabled={!metaCuotas || cuotas.length === 0}
                   title="Estado de cuenta: qué está pagado y qué falta, cuota por cuota (PDF)"
-                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className={BTN_BARRA}
                 >
-                  Estado de cuenta
+                  <ListChecks className="h-3.5 w-3.5 text-muted-foreground" /> Estado de cuenta
                 </button>
                 {/* El pagaré: mientras hay deuda que respaldar (incluido el incobrable, que es el
                     que va a legales). */}
                 {(esCreditoVivo(credito.estado) || esCreditoIncobrable(credito.estado)) && (
                   <PagareBoton
                     creditoId={credito.id}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                    className={BTN_BARRA}
                   />
                 )}
               </div>
@@ -1571,9 +1590,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 el fondo. Son de admin, y siguen siendo secundarias —bordeadas, el color lo
                 pone recién el hover según lo que hace cada una—.
               */}
-              {esAdmin && (role === "admin" || puedeEliminar) && (
-                <span className="mx-0.5 hidden h-4 w-px bg-border sm:inline-block" aria-hidden />
-              )}
+              <div className={GRUPO_BARRA} role="group" aria-label="Administración del crédito">
               {esAdmin && role === "admin" && esCreditoVivo(credito.estado) && (
                 <button
                   onClick={sinPlegar(() => { setIncobrableMotivo(""); setIncobrableOpen(true); })}
@@ -1583,7 +1600,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       ? `${credito.incobrable_bloqueo.motivo} ${credito.incobrable_bloqueo.sugerencia}`.trim()
                       : "Sacar la deuda de la cartera y darla por perdida"
                   }
-                  className={`${BTN_BARRA} shrink-0 hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-muted-foreground`}
+                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive disabled:cursor-not-allowed disabled:hover:!bg-transparent disabled:hover:!text-foreground/80`}
                 >
                   <Ban className="h-3.5 w-3.5" /> Dar por incobrable
                 </button>
@@ -1593,7 +1610,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   onClick={sinPlegar(() => handleIncobrable(false))}
                   disabled={incobrableBusy}
                   title="Sacarlo de incobrables y volver a gestionarlo como cualquier crédito"
-                  className={`${BTN_BARRA} shrink-0 hover:border-success/40 hover:bg-success/10 hover:text-success`}
+                  className={`${BTN_BARRA} hover:!bg-success/10 hover:!text-success`}
                 >
                   {incobrableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Devolver al circuito
                 </button>
@@ -1602,7 +1619,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <button
                   onClick={sinPlegar(() => { setAnularCreditoMotivo(""); setAccionPagos("devolver"); setAnularCreditoOpen(true); })}
                   title="Deshacer el crédito: revierte el desembolso en la caja y queda el motivo registrado"
-                  className={`${BTN_BARRA} shrink-0 hover:border-warning/40 hover:bg-warning/10 hover:text-warning`}
+                  className={`${BTN_BARRA} hover:!bg-warning/10 hover:!text-warning`}
                 >
                   <Ban className="h-3.5 w-3.5" /> Anular crédito
                 </button>
@@ -1612,11 +1629,12 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   onClick={sinPlegar(handleEliminarCredito)}
                   disabled={eliminarBusy}
                   title="Borrarlo del sistema. Solo se puede si nunca movió plata."
-                  className={`${BTN_BARRA} shrink-0 hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`}
+                  className={`${BTN_BARRA} hover:!bg-destructive/10 hover:!text-destructive`}
                 >
                   {eliminarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Eliminar
                 </button>
               )}
+              </div>
               {/*
                 🔴 NO SE COBRA DESDE ACÁ. Lleva a la terminal con este cliente ya cargado.
 
@@ -1644,7 +1662,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <Tooltip texto="Armar un plan de pago sobre lo vencido (el crédito sigue vivo)">
                   <Link
                     href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                    className={`${BTN_OPERACION} bg-primary/15 text-primary ring-primary/35 hover:bg-primary/25`}
                   >
                     <Handshake className="h-3.5 w-3.5" /> Acordar
                   </Link>
@@ -1661,7 +1679,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <Tooltip texto={`${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`}>
                     <Link
                       href={`/cobranza/acuerdos/nuevo?credito=${credito.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className={`${BTN_OPERACION} bg-muted/40 text-muted-foreground ring-border hover:bg-muted hover:text-foreground`}
                     >
                       <Handshake className="h-3.5 w-3.5" /> Acordar
                     </Link>
@@ -1677,7 +1695,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                         : `${bloqueoAcuerdo.motivo} ${bloqueoAcuerdo.sugerencia}`
                     }
                   >
-                    <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
+                    <span className="inline-flex shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted/30 px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 ring-1 ring-inset ring-border">
                       <Handshake className="h-3.5 w-3.5" /> Acordar
                     </span>
                   </Tooltip>
@@ -1693,7 +1711,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 >
                   <button
                     onClick={() => onRefinanciar(credito)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20"
+                    className={`${BTN_OPERACION} bg-warning/15 text-warning ring-warning/40 hover:bg-warning/25`}
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
                     {credito.es_refinanciacion && <span className="text-warning/70">*</span>}
@@ -1710,7 +1728,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               */}
               {bloqueoRefi && esCreditoVivo(credito.estado) && diasMora > 0 && onRefinanciar && (
                 <Tooltip texto={`${bloqueoRefi.motivo} ${bloqueoRefi.sugerencia}`}>
-                  <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted/20 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
+                  <span className="inline-flex shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted/30 px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 ring-1 ring-inset ring-border">
                     <RefreshCw className="h-3.5 w-3.5" /> Refinanciar
                   </span>
                 </Tooltip>
@@ -1719,7 +1737,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <Tooltip texto="Ir a la terminal de cobro con este cliente cargado">
                   <Link
                     href={`/pagos?cliente=${credito.cliente_id}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success transition-colors hover:bg-success/20"
+                    className={`${BTN_OPERACION} bg-success text-success-foreground ring-success/60 hover:bg-success/90`}
                   >
                     <Wallet className="h-3.5 w-3.5" /> Cobrar
                   </Link>

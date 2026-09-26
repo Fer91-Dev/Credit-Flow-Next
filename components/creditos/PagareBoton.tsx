@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileSignature } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
@@ -75,7 +75,7 @@ export function PagareBoton({ creditoId, className }: { creditoId: string; class
         title="Pagaré a la vista e información del art. 36 para imprimir y firmar (PDF)"
         className={className}
       >
-        {busy && <Loader2 className="h-3 w-3 animate-spin" />} Pagaré
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5 text-muted-foreground" />} Pagaré
       </button>
 
       <Dialog open={!!faltantes} onOpenChange={(o) => { if (!o) setFaltantes(null); }}>
