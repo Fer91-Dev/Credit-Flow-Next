@@ -22,6 +22,12 @@ export interface FilaPlanPrint {
   gastos: number;
   /** Solo en refinanciaciones con honorarios de gestión; 0 en el resto. */
   honorarios?: number;
+  /**
+   * Interés de un ACUERDO de pago que quedó sumado a esta cuota (`cuotas.capitalizado`).
+   * Aparece después de otorgar: el plan se reconstruye con los parámetros del otorgamiento y
+   * no lo trae, así que se pasa aparte, desde las cuotas guardadas.
+   */
+  capitalizado?: number;
   cuotaTotal: number;
   saldo: number;
 }
@@ -131,7 +137,9 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const hoy = formatFecha(new Date());
   const esOp = vista === "operador";
   const { capital, hayCargos } = data;
-  const totalFinal = hayCargos ? data.totales.cuotaTotal : data.totales.cuota;
+  // Con interés de acuerdo sumado, lo que se paga es la columna total aunque no haya cargos.
+  const tieneCap = data.cuotas.some((r) => (r.capitalizado ?? 0) > 0.004);
+  const totalFinal = hayCargos || tieneCap ? data.totales.cuotaTotal : data.totales.cuota;
   const convLabel = data.convencion === "mensual" ? "T.M." : data.convencion === "efectiva_anual" ? "T.E.A." : "T.N.A.";
   const freqLabel = data.freqLabelPlural.charAt(0).toUpperCase() + data.freqLabelPlural.slice(1);
   const seccionLabel = esOp ? "Cronograma de pagos" : "Su plan de cuotas";
@@ -141,6 +149,17 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   // si no, modo histórico (una sola columna "Cargos") cuando hayCargos.
   const cols = data.cargoCols ?? [];
   const discriminar = cols.length > 0;
+  /*
+    🔴 EL INTERÉS DE UN ACUERDO, EN SU PROPIA COLUMNA. Fernando (27/09/2026) sobre CRD-000041:
+    el PDF decía "Totales $429.488,72" y la pantalla $472.786,77. La diferencia eran los
+    $43.298,05 del acuerdo (roto) que quedaron sumados a las cuotas: el plan se reconstruye
+    desde el otorgamiento y no los veía. Ahora van discriminados y el "A pagar" es lo que se
+    cobra de verdad.
+  */
+  const capCol = esOp && data.cuotas.some((r) => (r.capitalizado ?? 0) > 0.004);
+  const totalCap = data.cuotas.reduce((s, r) => s + (r.capitalizado ?? 0), 0);
+  const conPagar = hayCargos || capCol;
+  const capHead = capCol ? '<th class="r cg">Int. acuerdo</th>' : "";
   const totalPorKey = (key: CargoCuotaCol["key"]) =>
     data.cuotas.reduce((s, r) => s + (r[key] ?? 0), 0);
 
@@ -148,11 +167,12 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
    * Clase de la columna que lleva LO QUE EL CLIENTE PAGA. Con cargos es la columna "A pagar";
    * sin cargos, la propia "Cuota" ya es todo lo que se abona y se resalta esa.
    */
-  const pgCuota = esOp && !hayCargos ? " pg" : "";
+  const pgCuota = esOp && !conPagar ? " pg" : "";
 
   const cargosHead = discriminar
-    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + '<th class="r pg">A pagar</th>'
-    : (hayCargos ? '<th class="r">Cargos</th><th class="r pg">A pagar</th>' : '');
+    ? cols.map(c => `<th class="r cg">${c.label}</th>`).join('') + capHead + '<th class="r pg">A pagar</th>'
+    : hayCargos ? '<th class="r">Cargos</th>' + capHead + '<th class="r pg">A pagar</th>'
+    : capCol ? capHead + '<th class="r pg">A pagar</th>' : '';
   const headCols = esOp
     ? `<th class="c">#</th><th>Vencimiento</th><th class="r${pgCuota}">Cuota</th><th class="r">Interés</th><th class="r">Capital</th>${cargosHead}<th class="r">Saldo</th>`
     : `<th class="c">N°</th><th>Vencimiento</th><th class="r">A pagar</th>`;
@@ -160,17 +180,23 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
   const rows = data.cuotas.map((r, idx) => {
     const ev = idx % 2 === 0 ? ' class="ev"' : '';
     if (esOp) {
+      const capCell = capCol ? `<td class="r mn cg">${formatMonto(r.capitalizado ?? 0)}</td>` : "";
+      const pagar = `<td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>`;
       const cargosCells = discriminar
-        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key])}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>`
-        : (hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos + (r.honorarios ?? 0))}</td><td class="r mn fw pg">${formatMonto(r.cuotaTotal)}</td>` : '');
+        ? cols.map(c => `<td class="r mn cg">${formatMonto(r[c.key] ?? 0)}</td>`).join('') + capCell + pagar
+        : hayCargos ? `<td class="r mn">${formatMonto(r.iva + r.seguro + r.gastos + (r.honorarios ?? 0))}</td>` + capCell + pagar
+        : capCol ? capCell + pagar : '';
       return `<tr${ev}><td class="nm c">${r.nro}</td><td>${formatFecha(r.fecha)}</td><td class="r mn${pgCuota}">${formatMonto(r.cuota)}</td><td class="r mn">${formatMonto(r.interes)}</td><td class="r mn">${formatMonto(r.capital)}</td>${cargosCells}<td class="r mn">${formatMonto(r.saldo)}</td></tr>`;
     }
     return `<tr${ev}><td class="nm c">${r.nro} de ${nCuotas}</td><td>${formatFecha(r.fecha)}</td><td class="r mn fw">${formatMonto(r.cuotaTotal)}</td></tr>`;
   }).join('');
 
+  const capTot = capCol ? `<td class="r mn cg">${formatMonto(totalCap)}</td>` : "";
+  const pagarTot = `<td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>`;
   const cargosTotalCells = discriminar
-    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + `<td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>`
-    : (hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td><td class="r mn fw pg">${formatMonto(data.totales.cuotaTotal)}</td>` : '');
+    ? cols.map(c => `<td class="r mn cg">${formatMonto(totalPorKey(c.key))}</td>`).join('') + capTot + pagarTot
+    : hayCargos ? `<td class="r mn">${formatMonto(data.totales.cargos)}</td>` + capTot + pagarTot
+    : capCol ? capTot + pagarTot : '';
   /**
    * La comisión se cobra al firmar: no es una cuota y no puede sumarse a la columna (rompería
    * la aritmética de la tabla). Va como renglón aparte, y recién después el total de verdad.
@@ -181,8 +207,8 @@ export function imprimirPlanPagos(data: PlanPrintData, vista: VistaPlan): void {
    * cuando hay cargos, y "Cuota" cuando no los hay (ahí la cuota ya es el total). Si cayera
    * al final quedaría bajo "Saldo", que es otra cosa.
    */
-  const pieAntes = esOp ? (discriminar ? 5 + cols.length : hayCargos ? 6 : 2) : 2;
-  const pieDespues = esOp ? (hayCargos ? 1 : 3) : 0;
+  const pieAntes = esOp ? (discriminar ? 5 + cols.length : hayCargos ? 6 : capCol ? 5 : 2) + (capCol ? 1 : 0) : 2;
+  const pieDespues = esOp ? (conPagar ? 1 : 3) : 0;
   const celdasVacias = pieDespues > 0 ? `<td colspan="${pieDespues}"></td>` : "";
   const filaPie = (label: string, monto: number, fuerte: boolean) =>
     `<tr><td colspan="${pieAntes}" class="fl">${label}</td><td class="r mn pg${fuerte ? " fw" : ""}">${formatMonto(monto)}</td>${celdasVacias}</tr>`;

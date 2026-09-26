@@ -79,7 +79,7 @@ export async function datosPagare(
         },
       },
       cuotas: {
-        select: { nro: true, fecha_vencimiento: true, cuota_total: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true },
+        select: { nro: true, fecha_vencimiento: true, cuota_total: true, interes: true, iva: true, seguro: true, gastos: true, honorarios: true, capitalizado: true },
         orderBy: { nro: "asc" },
       },
     },
@@ -151,7 +151,18 @@ export async function datosPagare(
   const comisionReal = esProducto && !plan.comisionFinanciada ? 0 : plan.comision;
   const comisionAlFirmar = comisionReal > 0 && !plan.comisionFinanciada ? comisionReal : 0;
 
-  const cuotas = credito.cuotas.map((q) => ({ nro: q.nro, vencimiento: q.fecha_vencimiento, total: q.cuota_total }));
+  /*
+    🔴 LAS CUOTAS COMO SE FIRMARON, SIN LO QUE SE LES SUMÓ DESPUÉS.
+
+    Un acuerdo de pago suma su interés a las cuotas (`capitalizado`, y va dentro de `gastos`).
+    El pagaré está fechado el día del otorgamiento: si tomara las cuotas de hoy, la
+    reimpresión de CRD-000041 diría $472.786,77 cuando el cliente se obligó por $429.488,72
+    —los $43.298,05 de diferencia son del acuerdo de agosto—. Un título reimpreso tiene que
+    decir lo mismo que el firmado. Lo del acuerdo se reclama con el acuerdo.
+  */
+  const cuotas = credito.cuotas.map((q) => ({
+    nro: q.nro, vencimiento: q.fecha_vencimiento, total: round2(q.cuota_total - (q.capitalizado ?? 0)),
+  }));
   const filas = credito.cuotas;
   const suma = (f: (q: (typeof filas)[number]) => number) => round2(filas.reduce((s, q) => s + (f(q) ?? 0), 0));
   // El C.F.T. sobre lo que se COBRA (cuotas persistidas), no sobre el plan reconstruido.
@@ -194,7 +205,7 @@ export async function datosPagare(
       comisionFinanciada: plan.comisionFinanciada,
       iva: suma((q) => q.iva),
       seguro: suma((q) => q.seguro),
-      gastos: suma((q) => q.gastos),
+      gastos: suma((q) => q.gastos - (q.capitalizado ?? 0)),
       honorarios: suma((q) => q.honorarios),
     },
     frecuenciaLabel: frecuenciaLabel(frecuencia, catalogo).adjetivo,

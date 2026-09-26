@@ -92,8 +92,17 @@ export function PlanDeCuotas({
     columna de ceros es ruido, mientras que en una refinanciación el único cargo suele ser el
     honorario y nombrarlo vale más que decir "cargos".
   */
-  const hayCargos = cuotas.some((q) => cargosDeCuota(q) > 0);
-  const soloHonorarios = hayCargos && cuotas.every((q) => (q.iva ?? 0) + (q.seguro ?? 0) + (q.gastos ?? 0) === 0);
+  /*
+    🔴 EL INTERÉS DE UN ACUERDO NO ES UN CARGO. El acuerdo lo suma a `gastos` y lo marca en
+    `capitalizado` (lib/acuerdos.ts), así que `cargosDeCuota` lo trae adentro: en CRD-000041 la
+    columna "Cargos" mostraba $14.432,68 por cuota que eran interés del acuerdo roto. Va en su
+    propia columna, y "Cargos" queda con los cargos de verdad (Fernando, 27/09/2026).
+  */
+  const capDe = (q: (typeof cuotas)[number]) => q.capitalizado ?? 0;
+  const cargosPropios = (q: (typeof cuotas)[number]) => Math.max(0, cargosDeCuota(q) - capDe(q));
+  const hayCargos = cuotas.some((q) => cargosPropios(q) > 0.004);
+  const hayCap = cuotas.some((q) => capDe(q) > 0.004);
+  const soloHonorarios = hayCargos && cuotas.every((q) => (q.iva ?? 0) + (q.seguro ?? 0) + ((q.gastos ?? 0) - capDe(q)) < 0.005);
   const rotuloCargos = soloHonorarios ? "Honorarios" : "Cargos";
 
   const moraTotal = cuotas.reduce((s, q) => s + moraDevengadaDeCuota(q), 0);
@@ -211,6 +220,7 @@ export function PlanDeCuotas({
                 { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 ...(hayCargos ? [{ t: rotuloCargos, op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
+                ...(hayCap ? [{ t: "Int. acuerdo", op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
                 { t: "Mora", op: "+", a: "text-right" },
                 // El número del recibo es un dato que se BUSCA —el cliente llama diciendo
                 // "tengo el REC-000006"—, no un adorno del importe: va en su columna.
@@ -332,7 +342,15 @@ export function PlanDeCuotas({
                       className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground lg:table-cell`}
                       title={soloHonorarios ? "Honorarios por gestión de cobranza, prorrateados en el plan" : "IVA, seguro, gastos y honorarios de esta cuota"}
                     >
-                      ${n2(cargosDeCuota(q))}
+                      ${n2(cargosPropios(q))}
+                    </td>
+                  )}
+                  {hayCap && (
+                    <td
+                      className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground lg:table-cell`}
+                      title="Interés de un acuerdo de pago, sumado a esta cuota"
+                    >
+                      ${n2(capDe(q))}
                     </td>
                   )}
 
@@ -597,7 +615,12 @@ export function PlanDeCuotas({
               */}
               {hayCargos && (
                 <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground lg:table-cell`}>
-                  ${n2(cuotas.reduce((s, q) => s + cargosDeCuota(q), 0))}
+                  ${n2(cuotas.reduce((s, q) => s + cargosPropios(q), 0))}
+                </td>
+              )}
+              {hayCap && (
+                <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground lg:table-cell`}>
+                  ${n2(capitalizadoTotal)}
                 </td>
               )}
               {/*

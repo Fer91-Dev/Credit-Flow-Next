@@ -234,8 +234,19 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   }, 0);
   const capitalVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.capital - q.pagado_capital), 0);
   const interesVencido = cuotasVencidasArr.reduce((a, q) => a + Math.max(0, q.interes - (q.pagado_interes ?? 0)), 0);
-  const cargosVencidos = cuotasVencidasArr.reduce(
-    (a, q) => a + Math.max(0, cargosDeCuota(q) - (q.pagado_cargos ?? 0)), 0);
+  /*
+    El interés de un acuerdo viaja dentro de los cargos de la cuota (`gastos`, marcado en
+    `capitalizado`). Se separa para que "Cargos" no diga que es cargo lo que es interés del
+    acuerdo (CRD-000041, 27/09/2026). Lo cobrado como cargos cubre primero los cargos propios.
+  */
+  const pendienteCargosDe = (q: CuotaPersistida) => Math.max(0, cargosDeCuota(q) - (q.pagado_cargos ?? 0));
+  const acuerdoPendienteDe = (q: CuotaPersistida) => {
+    const cap = q.capitalizado ?? 0;
+    const propios = Math.max(0, cargosDeCuota(q) - cap);
+    return Math.max(0, cap - Math.max(0, (q.pagado_cargos ?? 0) - propios));
+  };
+  const interesAcuerdoVencido = cuotasVencidasArr.reduce((a, q) => a + acuerdoPendienteDe(q), 0);
+  const cargosVencidos = cuotasVencidasArr.reduce((a, q) => a + pendienteCargosDe(q) - acuerdoPendienteDe(q), 0);
   /** La primera cuota sin saldar: es la que el operador va a cobrar. */
   /* Misma regla: una cuota trasladada no es "la próxima a pagar", ya no se debe. */
   const proximaCuota = cuotas.find(cuotaViva) ?? null;
@@ -554,6 +565,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const imprimirPlan = (vista: "cliente" | "operador") => {
     const a = amortizacion;
     if (!a) return;
+    /*
+      El interés de un acuerdo que quedó sumado a las cuotas (CRD-000041: $43.298,05) no está
+      en el plan reconstruido, que parte de los parámetros del otorgamiento. Sale de las
+      cuotas GUARDADAS —las que se cobran— para que el papel diga lo mismo que la pantalla.
+    */
+    const capDe = new Map(cuotas.map((q) => [q.nro, q.capitalizado ?? 0]));
+    const totalCap = cuotas.reduce((s, q) => s + (q.capitalizado ?? 0), 0);
     imprimirPlanPagos({
       // El papel que se lleva el cliente dice de QUÉ crédito es y DE QUIÉN.
       numeroCredito: formatCreditoNumero(credito.numero, credito.refinancia_a_numero),
@@ -598,7 +616,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       cuotas: a.cuotas.map((r) => ({
         nro: r.nro, fecha: r.fecha, cuota: r.cuota, interes: r.interes, capital: r.capital,
         iva: r.iva, seguro: r.seguro, gastos: r.gastos, honorarios: r.honorarios,
-        cuotaTotal: r.cuotaTotal, saldo: r.saldo,
+        capitalizado: capDe.get(r.nro) ?? 0,
+        cuotaTotal: r.cuotaTotal + (capDe.get(r.nro) ?? 0), saldo: r.saldo,
       })),
       totales: {
         cuota: a.resumen.total_pagado,
@@ -612,7 +631,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
         // su propia línea abajo. Acá iba `total_con_cargos`, que ya la incluye, así que el
         // "Total a pagar" del PDF reimpreso la contaba dos veces y no coincidía con el que
         // se le había entregado al cliente al otorgar.
-        cuotaTotal: a.resumen.total_cuotas,
+        cuotaTotal: a.resumen.total_cuotas + totalCap,
       },
       // Solo si NO está financiada: financiada = ya viene adentro de las cuotas de la tabla.
       comisionUpfront: a.resumen.comision > 0 && !a.resumen.comision_financiada ? a.resumen.comision : 0,
@@ -1779,10 +1798,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <td className="px-4 py-1.5 font-sans text-muted-foreground">Interés</td>
                   <td className="px-4 py-1.5 text-right text-warning">${n2(interesVencido)}</td>
                 </tr>
-                {cargosVencidos > 0 && (
+                {cargosVencidos > 0.004 && (
                   <tr>
                     <td className="px-4 py-1.5 font-sans text-muted-foreground">Cargos</td>
                     <td className="px-4 py-1.5 text-right text-muted-foreground">${n2(cargosVencidos)}</td>
+                  </tr>
+                )}
+                {interesAcuerdoVencido > 0.004 && (
+                  <tr>
+                    <td className="px-4 py-1.5 font-sans text-muted-foreground">Interés del acuerdo</td>
+                    <td className="px-4 py-1.5 text-right text-warning">${n2(interesAcuerdoVencido)}</td>
                   </tr>
                 )}
                 {moraHoy > 0 && (
