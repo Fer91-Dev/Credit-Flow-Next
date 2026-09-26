@@ -173,8 +173,10 @@ export async function generarPagarePDF(d: DatosPagare): Promise<Uint8Array> {
   parrafo(t.cuerpo, { size: 11, interlinea: 18 });
   y -= 6;
   parrafo(t.lugarDePago, { size: 11, interlinea: 18 });
-  y -= 6;
-  parrafo(t.presentacion, { size: 9, interlinea: 14 });
+  if (t.presentacion) {
+    y -= 6;
+    parrafo(t.presentacion, { size: 9, interlinea: 14 });
+  }
 
   y = top - alto + 150;
   text("LIBRADOR", M, y + 26, bold, 8.5, MUTED);
@@ -192,6 +194,7 @@ export async function generarPagarePDF(d: DatosPagare): Promise<Uint8Array> {
   text("INFORMACIÓN AL CONSUMIDOR Y CONDICIONES DEL PRÉSTAMO", M, y, bold, 12);
   y -= 15;
   text(`Art. 36, Ley 24.240 · Crédito ${d.numero}`, M, y, font, 9, MUTED);
+  if (t.leyendaBcra) textRight(t.leyendaBcra, right, y, font, 8, MUTED);
   y -= 10;
   hr(y);
   y -= 20;

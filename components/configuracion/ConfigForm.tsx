@@ -489,11 +489,11 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   documentos: {
     titulo: "Documentos del crédito",
-    texto: "Lo que se imprime en la solicitud de préstamo y en el pagaré. Se define una vez y vale para todos los créditos; los datos de cada operación (monto, cuotas, tasas) los completa el sistema solo.",
+    texto: "Lo que se imprime en el pagaré y en las condiciones del préstamo (botón «Pagaré» en la ficha de cada crédito). Se define una vez y vale para todos los créditos; los datos de cada operación (monto, cuotas, tasas) los completa el sistema solo.",
     puntos: [
       "Jurisdicción: ante qué tribunales se reclama si hay que ir a juicio. Sin esto, el deudor puede discutir dónde se lo demanda.",
       "Punitorio mensual: el recargo por pagar tarde. En 0, atrasarse sale lo mismo que pagar a término.",
-      "Pagaré con monto: se imprime la cifra. Sin monto: se completa el día que se ejecuta, con la deuda actualizada a esa fecha.",
+      "Pagaré con monto: se imprime el total de las cuotas. En blanco: el importe queda vacío y las condiciones incluyen la autorización del cliente para completarlo, al ejecutarlo, con el saldo que deba a esa fecha (nunca por más).",
       "Ampliación a 5 años: es el plazo para presentar un pagaré a la vista. Sin la cláusula, el plazo es mucho más corto.",
       "Autorizada por el BCRA: solo si la financiera realmente lo está. Declararlo sin serlo es una infracción grave.",
     ],
@@ -2743,25 +2743,14 @@ export function ConfigForm() {
           {activeTab === "documentos" && (
           <Section
             title="Documentos del crédito"
-            desc="Lo que se imprime en la solicitud de préstamo y en el pagaré. Se define una vez; los datos de cada operación los completa el sistema."
+            desc="Lo que se imprime en el pagaré y en las condiciones del préstamo. Se define una vez; los datos de cada operación los completa el sistema."
             ayuda={AYUDA.documentos}
             onSave={() => save("documentos", { documentosConfig: docs } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "documentos"} saved={savedKey === "documentos"} dirty={isDirty("documentos")}
           >
             <div className="space-y-4">
-              {/* 🔴 Esta pestaña está construida y NO tiene consumidor todavía: no hay
-                  generador de pagaré. Sin este cartel, quien la complete espera un papel que
-                  el sistema no imprime, y lo lee como una función rota. Sacarlo el día que
-                  exista el documento (C1 en PENDIENTES.md). */}
-              <div className="rounded-lg border border-primary/30 bg-primary/[0.07] px-4 py-3">
-                <p className="text-xs leading-relaxed text-foreground">
-                  <span className="font-semibold">El documento todavía no se imprime.</span>{" "}
-                  Esta sección ya guarda tus condiciones y las va a usar el pagaré cuando esté
-                  listo. Mientras tanto, seguí usando el que usás hoy: lo que cargues acá queda
-                  guardado y no hay que volver a escribirlo.
-                </p>
-              </div>
-
+              {/* Ya tiene consumidor: el pagaré (botón "Pagaré" en la ficha de cada crédito)
+                  lee este bloque al generarse. El cartel "todavía no se imprime" se sacó. */}
               {/* Avisos de configuración que dejaría un documento débil. No bloquean:
                   puede haber razones para emitir así, pero que sea a sabiendas. */}
               {avisosDocs.length > 0 && (
@@ -2802,7 +2791,7 @@ export function ConfigForm() {
                 <Field label="Pagaré" hint="Cómo se emite">
                   <Select value={docs.modo_pagare} onChange={e => setDocs({ modo_pagare: e.target.value as DocumentosConfig["modo_pagare"] })}>
                     <option value="con_monto">Con monto impreso</option>
-                    <option value="sin_monto">Sin monto (se completa al ejecutarlo)</option>
+                    <option value="sin_monto">En blanco (se completa al ejecutarlo)</option>
                   </Select>
                 </Field>
                 <Field label="Caducidad de plazos" hint="Cuotas impagas que vuelven exigible el total (0 = sin caducidad)">

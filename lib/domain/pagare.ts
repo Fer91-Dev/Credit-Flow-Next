@@ -101,8 +101,10 @@ export interface TextoPagare {
   cuerpo: string;
   /** Dónde se paga. */
   lugarDePago: string;
-  /** Ampliación del plazo de presentación. */
-  presentacion: string;
+  /** Ampliación del plazo de presentación. null = sin la cláusula (rige el año de la ley). */
+  presentacion: string | null;
+  /** Leyenda del encabezado de las condiciones, si la entidad está autorizada por el BCRA. */
+  leyendaBcra: string | null;
   condiciones: ClausulaPagare[];
   /** Cierre del art. 36: "En San Miguel de Tucumán, a los 26 días del mes de septiembre de 2026". */
   cierre: string;
@@ -183,9 +185,14 @@ export function armarPagare(d: DatosPagare): TextoPagare {
   const lugarDePago =
     `Pagadero en ${d.acreedor.domicilio}${d.acreedor.localidad ? `, de la ciudad de ${d.acreedor.localidad}` : ""}` +
     `${d.acreedor.provincia ? `, Provincia de ${d.acreedor.provincia}` : ""}.`;
-  const presentacion =
-    `Conforme al art. 36 del Dec. Ley 5965/63, se amplía a ${docs.anios_presentacion} ` +
-    `${docs.anios_presentacion === 1 ? "año" : "años"} desde su libramiento el plazo para presentarlo al pago.`;
+  /*
+    Sin la ampliación rige el plazo de la ley (un año desde el libramiento): no hay nada que
+    declarar. Imprimir "se amplía a 1 año" sería una cláusula que no amplía nada.
+  */
+  const presentacion = docs.anios_presentacion > 1
+    ? `Conforme al art. 36 del Dec. Ley 5965/63, se amplía a ${docs.anios_presentacion} años desde su ` +
+      "libramiento el plazo para presentarlo al pago."
+    : null;
 
   // ── Información del art. 36 de la Ley 24.240 ───────────────────────────
   const c: ClausulaPagare[] = [];
@@ -303,9 +310,21 @@ export function armarPagare(d: DatosPagare): TextoPagare {
 
   c.push({
     titulo: "Pagaré",
-    texto:
-      `En garantía de este crédito el deudor libra un pagaré a la vista${conMonto ? ` por ${pesos(total)}` : ""}. ` +
-      "El acreedor solo podrá reclamar por él el saldo que el deudor no haya pagado, con los intereses y punitorios aquí pactados.",
+    texto: conMonto
+      ? `En garantía de este crédito el deudor libra un pagaré a la vista por ${pesos(total)}. ` +
+        "El acreedor solo podrá reclamar por él el saldo que el deudor no haya pagado, con los intereses y punitorios aquí pactados."
+      /*
+        🔴 EN BLANCO, la autorización para completarlo tiene que estar ESCRITA y firmada. Un
+        pagaré librado sin monto se completa después (art. 11, Dec. Ley 5965/63); si el deudor
+        no autorizó por escrito cómo, puede impugnar lo que se puso. Acá queda el criterio:
+        el saldo impago según este contrato, a la fecha de presentación.
+      */
+      : "En garantía de este crédito el deudor libra un pagaré a la vista con el importe en blanco, y autoriza " +
+        "expresamente al acreedor a completarlo, al presentarlo al cobro, por el saldo que adeude a esa fecha según " +
+        "este contrato: las cuotas impagas, con sus intereses y los punitorios aquí pactados" +
+        // Solo si la caducidad está pactada: sin ella no hay "total exigible" que invocar.
+        (docs.cuotas_caducidad > 0 ? ", y el total si operó la caducidad de plazos" : "") +
+        ". El pagaré no podrá completarse por un importe mayor.",
   });
 
   if (docs.actualiza_por_ipc) {
@@ -324,12 +343,6 @@ export function armarPagare(d: DatosPagare): TextoPagare {
     c.push({
       titulo: "Informes",
       texto: "El deudor autoriza al acreedor a informar su comportamiento de pago a bases de datos de antecedentes crediticios, conforme a la Ley 25.326.",
-    });
-  }
-  if (docs.autorizada_bcra) {
-    c.push({
-      titulo: "Entidad",
-      texto: "El acreedor es una entidad autorizada por el Banco Central de la República Argentina.",
     });
   }
   c.push({
@@ -361,6 +374,9 @@ export function armarPagare(d: DatosPagare): TextoPagare {
     cuerpo,
     lugarDePago,
     presentacion,
+    // Va en el encabezado, como dice Configuración → Documentos: es un dato de quién presta,
+    // no una condición del préstamo.
+    leyendaBcra: docs.autorizada_bcra ? "Entidad autorizada por el Banco Central de la República Argentina" : null,
     condiciones: c,
     cierre,
   };
