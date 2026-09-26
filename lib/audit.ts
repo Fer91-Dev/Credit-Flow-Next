@@ -30,7 +30,9 @@ export type AuditAccion =
    * no "cancelar" porque lo que hay que poder rastrear es la PLATA RESIGNADA — cuánto sugirió
    * el motor, cuánto se aceptó y quién firmó la diferencia.
    */
-  | "cerrar_incobrable";
+  | "cerrar_incobrable"
+  /** Cada descarga del pagaré: es un título ejecutable, hay que saber quién sacó cada copia. */
+  | "emitir_pagare";
 
 export interface AuditInput {
   tenantId: string;

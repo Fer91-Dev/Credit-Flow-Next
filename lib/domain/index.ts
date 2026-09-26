@@ -32,6 +32,7 @@ export * from "./recupero-oferta";
 export * from "./recupero-cierre";
 export * from "./contrato-requisitos";
 export * from "./documentos";
+export * from "./pagare";
 export * from "./password";
 export * from "./caja";
 export * from "./arqueo";

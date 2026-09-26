@@ -60,8 +60,8 @@ export function faltantesParaContrato(d: DatosParaContrato): FaltanteContrato[] 
   if (vacio(d.financiera.razon_social)) {
     faltan.push({
       campo: "razon_social",
-      detalle: "Falta la razón social de la financiera",
-      porque: "Es quien figura como acreedor. El nombre comercial no alcanza para un contrato.",
+      detalle: "Falta el titular de la financiera (razón social, o nombre y apellido si es una persona)",
+      porque: "Es a quien se le paga el pagaré. El nombre comercial no alcanza: tiene que ser una persona o una sociedad.",
       severidad: "bloqueante",
       donde: "Configuración → Datos de la financiera",
     });
@@ -69,9 +69,12 @@ export function faltantesParaContrato(d: DatosParaContrato): FaltanteContrato[] 
   if (vacio(d.financiera.cuit)) {
     faltan.push({
       campo: "cuit",
-      detalle: "Falta el CUIT de la financiera",
-      porque: "Identifica al acreedor ante la AFIP y ante un juez.",
-      severidad: "bloqueante",
+      detalle: "Falta el CUIT/CUIL o DNI del titular",
+      porque: "Identifica al acreedor sin ambigüedad. No es un requisito del pagaré, pero conviene que figure.",
+      // 🔴 ADVERTENCIA, no bloqueante: el pagaré no exige identificación fiscal del
+      // beneficiario (Dec. Ley 5965/63, art. 101) y muchas financieras chicas operan como
+      // persona física. Bloquearlo impedía emitir a un acreedor perfectamente válido.
+      severidad: "advertencia",
       donde: "Configuración → Datos de la financiera",
     });
   }

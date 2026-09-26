@@ -132,10 +132,12 @@ export function FinancieraForm() {
         <Field label="Nombre de fantasía" required hint="Cómo se muestra tu financiera en el sistema">
           <Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Créditos del Norte" />
         </Field>
-        <Field label="Razón social">
+        {/* El TITULAR es a quien se le paga el pagaré: una sociedad o, si la financiera opera
+            como persona, su nombre y apellido. */}
+        <Field label="Titular (razón social o nombre y apellido)" hint="A su nombre se emite el pagaré">
           <Input value={form.razon_social ?? ""} onChange={(e) => set("razon_social", e.target.value)} placeholder="Créditos del Norte S.A." />
         </Field>
-        <Field label="CUIT" hint="11 dígitos">
+        <Field label="CUIT / CUIL" hint="11 dígitos">
           <CuitInput value={form.cuit ?? ""} onValueChange={(v) => set("cuit", v)} />
         </Field>
         <Field label="Teléfono" hint="10 dígitos">

@@ -15,6 +15,7 @@ import { imprimirPlanPagos } from "@/lib/plan-print";
 import { AnularPagoDialog } from "@/components/pagos/AnularPagoDialog";
 import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
+import { PagareBoton } from "./PagareBoton";
 import { Emoji } from "@/components/ui/Emoji";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { PlanDeCuotas } from "./PlanDeCuotas";
@@ -1513,6 +1514,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 >
                   Estado de cuenta
                 </button>
+                {/* El pagaré: solo mientras hay deuda que respaldar. */}
+                {esCreditoVivo(credito.estado) && (
+                  <PagareBoton
+                    creditoId={credito.id}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  />
+                )}
               </div>
 
               {/*
