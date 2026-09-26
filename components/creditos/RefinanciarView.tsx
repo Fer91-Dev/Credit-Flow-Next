@@ -112,7 +112,13 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
    * preferencia que hay que acordarse de mover, es el estado real de la pantalla. Dejarlo
    * encendido mientras los valores ya son otros sería mentirle al que lo mira.
    */
-  const [usarPropuesta, setUsarPropuesta] = useState(true);
+  /*
+   * 🔴 ARRANCA APAGADO (Fernando, 27/09/2026): «lo que propone el sistema siempre esté
+   * apagado; se enciende cuando el operador lo necesite». La propuesta es una ayuda que se
+   * pide, no el punto de partida: con el switch apagado los campos arrancan en las condiciones
+   * del crédito original y el operador arma la refinanciación.
+   */
+  const [usarPropuesta, setUsarPropuesta] = useState(false);
   /** Que la propuesta ya se aplicó al menos una vez, para no repetirla en cada revalidación. */
   const propuestaAplicada = useRef(false);
   const [honPct, setHonPct] = useState("");
@@ -151,7 +157,9 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
       Si el motor no encuentra un plan (manda al acuerdo), se cae a la propuesta vieja para que
       la pantalla igual abra con algo coherente.
     */
-    const mejor = preview.sugerencia?.mejor ?? null;
+    // Con el switch apagado (el arranque), la propuesta del motor NO se precarga: se parte de
+    // las condiciones del crédito original. Encenderlo aplica la propuesta entera.
+    const mejor = usarPropuesta ? preview.sugerencia?.mejor ?? null : null;
     setTasa((t) => (t === "" ? String(mejor ? mejor.tasaAnual : preview.sugerido.tasa) : t));
     /**
      * El plazo del crédito original puede no estar entre los que se admiten para refinanciar
