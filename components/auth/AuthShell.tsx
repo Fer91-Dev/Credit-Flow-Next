@@ -62,6 +62,9 @@ export function AuthShell({ left, children }: { left?: React.ReactNode; children
       <div className="relative flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-10 sm:px-8 lg:px-14 lg:py-12">
         {/* Fondo de marca solo en el celular (en escritorio la marca vive en su panel). */}
         <div aria-hidden className="absolute inset-0 lg:hidden" style={FONDO_MARCA} />
+        {/* Los dibujos de financiera del simulador, detrás de la tarjeta (Fernando, 27/09/2026):
+            el panel dejaba de ser un vacío. Misma clase `.fondo-finanzas`: se adapta al tema. */}
+        <div aria-hidden className="fondo-finanzas pointer-events-none absolute inset-0" />
         <div className="absolute right-4 top-4 z-20">
           <ThemeToggle />
         </div>
