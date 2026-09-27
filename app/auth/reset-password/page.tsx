@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
-import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthShell, BOTON_AUTH } from "@/components/auth/AuthShell";
 import { ReglasPassword } from "@/components/ui/field";
 import { passwordValida, MENSAJE_PASSWORD_INSEGURA } from "@/lib/domain";
 
@@ -98,8 +98,10 @@ export default function ResetPasswordPage() {
         </div>
       ) : (
         <>
-          <h1 className="text-xl font-semibold text-foreground">Nueva contraseña</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Creá una contraseña nueva para tu cuenta.</p>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Nueva contraseña</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">Creá una contraseña nueva para tu cuenta.</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
             <div className="space-y-1.5">
@@ -151,7 +153,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={estado === "guardando" || !passwordValida(password, identidad) || password !== confirm}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              className={BOTON_AUTH}
             >
               {estado === "guardando" ? (<><Loader2 className="h-4 w-4 animate-spin" /> Guardando…</>) : "Guardar contraseña"}
             </button>

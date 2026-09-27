@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Loader2, AlertCircle, MailCheck, ArrowLeft, Send } from "lucide-react";
-import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthShell, BOTON_AUTH, CAMPO_AUTH, ETIQUETA_AUTH, INPUT_AUTH } from "@/components/auth/AuthShell";
 
 export default function RecuperarPage() {
   const [email, setEmail] = useState("");
@@ -52,14 +52,14 @@ export default function RecuperarPage() {
         </div>
       ) : (
         <>
-          <h1 className="text-xl font-semibold text-foreground">Recuperar contraseña</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Ingresá el email asociado a tu cuenta</p>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Recuperar contraseña</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">Ingresá el email asociado a tu cuenta</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Correo electrónico
-              </label>
+            <div className={CAMPO_AUTH}>
+              <label htmlFor="email" className={ETIQUETA_AUTH}>Correo electrónico</label>
               <input
                 id="email"
                 type="email"
@@ -68,7 +68,7 @@ export default function RecuperarPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="usuario@ejemplo.com"
-                className="h-11 w-full rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/50 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
+                className={INPUT_AUTH}
               />
             </div>
 
@@ -82,7 +82,7 @@ export default function RecuperarPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+              className={BOTON_AUTH}
             >
               {loading ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, AlertCircle, LogIn } from "lucide-react";
-import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthShell, CAMPO_AUTH, ETIQUETA_AUTH, INPUT_AUTH, BOTON_AUTH } from "@/components/auth/AuthShell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -59,15 +59,15 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <h1 className="text-xl font-semibold text-foreground">Introduce tus credenciales</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Bienvenido de nuevo al panel de control</p>
+      <div className="text-center">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Bienvenido de nuevo</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Ingresá tus datos para continuar</p>
+      </div>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-4">
         {/* Usuario (acepta usuario o email) */}
-        <div className="space-y-1.5">
-          <label htmlFor="identifier" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            Usuario
-          </label>
+        <div className={CAMPO_AUTH}>
+          <label htmlFor="identifier" className={ETIQUETA_AUTH}>Usuario o email</label>
           <input
             id="identifier"
             type="text"
@@ -78,37 +78,33 @@ export default function LoginPage() {
             required
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="Tu usuario o email"
-            className="h-11 w-full rounded-lg border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground/50 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
+            placeholder="tu usuario o email"
+            className={INPUT_AUTH}
           />
         </div>
 
         {/* Contraseña */}
-        <div className="space-y-1.5">
-          <label htmlFor="password" className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            Contraseña
-          </label>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="h-11 w-full rounded-lg border border-border bg-input px-3 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/25"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-              tabIndex={-1}
-              aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
+        <div className={CAMPO_AUTH}>
+          <label htmlFor="password" className={ETIQUETA_AUTH}>Contraseña</label>
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className={`${INPUT_AUTH} pr-8`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+            tabIndex={-1}
+            aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
         </div>
 
         <div className="flex justify-end">
@@ -136,7 +132,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+          className={BOTON_AUTH}
         >
           {loading ? (
             <>
