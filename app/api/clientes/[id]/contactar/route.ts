@@ -213,11 +213,20 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
       if (!res.ok) return errorResponse(res.error ?? "No se pudo enviar el WhatsApp", "ENVIO_FALLIDO", 502);
       enviado = { metodo: "api" };
+    } else if (body.confirmar_envio !== true) {
+      /*
+        🔴 Sin API, el envío es MANUAL y se registra en DOS pasos (lib/contacto-whatsapp.ts).
+        Este primer pedido solo devuelve el link: abrir el chat no es haber escrito, y
+        registrarlo acá sacaba al cliente de la agenda aunque el mensaje nunca saliera
+        (Fernando, 27/09/2026). Nada se graba hasta que el operador confirma que lo envió.
+      */
+      return successResponse({
+        canal, motivo, metodo: "manual", link: linkWhatsapp(cliente.telefono, texto),
+        mensaje: texto, pendiente_confirmacion: true,
+      });
     } else {
-      // Sin API, el envío es MANUAL: se devuelve el link wa.me y lo abre el operador. Se
-      // registra igual — el contacto ocurrió, lo haya mandado un bot o una persona, y la
-      // ficha tiene que poder contarlo.
-      enviado = { metodo: "manual", link: linkWhatsapp(cliente.telefono, texto) };
+      // Segundo paso: el operador confirmó que lo envió. Ahora sí se registra.
+      enviado = { metodo: "manual" };
     }
   } else if (canal === "sms") {
     // Fernando (18/09/2026): al lado del WhatsApp de cada renglón de cobranza, un SMS. Mismo
@@ -257,6 +266,14 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         tipo: tipoGestionDeCanal(canal),
         resultado: "contactado",
         nota: `[CONTACTO INDIVIDUAL] ${texto}`.slice(0, 2000),
+        /*
+          🔴 QUIÉN contactó. Esta ruta no lo guardaba (la de gestiones sí), así que los
+          WhatsApp y SMS desde la agenda no tenían autor: el conteo de contactos por agente
+          del tablero no los habría visto.
+        */
+        gestionado_por: ctx.userId,
+        gestionado_por_nombre: ctx.nombre?.trim() || ctx.email || null,
+        gestionado_por_vendedor: ctx.vendedorId ?? null,
         // Lo disparó una persona desde la ficha: cuenta para la efectividad de cobranza,
         // a diferencia de los envíos de campaña y las alertas del cron.
         automatico: false,

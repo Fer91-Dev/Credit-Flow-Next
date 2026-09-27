@@ -34,6 +34,7 @@ import { ModalHeader, MODAL_CONTENT_WIDE, SIN_CIERRE_ACCIDENTAL } from "@/compon
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
+import { contactarCliente } from "@/lib/contacto-whatsapp";
 import { esCreditoVivo, contactoBloqueado, severidadMora, normalizarTelefonoAR, acuerdoCubreElAtraso } from "@/lib/domain";
 
 
@@ -316,6 +317,7 @@ export function CobranzaTable({ role }: { role: Role }) {
     if (success) {
       mutateAcciones();
       globalMutate("/api/cobranza/agenda"); // la agenda del día depende de las gestiones
+      globalMutate("/api/cobranza/contactados");
     }
   };
 
@@ -450,17 +452,15 @@ export function CobranzaTable({ role }: { role: Role }) {
     setReclamando(c.id);
     const etiqueta = canal === "sms" ? "el SMS" : "el WhatsApp";
     try {
-      const res = await fetch(`/api/clientes/${c.cliente_id}/contactar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // El crédito ES la fila: sin mandarlo, el servidor armaba el mensaje con todos los
-        // créditos del cliente y podía terminar hablando de otro.
-        body: JSON.stringify({ canal, motivo: "mora", credito_id: c.id }),
+      // El crédito ES la fila: sin mandarlo, el servidor armaba el mensaje con todos los
+      // créditos del cliente y podía terminar hablando de otro.
+      const r = await contactarCliente({
+        clienteId: c.cliente_id, body: { canal, motivo: "mora", credito_id: c.id },
+        nombre: nombreCompleto(c.cliente), confirm,
       });
-      const json = await res.json();
-      if (!json.ok) { toast.error(json.error || `No se pudo mandar ${etiqueta}`); return; }
-      if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp preparado y registrado en la ficha");
+      if (!r.ok) { toast.error(r.error || `No se pudo mandar ${etiqueta}`); return; }
+      if (!r.registrado) return; // abrió WhatsApp y no lo envió: no cuenta como contacto
+      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp registrado en la ficha");
       // El contacto ES una gestión: la lista de gestiones y la cola del día lo reflejan.
       mutateAcciones();
       globalMutate("/api/cobranza/agenda");

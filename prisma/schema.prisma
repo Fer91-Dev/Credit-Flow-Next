@@ -1145,6 +1145,8 @@ model acciones_cobranza {
   @@index([tenant_id, credito_id])
   @@index([tenant_id, proximo_contacto])
   @@index([tenant_id, promesa_estado])
+  /// "Contactados hoy" y el conteo por agente del tablero filtran por fecha (migración 019).
+  @@index([tenant_id, created_at])
 }
 
 /**

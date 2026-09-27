@@ -2481,6 +2481,33 @@ export function useAlertaCobranza() {
   return { alerta: data, mutate };
 }
 
+/** Un contacto del día (gestión humana), con quién lo hizo. */
+export interface ContactoDelDia {
+  id: string;
+  fecha: string;
+  tipo: string;
+  resultado: string;
+  promesa_monto: number | null;
+  agente: string;
+  credito_id: string;
+  credito_numero: number | null;
+  credito_refinancia_a_numero: number | null;
+  cliente_id: string;
+  cliente: string;
+  telefono: string | null;
+}
+export interface ContactadosHoy {
+  items: ContactoDelDia[];
+  clientes_hoy: number;
+  gestiones_hoy: number;
+  /** Por agente: contactos de hoy (y clientes distintos) y del mes. Vendedor: solo él. */
+  agentes: { agente: string; hoy: number; clientes_hoy: number; mes: number }[];
+}
+export function useContactadosHoy() {
+  const { data, error, isLoading } = useSWR<ContactadosHoy>("/api/cobranza/contactados");
+  return { contactados: data, error, isLoading };
+}
+
 export function useAgendaCobranza() {
   const { data, error, isLoading, mutate } = useSWR<AgendaCobranza>("/api/cobranza/agenda");
   return { agenda: data, error, isLoading, mutate };

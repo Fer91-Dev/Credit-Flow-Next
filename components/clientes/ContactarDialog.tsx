@@ -8,6 +8,8 @@ import { ModalHeader, FieldLabel, Segmented, FormActions } from "@/components/ui
 import { Input } from "@/components/ui/field";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
+import { contactarCliente } from "@/lib/contacto-whatsapp";
 import { formatFecha, formatMonto } from "@/lib/utils";
 import { riesgoEnvioMeta, CATEGORIA_META_LABEL, MOTIVO_LABEL, type CategoriaMeta } from "@/lib/domain";
 
@@ -78,6 +80,7 @@ export function ContactarDialog({ clienteId, onClose }: { clienteId: string | nu
 
 function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { data, isLoading } = useSWR<PreviewContacto>(`/api/clientes/${clienteId}/contactar`);
   const [canal, setCanal] = useState<Canal>("whatsapp");
   const [motivo, setMotivo] = useState<Motivo>("mora");
@@ -158,19 +161,17 @@ function Form({ clienteId, onClose }: { clienteId: string; onClose: () => void }
     setEnviando(true);
     setError(null);
     try {
-      const res = await fetch(`/api/clientes/${clienteId}/contactar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // `plantilla_meta_id` manda: si va, el server arma el cuerpo con la plantilla
-        // guardada e ignora `mensaje` (una plantilla aprobada no se edita).
-        body: JSON.stringify({ canal, motivo, mensaje: texto, asunto, plantilla_meta_id: metaId || null }),
+      // `plantilla_meta_id` manda: si va, el server arma el cuerpo con la plantilla
+      // guardada e ignora `mensaje` (una plantilla aprobada no se edita).
+      // Sin API de Meta, WhatsApp sale por wa.me y se registra recién cuando el operador
+      // confirma que lo envió (lib/contacto-whatsapp.ts).
+      const r = await contactarCliente({
+        clienteId, body: { canal, motivo, mensaje: texto, asunto, plantilla_meta_id: metaId || null },
+        nombre: data?.cliente.nombre ?? "el cliente", confirm,
       });
-      const json = await res.json();
-      if (!json.ok) { setError(json.error || "No se pudo enviar"); setEnviando(false); return; }
-      // Sin API de Meta, WhatsApp sale por wa.me: el server ya registró el contacto y
-      // devuelve el link para que lo abra el operador.
-      if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success(canal === "email" ? "Email enviado" : canal === "sms" ? "SMS enviado" : "WhatsApp preparado");
+      if (!r.ok) { setError(r.error || "No se pudo enviar"); setEnviando(false); return; }
+      if (!r.registrado) { setEnviando(false); return; }
+      toast.success(canal === "email" ? "Email enviado" : canal === "sms" ? "SMS enviado" : "WhatsApp registrado");
       onClose();
     } catch {
       setError("No se pudo enviar el mensaje");

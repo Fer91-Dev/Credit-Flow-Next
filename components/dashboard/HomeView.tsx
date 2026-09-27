@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Role } from "@prisma/client";
 import { CalendarDays, MapPin, UserCog, Target, Trophy, Users2, AlertTriangle, Percent, ShieldCheck, Sparkles, PhoneCall } from "lucide-react";
-import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
+import { useZonas, useVendedores, useDashboard, useMiPerfilVendedor, useMisLogros, useReporteCobranza, useMisLiquidaciones, useContactadosHoy, type DashboardFiltros, type VendedorRendimiento, type MiPerfilVendedor } from "@/lib/swr";
 import { TIPOS_CREDITO_COMISION } from "@/lib/domain";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
@@ -135,6 +135,7 @@ export function HomeView({ role }: { role: Role }) {
 
       {/* ── 5 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
       {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
+      {esAdmin && <ContactosPorAgente />}
       {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
       {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
       {!esAdmin && <MiEfectividadCobranza />}
@@ -234,6 +235,49 @@ function FiltrosHome({
  * Tabla de rendimiento por vendedor (solo admin): créditos otorgados, cartera y
  * morosidad de la cartera de cada vendedor (según la mora de sus clientes).
  */
+/**
+ * CONTACTOS POR AGENTE, hoy y en el mes. Fernando (27/09/2026): «que se muestre en el tablero
+ * general, para que el administrador vea qué agente lleva mayor número de contactos con los
+ * morosos». Sale de `/api/cobranza/contactados` —la misma fuente que "Contactados hoy" de la
+ * agenda—: solo gestiones hechas por una persona, con su autor. Ordenado por los de hoy.
+ */
+function ContactosPorAgente() {
+  const { contactados } = useContactadosHoy();
+  const filas = contactados?.agentes ?? [];
+  if (filas.length === 0) return null;
+  const max = Math.max(1, ...filas.map((f) => f.hoy));
+  return (
+    <div className="group rounded-xl bg-card border border-border p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <IconBadge emoji="telephone" accent="success" hoverable />
+          <h3 className="text-sm font-semibold text-foreground">Contactos por agente</h3>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          hoy <span className="font-semibold text-foreground">{contactados!.clientes_hoy}</span> clientes · {contactados!.gestiones_hoy} gestiones
+        </p>
+      </div>
+      <div className="space-y-3">
+        {filas.map((f, i) => (
+          <div key={`${f.agente}-${i}`} className="animate-entrada space-y-1.5" style={{ animationDelay: `${i * 80}ms` }}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="text-sm font-medium text-foreground">{f.agente}</span>
+              <span className="text-xs text-muted-foreground">
+                <span className="font-mono text-sm font-bold tabular-nums text-success">{f.hoy}</span> hoy
+                {f.clientes_hoy !== f.hoy && <> ({f.clientes_hoy} {f.clientes_hoy === 1 ? "cliente" : "clientes"})</>}
+                {" · "}<span className="font-mono tabular-nums text-foreground/80">{f.mes}</span> en el mes
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted/50">
+              <div className="h-full rounded-full bg-success transition-all duration-700" style={{ width: `${(f.hoy / max) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
   if (filas.length === 0) return null;
 

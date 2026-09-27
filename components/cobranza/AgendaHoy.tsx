@@ -5,10 +5,11 @@ import { severidadMora } from "@/lib/domain";
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Siren, MessageSquarePlus,
-  Phone, CheckCheck, AlertCircle, MessageSquareText, CalendarX, ShieldAlert, BellRing,
+  Phone, CheckCheck, AlertCircle, UserCheck, MessageSquareText, CalendarX, ShieldAlert, BellRing,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
-import { useAgendaCobranza, type AgendaItem, useTramosMora } from "@/lib/swr";
+import { useAgendaCobranza, type AgendaItem, useTramosMora, useContactadosHoy } from "@/lib/swr";
+import { ContactadosHoyLista } from "./ContactadosHoy";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { Nota } from "@/components/ui/Nota";
 import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
@@ -18,6 +19,7 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
+import { contactarCliente } from "@/lib/contacto-whatsapp";
 import { mutate as globalMutate } from "swr";
 
 type BucketMeta = {
@@ -48,6 +50,17 @@ const FRANJA: Record<BucketMeta["badge"], string> = {
   primary: "border-l-primary",
   muted: "border-l-border",
 };
+
+function TiraContactados({ n }: { n: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-success">
+      <UserCheck className="h-4 w-4 shrink-0" />
+      <h4 className="text-sm font-semibold text-foreground">Contactados hoy</h4>
+      <span className="rounded-full bg-background/40 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">{n}</span>
+      <span className="hidden text-xs text-muted-foreground sm:inline">Lo que ya se hizo hoy: cómo, a qué hora, quién y qué respondió.</span>
+    </div>
+  );
+}
 
 const ACCENT_RING: Record<BucketMeta["accent"], string> = {
   destructive: "text-destructive bg-destructive/10 border-destructive/20",
@@ -81,6 +94,10 @@ export function AgendaHoy({
    * a apretarlo muestra todo de nuevo.
    */
   const [filtro, setFiltro] = useState<AgendaItem["bucket"] | null>(null);
+  /** Mirando lo HECHO hoy en vez de lo que falta (el KPI "Contactados hoy"). */
+  const [verContactados, setVerContactados] = useState(false);
+  const { contactados } = useContactadosHoy();
+  const clientesHoy = contactados?.clientes_hoy ?? 0;
 
   const porBucket = useMemo(() => {
     const map = new Map<AgendaItem["bucket"], AgendaItem[]>();
@@ -112,6 +129,7 @@ export function AgendaHoy({
 
   if (total === 0) {
     return (
+      <div className="space-y-5">
       <div className="rounded-xl border border-dashed border-success/30 bg-success/5 p-12 flex flex-col items-center gap-4 text-center">
         <div className="h-16 w-16 rounded-2xl bg-success/10 border border-success/20 flex items-center justify-center">
           <CheckCheck className="h-7 w-7 text-success/60" />
@@ -127,6 +145,13 @@ export function AgendaHoy({
             </p>
           )}
         </div>
+      </div>
+      {clientesHoy > 0 && (
+        <section className="space-y-3">
+          <TiraContactados n={clientesHoy} />
+          <ContactadosHoyLista items={contactados!.items} onDetalle={onDetalle} />
+        </section>
+      )}
       </div>
     );
   }
@@ -182,7 +207,7 @@ export function AgendaHoy({
                  * Un grupo VACÍO no recibe onClick: no se apaga ni se atenúa, simplemente no
                  * es un botón. Filtrar por algo que no tiene nada no muestra nada.
                  */
-                onClick={n > 0 ? () => setFiltro((f) => (f === b.key ? null : b.key)) : undefined}
+                onClick={n > 0 ? () => { setVerContactados(false); setFiltro((f) => (f === b.key ? null : b.key)); } : undefined}
                 active={filtro === b.key}
               />
             );
@@ -201,11 +226,28 @@ export function AgendaHoy({
             sub={filtro ? "de este grupo · volver a toda la cola" : "cuotas impagas + punitorios"}
             onClick={filtro ? () => setFiltro(null) : undefined}
           />
+          {/* Lo HECHO hoy (Fernando, 27/09/2026): tocarlo muestra a quiénes ya se contactó. */}
+          <KpiCard
+            icon={UserCheck}
+            label="Contactados hoy"
+            value={String(clientesHoy)}
+            accent="success"
+            sub={contactados ? `${contactados.gestiones_hoy} ${contactados.gestiones_hoy === 1 ? "gestión" : "gestiones"}` : undefined}
+            onClick={clientesHoy > 0 ? () => { setFiltro(null); setVerContactados((v) => !v); } : undefined}
+            active={verContactados}
+          />
         </div>
       </div>
 
+      {verContactados && (
+        <section className="space-y-3">
+          <TiraContactados n={clientesHoy} />
+          <ContactadosHoyLista items={contactados?.items ?? []} onDetalle={onDetalle} />
+        </section>
+      )}
+
       {/* Grupos por bucket. Con un filtro puesto, solo se dibuja ese. */}
-      {BUCKETS.filter((b) => !filtro || b.key === filtro).map((b) => {
+      {!verContactados && BUCKETS.filter((b) => !filtro || b.key === filtro).map((b) => {
         const items = porBucket.get(b.key) ?? [];
         if (items.length === 0) return null;
         return (
@@ -271,15 +313,10 @@ function AgendaRow({
     setEnviando(canal);
     const etiqueta = canal === "sms" ? "el SMS" : "el WhatsApp";
     try {
-      const res = await fetch(`/api/clientes/${it.cliente_id}/contactar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canal, motivo: "mora" }),
-      });
-      const json = await res.json();
-      if (!json.ok) { toast.error(json.error || `No se pudo mandar ${etiqueta}`); return; }
-      if (json.data?.link) window.open(json.data.link, "_blank", "noopener");
-      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp preparado y registrado en la ficha");
+      const r = await contactarCliente({ clienteId: it.cliente_id, body: { canal, motivo: "mora" }, nombre: it.cliente, confirm });
+      if (!r.ok) { toast.error(r.error || `No se pudo mandar ${etiqueta}`); return; }
+      if (!r.registrado) return; // abrió WhatsApp y no lo envió: no cuenta como contacto
+      toast.success(canal === "sms" ? "SMS enviado y registrado en la ficha" : "WhatsApp registrado en la ficha");
       // El contacto es una gestión: el crédito sale del bucket "enfriado" de la cola.
       globalMutate("/api/cobranza/agenda");
     } catch {
