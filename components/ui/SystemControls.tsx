@@ -264,11 +264,19 @@ export function SystemControls() {
     return g;
   }, [alerta, prefs]);
   /** Cuánto tenía cada grupo la última vez que se abrió la campanita: si creció, es nuevo. */
-  const [vistosCobranza, setVistosCobranza] = useState<Record<string, number>>({});
+  /*
+    `null` = todavía no se leyó lo visto. Hasta leerlo NO hay grupos nuevos: si arrancara en
+    `{}`, al volver a montarse (tocar un aviso abre otra pantalla) cada grupo contaba como
+    nuevo durante un instante — el número subía y la campanita sonaba de nuevo justo después
+    de haber entrado a verla (Fernando, 27/09/2026).
+  */
+  const [vistosCobranza, setVistosCobranza] = useState<Record<string, number> | null>(null);
   useEffect(() => {
-    try { setVistosCobranza(JSON.parse(localStorage.getItem(SEEN_COBRANZA_KEY) ?? "{}")); } catch { /* sin storage */ }
+    let v: Record<string, number> = {};
+    try { v = JSON.parse(localStorage.getItem(SEEN_COBRANZA_KEY) ?? "{}"); } catch { /* sin storage */ }
+    setVistosCobranza(v);
   }, []);
-  const gruposNuevos = gruposCobranza.filter((g) => g.n > (vistosCobranza[g.key] ?? 0));
+  const gruposNuevos = vistosCobranza == null ? [] : gruposCobranza.filter((g) => g.n > (vistosCobranza[g.key] ?? 0));
   const totalNuevas = nuevas.length + arqueosNuevos.length + gruposNuevos.length;
 
   /*
@@ -276,13 +284,22 @@ export function SystemControls() {
     que "sonar si hay nuevas" sonaría en cada navegación. Se guarda cuántas ya se anunciaron
     en la sesión y suena solo cuando el número SUBE.
   */
+  // Recién con TODO cargado (lo visto de caja y de cobranzas, y las preferencias): antes de
+  // eso el número es provisorio y compararlo contra lo anunciado da falsos "nuevos".
+  const listoParaSonar = lastSeen != null && vistosCobranza != null && prefs !== undefined;
   useEffect(() => {
+    if (!listoParaSonar) return;
     if (prefs?.sonido === false) return;
     let anunciadas = 0;
     try { anunciadas = Number(sessionStorage.getItem(ANUNCIADAS_KEY) ?? "0"); } catch { /* sin storage */ }
-    if (totalNuevas > anunciadas) sonarCampanita();
-    try { sessionStorage.setItem(ANUNCIADAS_KEY, String(totalNuevas)); } catch { /* sin storage */ }
-  }, [totalNuevas, prefs?.sonido]);
+    // Solo SUBE acá: un número que baja un instante —los datos llegan de a partes al volver a
+    // montarse— no puede dejar anotado un valor menor, porque cuando llega el resto volvería
+    // a sonar por algo ya anunciado. Baja a 0 recién al abrir la campanita (`toggle`).
+    if (totalNuevas > anunciadas) {
+      sonarCampanita();
+      try { sessionStorage.setItem(ANUNCIADAS_KEY, String(totalNuevas)); } catch { /* sin storage */ }
+    }
+  }, [totalNuevas, prefs?.sonido, listoParaSonar]);
 
   const [open, setOpen] = useState(false);
   // IDs que eran "nuevos" al abrir (para resaltarlos mientras el panel está abierto).
@@ -303,6 +320,8 @@ export function SystemControls() {
         try { localStorage.setItem(SEEN_COBRANZA_KEY, JSON.stringify(vistos)); } catch { /* sin storage */ }
         setVistosCobranza(vistos);
         setResaltarCobranza(new Set(gruposNuevos.map((g) => g.key)));
+        // Todo quedó visto: lo próximo que llegue vuelve a sonar.
+        try { sessionStorage.setItem(ANUNCIADAS_KEY, "0"); } catch { /* sin storage */ }
       }
       return next;
     });
