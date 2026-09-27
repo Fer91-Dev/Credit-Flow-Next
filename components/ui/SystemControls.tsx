@@ -1,5 +1,6 @@
 "use client";
 
+import { FEATURE_KEYS, featureIncluida } from "@/lib/entitlements";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
@@ -53,16 +54,23 @@ const SEEN_KEY = "cf:notif-caja-seen";
 /** Aviso de plan derivado de la suscripción: vencido, o por vencer (≤3 días). null si nada. */
 function calcularAviso(data: EstadoSus | null | undefined) {
   if (!data || data.esOwner) return null; // el dueño administra planes; no tiene el suyo
+  /*
+    🔴 SIN FUNCIONES PAGAS, NO HAY NADA QUE AVISAR. Desde el 04/09/2026 todo viene incluido
+    (`FEATURES_INCLUIDAS`), así que un plan vencido no apaga nada — y el aviso decía «el
+    filtro de clientes está desactivado», que era falso (Fernando, 27/09/2026). Vuelve a
+    aparecer solo el día que alguna función deje de estar incluida y pase a depender del plan.
+  */
+  if (FEATURE_KEYS.every(featureIncluida)) return null;
   const s = data.suscripcion;
   if (!s) return null;
   if (s.estado === "vencida") {
-    return { tipo: "vencido" as const, titulo: "Tu plan Pro venció", texto: "El filtro de clientes (motor de riesgo) está desactivado. Renovalo para reactivarlo." };
+    return { tipo: "vencido" as const, titulo: "Tu plan Pro venció", texto: "Las funciones de tu plan quedaron desactivadas. Renovalo para reactivarlas." };
   }
   if (s.plan === "pro" && s.periodo_hasta) {
     const dias = Math.ceil((new Date(s.periodo_hasta).getTime() - Date.now()) / 86_400_000);
     if (dias >= 0 && dias <= 3) {
       const cuando = dias === 0 ? "hoy" : dias === 1 ? "mañana" : `en ${dias} días`;
-      return { tipo: "por_vencer" as const, titulo: `Tu plan Pro vence ${cuando}`, texto: `Vence el ${formatFecha(s.periodo_hasta)}. Renovalo para no perder el filtro de clientes.` };
+      return { tipo: "por_vencer" as const, titulo: `Tu plan Pro vence ${cuando}`, texto: `Vence el ${formatFecha(s.periodo_hasta)}. Renovalo para no perder las funciones de tu plan.` };
     }
   }
   return null;
@@ -322,7 +330,7 @@ export function SystemControls() {
               {verMovimientos && (<>
               <div className="mt-1 flex items-center justify-between px-2 pt-1">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Movimientos de caja</p>
-                <Link href="/comprobantes" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
+                <Link href="/caja" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
                   Ver todo
                 </Link>
               </div>

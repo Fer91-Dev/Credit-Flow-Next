@@ -56,10 +56,14 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       : Promise.resolve([]),
   ]);
 
-  // Destino del clic: el vendedor va a SU caja; el admin/cobrador al registro central
-  // (donde ve todas las cajas). Cada notificación lleva su `href` → patrón extensible:
-  // a futuro cada tipo (cobranza, vencimiento, etc.) aporta su propio destino.
-  const hrefCaja = role === "vendedor" ? "/caja" : "/comprobantes";
+  /*
+    Destino del clic: CAJA, para todos. El vendedor ve la suya; el admin, la principal con el
+    saldo de cada caja. Antes el admin iba a Comprobantes, que es el registro de papeles, no
+    el lugar donde se mira un cobro o un movimiento (Fernando, 27/09/2026: «si la notificación
+    fue algo de la caja, que me lleve a la caja y no a comprobantes»). Cada notificación lleva
+    su `href`: a futuro cada tipo aporta su propio destino.
+  */
+  const hrefCaja = "/caja";
 
   const movimientos = movs.map((m) => ({
     id: m.id,
