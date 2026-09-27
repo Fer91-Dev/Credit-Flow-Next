@@ -4,7 +4,7 @@ import { severidadMora } from "@/lib/domain";
 
 import { useMemo, useState } from "react";
 import {
-  HandshakeIcon, CalendarClock, Snowflake, MessageSquarePlus,
+  HandshakeIcon, CalendarClock, Siren, MessageSquarePlus,
   Phone, CheckCheck, AlertCircle, MessageSquareText, CalendarX, ShieldAlert, BellRing,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
@@ -36,8 +36,18 @@ const BUCKETS: BucketMeta[] = [
   { key: "acuerdo_roto",    titulo: "Acuerdos rotos",             ayuda: "El acuerdo se cayó y nadie los contactó desde entonces.",                    icon: ShieldAlert,   accent: "warning",     badge: "warning" },
   { key: "agendado",        titulo: "Contactos agendados",        ayuda: "Quedó pactado volver a contactarlos hoy.",                                   icon: CalendarClock, accent: "primary",     badge: "primary" },
   { key: "cuota_nueva",     titulo: "Les venció otra cuota",      ayuda: "Ya se los contactó, pero desde entonces les venció otra cuota: hay novedad.", icon: BellRing,      accent: "warning",     badge: "warning" },
-  { key: "enfriado",        titulo: "Sin gestión reciente",       ayuda: "Morosos que hace días que nadie contacta.",                                  icon: Snowflake,     accent: "muted",       badge: "muted" },
+  /* En ROJO y latiendo (Fernando, 27/09/2026): un moroso al que nadie llama hace días es el
+     que se está perdiendo en silencio — gris, se leía como "no importa". */
+  { key: "enfriado",        titulo: "Sin gestión reciente",       ayuda: "Morosos que hace días que nadie contacta.",                                  icon: Siren,         accent: "destructive", badge: "destructive" },
 ];
+
+/** Franja izquierda de cada fila, con el color de su grupo: la urgencia se ve sin leer. */
+const FRANJA: Record<BucketMeta["badge"], string> = {
+  destructive: "border-l-destructive bg-destructive/[0.04]",
+  warning: "border-l-warning",
+  primary: "border-l-primary",
+  muted: "border-l-border",
+};
 
 const ACCENT_RING: Record<BucketMeta["accent"], string> = {
   destructive: "text-destructive bg-destructive/10 border-destructive/20",
@@ -163,8 +173,10 @@ export function AgendaHoy({
                 icon={b.icon}
                 label={b.titulo}
                 value={String(n)}
-                accent={n > 0 ? b.accent : "muted"}
-                pulse={(b.key === "promesa" || b.key === "acuerdo_vencido") && n > 0}
+                // Cada grupo con SU color siempre, también en cero: en gris la fila entera se leía
+                // apagada y sin jerarquía (Fernando, 27/09/2026: «los kpis no tienen color»).
+                accent={b.accent}
+                pulse={(b.key === "promesa" || b.key === "acuerdo_vencido" || b.key === "enfriado") && n > 0}
                 /**
                  * Apretar el grupo lo aísla; apretarlo de nuevo vuelve a la cola entera.
                  * Un grupo VACÍO no recibe onClick: no se apaga ni se atenúa, simplemente no
@@ -303,7 +315,7 @@ function AgendaRow({
       tabIndex={0}
       onClick={onDetalle}
       onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDetalle(); } }}
-      className="group flex items-center gap-3 rounded-xl bg-card border border-border p-4 cursor-pointer transition-all duration-150 hover:bg-accent hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      className={`group flex items-center gap-3 rounded-xl border border-l-4 border-border bg-card p-4 cursor-pointer transition-all duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${FRANJA[badge]}`}
     >
       {/* Cliente + motivo */}
       <div className="min-w-0 flex-1">
@@ -312,7 +324,7 @@ function AgendaRow({
           <CreditoLink id={it.credito_id} numero={it.credito_numero} numeroOrigen={it.credito_refinancia_a_numero} conIcono={false} className="text-[11px] shrink-0" />
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground/70 truncate">
-          {it.motivo}
+          <span className={badge === "destructive" ? "font-medium text-destructive" : ""}>{it.motivo}</span>
           {it.fecha && <span className="text-muted-foreground/50"> · {formatFecha(it.fecha)}</span>}
           {it.telefono && (
             <span className="inline-flex items-center gap-0.5 text-muted-foreground/50">
