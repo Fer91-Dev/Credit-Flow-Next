@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, AlertCircle, LogIn } from "lucide-react";
+import { Eye, EyeOff, Loader2, AlertCircle, LogIn, CheckCircle2 } from "lucide-react";
 import { AuthShell, CAMPO_AUTH, ETIQUETA_AUTH, INPUT_AUTH, BOTON_AUTH } from "@/components/auth/AuthShell";
 
 export default function LoginPage() {
@@ -13,6 +13,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /*
+    La respuesta a las credenciales, a la vista (Fernando, 27/09/2026). `ok`: el botón pasa a
+    verde con la tilde y recién después se entra. `sacudida` cambia en cada error para que la
+    animación vuelva a correr aunque se equivoque dos veces seguidas.
+  */
+  const [ok, setOk] = useState(false);
+  const [sacudida, setSacudida] = useState(0);
   /**
    * `?sesion=expirada` lo pone el fetcher cuando una request vuelve redirigida al
    * login: la cuenta fue eliminada o desactivada, o venció el token. Se lee del
@@ -39,6 +46,7 @@ export default function LoginPage() {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setError(json?.error || "No se pudo iniciar sesión. Intentá de nuevo.");
+        setSacudida((n) => n + 1);
         setLoading(false);
         return;
       }
@@ -49,10 +57,15 @@ export default function LoginPage() {
       }
     } catch {
       setError("No se pudo conectar. Revisá tu conexión e intentá de nuevo.");
+      setSacudida((n) => n + 1);
       setLoading(false);
       return;
     }
 
+    // Correcto: la confirmación se ve un instante antes de entrar.
+    setOk(true);
+    setLoading(false);
+    await new Promise((r) => setTimeout(r, 650));
     router.push("/");
     router.refresh();
   }
@@ -64,9 +77,9 @@ export default function LoginPage() {
         <p className="mt-1.5 text-sm text-muted-foreground">Ingresá tus datos para continuar</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+      <form key={sacudida} onSubmit={handleSubmit} className={`mt-8 space-y-4 ${sacudida > 0 ? "animate-sacudir" : ""}`}>
         {/* Usuario (acepta usuario o email) */}
-        <div className={CAMPO_AUTH}>
+        <div className={`${CAMPO_AUTH} ${error ? "border-destructive/60 ring-2 ring-destructive/20" : ""}`}>
           <label htmlFor="identifier" className={ETIQUETA_AUTH}>Usuario o email</label>
           <input
             id="identifier"
@@ -77,14 +90,14 @@ export default function LoginPage() {
             spellCheck={false}
             required
             value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
+            onChange={(e) => { setIdentifier(e.target.value); setError(null); }}
             placeholder="tu usuario o email"
             className={INPUT_AUTH}
           />
         </div>
 
         {/* Contraseña */}
-        <div className={CAMPO_AUTH}>
+        <div className={`${CAMPO_AUTH} ${error ? "border-destructive/60 ring-2 ring-destructive/20" : ""}`}>
           <label htmlFor="password" className={ETIQUETA_AUTH}>Contraseña</label>
           <input
             id="password"
@@ -92,7 +105,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             required
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => { setPassword(e.target.value); setError(null); }}
             placeholder="••••••••"
             className={`${INPUT_AUTH} pr-8`}
           />
@@ -131,10 +144,14 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          disabled={loading}
-          className={BOTON_AUTH}
+          disabled={loading || ok}
+          className={`${BOTON_AUTH} ${ok ? "!bg-none !bg-success !text-success-foreground !shadow-success/30 disabled:!opacity-100" : ""}`}
         >
-          {loading ? (
+          {ok ? (
+            <>
+              <CheckCircle2 className="h-5 w-5 animate-confirmado" /> ¡Bienvenido!
+            </>
+          ) : loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" /> Ingresando…
             </>

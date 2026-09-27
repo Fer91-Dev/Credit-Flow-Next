@@ -55,19 +55,24 @@ export function AuthShell({ left, children }: { left?: React.ReactNode; children
         </div>
       </div>
 
-      {/* ── Formulario (derecha en escritorio; en el celular, la hoja bajo la cabecera) ── */}
-      <div className="relative flex min-h-dvh flex-col lg:justify-center lg:px-14 lg:py-12">
+      {/*
+        ── Formulario (derecha en escritorio) ──
+        🔴 En el CELULAR es UNA sola pantalla: el fondo de marca de punta a punta, el logo arriba
+        y la tarjeta flotando con aire a los costados. La versión anterior apilaba una cabecera y
+        una hoja, y se leía como "una sección encima de la otra" (Fernando, 27/09/2026).
+      */}
+      <div className="relative flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-10 sm:px-8 lg:px-14 lg:py-12">
+        {/* Fondo de marca solo en el celular (en escritorio la marca vive en su panel). */}
+        <div aria-hidden className="absolute inset-0 lg:hidden" style={FONDO_MARCA} />
         <div className="absolute right-4 top-4 z-20">
           <ThemeToggle />
         </div>
 
-        {/* CELULAR: cabecera de marca */}
-        <div className="relative flex flex-col items-center justify-center px-6 pb-16 pt-14 lg:hidden" style={FONDO_MARCA}>
+        <div className="relative z-10 lg:hidden">
           <MarcaChica branding={branding} />
         </div>
 
-        {/* La hoja (celular) / la tarjeta (escritorio) */}
-        <div className="relative z-10 -mt-8 flex-1 rounded-t-[2rem] bg-card px-6 pb-10 pt-8 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.35)] sm:px-10 lg:mx-auto lg:mt-0 lg:w-full lg:max-w-md lg:flex-none lg:rounded-3xl lg:border lg:border-border lg:px-10 lg:py-10 lg:shadow-2xl">
+        <div className="relative z-10 w-full max-w-md rounded-3xl border border-border bg-card px-6 py-8 shadow-2xl shadow-black/40 sm:px-10 lg:py-10">
           <div className="mx-auto w-full max-w-sm">{children}</div>
         </div>
       </div>
@@ -135,6 +140,6 @@ function MarcaChica({ branding }: { branding: Branding | null }) {
 export const CAMPO_AUTH =
   "group relative rounded-xl border border-border bg-input px-3.5 pb-2 pt-6 transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25";
 export const ETIQUETA_AUTH = "pointer-events-none absolute left-3.5 top-2 text-[11px] font-medium text-muted-foreground transition-colors group-focus-within:text-primary";
-export const INPUT_AUTH = "w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/45";
+export const INPUT_AUTH = "input-auth w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/45";
 export const BOTON_AUTH =
   "flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-[color-mix(in_oklab,var(--primary)_60%,#3B82F6)] text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:brightness-110 hover:shadow-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50";
