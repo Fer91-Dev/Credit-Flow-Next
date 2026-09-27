@@ -5,11 +5,13 @@ import { severidadMora } from "@/lib/domain";
 import { useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Siren, MessageSquarePlus,
-  Phone, CheckCheck, AlertCircle, UserCheck, MessageSquareText, CalendarX, ShieldAlert, BellRing,
+  Phone, CheckCheck, AlertCircle, UserCheck, Printer, Download, MessageSquareText, CalendarX, ShieldAlert, BellRing,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/ui/WhatsAppIcon";
 import { useAgendaCobranza, type AgendaItem, useTramosMora, useContactadosHoy } from "@/lib/swr";
 import { ContactadosHoyLista } from "./ContactadosHoy";
+import { imprimirAgenda, exportarAgendaCSV, type SeccionAgenda } from "@/lib/agenda-export";
+import { useFinanciera } from "@/lib/swr";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { Nota } from "@/components/ui/Nota";
 import { formatMonto, formatFecha, formatCreditoNumero, teclaDelContenedor, formatDias } from "@/lib/utils";
@@ -49,6 +51,12 @@ const FRANJA: Record<BucketMeta["badge"], string> = {
   warning: "border-l-warning",
   primary: "border-l-primary",
   muted: "border-l-border",
+};
+
+const TIPO_TXT: Record<string, string> = { llamada: "Llamada", whatsapp: "WhatsApp", sms: "SMS", email: "Email", visita: "Visita", otro: "Gestión" };
+const RESULTADO_TXT: Record<string, string> = {
+  contactado: "Contactado", promesa_pago: "Promesa de pago", renegociacion: "Renegociación",
+  no_contesta: "No contesta", ilocalizable: "Ilocalizable", otro: "Otro",
 };
 
 function TiraContactados({ n }: { n: number }) {
@@ -98,6 +106,8 @@ export function AgendaHoy({
   const [verContactados, setVerContactados] = useState(false);
   const { contactados } = useContactadosHoy();
   const clientesHoy = contactados?.clientes_hoy ?? 0;
+  const { financiera } = useFinanciera();
+  const toast = useToast();
 
   const porBucket = useMemo(() => {
     const map = new Map<AgendaItem["bucket"], AgendaItem[]>();
@@ -126,6 +136,63 @@ export function AgendaHoy({
    * que no corresponde a nada de lo que hay en pantalla.
    */
   const filtrados = (agenda?.items ?? []).filter((i) => !filtro || i.bucket === filtro);
+
+  /*
+    IMPRIMIR / EXPORTAR lo que se está mirando: la agenda (o el grupo filtrado), o los
+    contactados si esa vista está abierta. `pesos` decide el formato del importe: con "$"
+    para el papel, sin él para el CSV (así Excel lo toma como número).
+  */
+  const numero = (n: number | null, o?: number | null) => formatCreditoNumero(n, o);
+  const importe = (n: number, pesos: boolean) => (pesos ? formatMonto(n) : formatMonto(n).replace(/^\$\s?/, ""));
+  const seccionesAgenda = (pesos: boolean): SeccionAgenda[] =>
+    BUCKETS.filter((b) => !filtro || b.key === filtro).map((b) => ({
+      titulo: b.titulo,
+      columnas: ["Cliente", "Crédito", "Teléfono", "Motivo", "Días de atraso", "Vencido"],
+      derecha: [4, 5],
+      filas: (porBucket.get(b.key) ?? []).map((i) => [
+        i.cliente, numero(i.credito_numero, i.credito_refinancia_a_numero), i.telefono ?? "",
+        i.motivo, formatDias(i.dias_mora), importe(i.vencido, pesos),
+      ]),
+    }));
+  const hora = (iso: string) =>
+    new Intl.DateTimeFormat("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Argentina/Buenos_Aires" }).format(new Date(iso));
+  const seccionContactados = (): SeccionAgenda[] => [{
+    titulo: "Contactados hoy",
+    columnas: ["Cliente", "Crédito", "Teléfono", "Contacto", "Hora", "Agente", "Resultado"],
+    filas: (contactados?.items ?? []).map((c) => [
+      c.cliente, numero(c.credito_numero, c.credito_refinancia_a_numero), c.telefono ?? "",
+      TIPO_TXT[c.tipo] ?? c.tipo, hora(c.fecha), c.agente, RESULTADO_TXT[c.resultado] ?? c.resultado,
+    ]),
+  }];
+  const hoyTxt = new Intl.DateTimeFormat("es-AR", { dateStyle: "long", timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const imprimir = () => imprimirAgenda({
+    titulo: verContactados ? "Contactados hoy" : "Agenda de cobranza de hoy",
+    subtitulo: verContactados
+      ? `${clientesHoy} clientes · ${hoyTxt}`
+      : `${filtro ? BUCKETS.find((b) => b.key === filtro)?.titulo + " · " : ""}${filtrados.length} clientes · ${hoyTxt}`,
+    secciones: verContactados ? seccionContactados() : seccionesAgenda(true),
+    financiera,
+  });
+  const exportar = () => {
+    const d = new Date().toISOString().slice(0, 10);
+    const n = verContactados
+      ? exportarAgendaCSV(`contactados_${d}.csv`, seccionContactados())
+      : exportarAgendaCSV(`agenda_${d}.csv`, seccionesAgenda(false));
+    if (n > 0) toast.success(`${n} fila${n === 1 ? "" : "s"} exportada${n === 1 ? "" : "s"}`);
+  };
+  const hayQueExportar = verContactados ? (contactados?.items.length ?? 0) > 0 : filtrados.length > 0;
+  const acciones = (
+    <div className="ml-auto flex gap-2">
+      <button onClick={imprimir} disabled={!hayQueExportar}
+        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 transition-colors text-sm font-medium whitespace-nowrap">
+        <Printer className="h-4 w-4" /> Imprimir
+      </button>
+      <button onClick={exportar} disabled={!hayQueExportar}
+        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity text-sm font-medium whitespace-nowrap">
+        <Download className="h-4 w-4" /> Exportar CSV
+      </button>
+    </div>
+  );
 
   if (total === 0) {
     return (
@@ -165,7 +232,7 @@ export function AgendaHoy({
           está mirando (Fernando, 19/09/2026). Antes era un renglón gris de 11px colgado del
           título y se leía como relleno.
         */}
-        <div className="group flex items-center gap-2.5">
+        <div className="group flex flex-wrap items-center gap-2.5">
           <IconBadge emoji="dollar-banknote" accent="primary" pulse={total > 0} hoverable />
           <h3 className="text-sm font-semibold text-foreground">
             Tu agenda de hoy
@@ -175,6 +242,7 @@ export function AgendaHoy({
               </span>
             )}
           </h3>
+          {acciones}
         </div>
         <Nota acento={total > 0 ? "primary" : "success"} compacta>
           {filtro
