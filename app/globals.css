@@ -372,6 +372,9 @@ summary:focus-visible,
   -webkit-mask-repeat: repeat;
   mask-repeat: repeat;
 }
+/* Sobre un fondo que es SIEMPRE oscuro (la marca del login en el celular) el dibujo va claro
+   en los dos temas: con el color del texto, en modo claro quedaba oscuro sobre oscuro. */
+.fondo-finanzas.sobre-oscuro { background-color: rgb(255 255 255 / 0.06); }
 
 /* Brillo del número que se paga: una luz del color de marca alrededor de la cifra, no un
    subrayado. Es la columna que el cliente mira primero. */

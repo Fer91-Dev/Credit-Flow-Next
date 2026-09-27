@@ -64,7 +64,9 @@ export function AuthShell({ left, children }: { left?: React.ReactNode; children
         <div aria-hidden className="absolute inset-0 lg:hidden" style={FONDO_MARCA} />
         {/* Los dibujos de financiera del simulador, detrás de la tarjeta (Fernando, 27/09/2026):
             el panel dejaba de ser un vacío. Misma clase `.fondo-finanzas`: se adapta al tema. */}
-        <div aria-hidden className="fondo-finanzas pointer-events-none absolute inset-0" />
+        <div aria-hidden className="fondo-finanzas pointer-events-none absolute inset-0 hidden lg:block" />
+        {/* Celular: el fondo de marca es oscuro en los dos temas, así que el dibujo va claro. */}
+        <div aria-hidden className="fondo-finanzas sobre-oscuro pointer-events-none absolute inset-0 lg:hidden" />
         <div className="absolute right-4 top-4 z-20">
           <ThemeToggle />
         </div>
