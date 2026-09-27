@@ -1124,6 +1124,10 @@ export interface NotificacionesConfig {
   movimientos_caja: boolean;
   respaldos: boolean;
   plan: boolean;
+  cobranza_hoy: boolean;
+  cobranza_vencimientos: boolean;
+  cobranza_morosos: boolean;
+  sonido: boolean;
 }
 
 export interface Pago {

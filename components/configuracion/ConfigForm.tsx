@@ -519,6 +519,8 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Movimientos de caja: cobros, desembolsos y demás, en vivo (lo ven todos los roles).",
       "Respaldos: aviso si un backup falla o se atrasa (solo admin).",
       "Plan y facturación: avisos de vencimiento del plan (solo admin).",
+      "Cobranzas: van AGRUPADAS, un aviso por pestaña y no uno por cliente. «Agenda de hoy» viene prendido; Vencimientos y Morosos se prenden acá si se quieren.",
+      "Sonido: la campanita suena cuando llega algo nuevo (un movimiento de caja, un cierre con diferencia o una pestaña de cobranzas que creció).",
     ],
   },
 };
@@ -565,6 +567,12 @@ export function ConfigForm() {
   };
 
   const [activeTab, setActiveTab] = useState<"financiera" | "motor" | "simulador" | "comunicaciones" | "gamificacion" | "rentabilidad" | "riesgo" | "cobranza" | "cajas" | "documentos" | "notificaciones" | "backups">("financiera");
+  // `?tab=…` abre la pestaña pedida: la ruedita de la campanita lleva a Notificaciones.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    const validas = ["financiera", "motor", "simulador", "comunicaciones", "gamificacion", "rentabilidad", "riesgo", "cobranza", "cajas", "documentos", "notificaciones", "backups"] as const;
+    if (t && (validas as readonly string[]).includes(t)) setActiveTab(t as (typeof validas)[number]);
+  }, []);
 
   // Hidratar el form local cuando llega la config.
   useEffect(() => {
@@ -2101,6 +2109,32 @@ export function ConfigForm() {
                 checked={notif.plan}
                 onChange={v => setNotif({ plan: v })}
               />
+              <p className="pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Cobranzas y recupero</p>
+              <NotifRow
+                title="Agenda de hoy"
+                desc="Un solo aviso con cuántos clientes esperan gestión hoy; lleva a la pestaña Hoy."
+                checked={notif.cobranza_hoy}
+                onChange={v => setNotif({ cobranza_hoy: v })}
+              />
+              <NotifRow
+                title="Vencimientos"
+                desc="Un aviso con cuántas cuotas vencen en los próximos días; lleva a la pestaña Vencimientos."
+                checked={notif.cobranza_vencimientos}
+                onChange={v => setNotif({ cobranza_vencimientos: v })}
+              />
+              <NotifRow
+                title="Morosos"
+                desc="Un aviso con cuántos créditos están en mora; lleva a la pestaña Morosos."
+                checked={notif.cobranza_morosos}
+                onChange={v => setNotif({ cobranza_morosos: v })}
+              />
+              <p className="pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sonido</p>
+              <NotifRow
+                title="Sonido de campanita"
+                desc="Suena cuando llega un aviso nuevo."
+                checked={notif.sonido}
+                onChange={v => setNotif({ sonido: v })}
+              />
             </div>
           </Section>
           )}
@@ -2925,8 +2959,12 @@ function defaultCaja(): CajaConfig {
 }
 
 function defaultNotificaciones(): NotificacionesConfig {
-  return { movimientos_caja: true, respaldos: true, plan: true };
+  return {
+    movimientos_caja: true, respaldos: true, plan: true,
+    cobranza_hoy: true, cobranza_vencimientos: false, cobranza_morosos: false, sonido: true,
+  };
 }
+
 
 /**
  * Fila de un ajuste de encendido/apagado.

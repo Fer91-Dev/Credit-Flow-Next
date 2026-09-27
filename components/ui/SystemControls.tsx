@@ -5,14 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle, Scale } from "lucide-react";
+import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle, Scale, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
 import { Avatar } from "@/components/ui/Avatar";
 import { HelpPanel } from "@/components/ui/HelpPanel";
 import { getHelpDoc } from "@/lib/help/content";
 import { ROLE_LABEL } from "@/lib/auth/roles";
-import { formatFecha, formatFechaHora, formatMonto } from "@/lib/utils";
+import { formatFecha, formatFechaHora, formatMonto, formatDias } from "@/lib/utils";
+import { Emoji } from "@/components/ui/Emoji";
+import { useAlertaCobranza, type NotificacionesConfig } from "@/lib/swr";
 
 const fetcher = (u: string) =>
   fetch(u).then((r) => (r.ok ? r.json() : null)).then((j) => (j?.ok ? j.data : null)).catch(() => null);
@@ -50,6 +52,37 @@ interface ArqueoNotif {
 }
 
 const SEEN_KEY = "cf:notif-caja-seen";
+const SEEN_COBRANZA_KEY = "cf:notif-cobranza-seen";
+const ANUNCIADAS_KEY = "cf:notif-anunciadas";
+
+/**
+ * El sonido de la campanita: dos notas cortas, sintetizadas (sin archivo que descargar).
+ * Suave a propósito: avisa, no sobresalta. Si el navegador todavía no dejó reproducir audio
+ * (antes del primer clic en la página), no suena y listo — no es un error.
+ */
+let audioCtx: AudioContext | null = null;
+function sonarCampanita() {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx ??= new Ctx();
+    const ctx = audioCtx;
+    if (ctx.state === "suspended") void ctx.resume();
+    const t0 = ctx.currentTime;
+    [[1318.5, 0], [1760, 0.12]].forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0 + delay);
+      gain.gain.exponentialRampToValueAtTime(0.12, t0 + delay + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + delay + 0.6);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0 + delay);
+      osc.stop(t0 + delay + 0.65);
+    });
+  } catch { /* sin audio: la campanita igual muestra el número */ }
+}
 
 /** Aviso de plan derivado de la suscripción: vencido, o por vencer (≤3 días). null si nada. */
 function calcularAviso(data: EstadoSus | null | undefined) {
@@ -120,7 +153,7 @@ export function SystemControls() {
 
   // Preferencias de notificaciones del tenant (qué avisos se muestran). Todos los roles.
   // Ante fallo/ausencia se asume TODO encendido (no ocultar avisos por un fetch fallido).
-  const { data: prefs } = useSWR<{ movimientos_caja: boolean; respaldos: boolean; plan: boolean } | null>(
+  const { data: prefs } = useSWR<Partial<NotificacionesConfig> | null>(
     "/api/notificaciones/preferencias", fetcher, CASI_ESTATICO,
   );
   const verMovimientos = prefs?.movimientos_caja !== false;
@@ -205,11 +238,57 @@ export function SystemControls() {
     () => (lastSeen == null ? [] : arqueos.filter((a) => new Date(a.created_at).getTime() > lastSeen)),
     [arqueos, lastSeen],
   );
-  const totalNuevas = nuevas.length + arqueosNuevos.length;
+  /*
+    🔴 COBRANZAS, AGRUPADAS. Fernando (27/09/2026): «si son 11 notificaciones agrupalas...
+    imaginate 32 (hoy, vencimientos y morosos): serían una invasión». Un aviso por pestaña,
+    con su cantidad, que lleva a esa pestaña. Los números son los MISMOS de los contadores de
+    las pestañas y del menú (`/api/cobranza/alerta`, misma consulta compartida por SWR).
+    "Hoy" viene prendido; Vencimientos y Morosos, solo si se prenden en Configuración.
+  */
+  const { alerta } = useAlertaCobranza();
+  const gruposCobranza = useMemo(() => {
+    if (!alerta) return [];
+    const g: { key: string; n: number; titulo: string; texto: string; href: string; emoji: string; tono: "primary" | "warning" | "destructive" }[] = [];
+    if (prefs?.cobranza_hoy !== false && alerta.pendientes > 0) {
+      g.push({ key: "hoy", n: alerta.pendientes, titulo: "Tu agenda de hoy", emoji: "calendar", tono: "primary", href: "/cobranza?tab=hoy",
+        texto: `${alerta.pendientes} ${alerta.pendientes === 1 ? "cliente espera" : "clientes esperan"} tu atención` });
+    }
+    if (prefs?.cobranza_vencimientos === true && alerta.por_vencer > 0) {
+      g.push({ key: "vencimientos", n: alerta.por_vencer, titulo: "Vencimientos", emoji: "alarm-clock", tono: "warning", href: "/cobranza?tab=vencimientos",
+        texto: `${alerta.por_vencer} ${alerta.por_vencer === 1 ? "cuota vence" : "cuotas vencen"} en los próximos ${formatDias(alerta.horizonte_dias)}` });
+    }
+    if (prefs?.cobranza_morosos === true && alerta.vencidas > 0) {
+      g.push({ key: "morosos", n: alerta.vencidas, titulo: "Morosos", emoji: "money-with-wings", tono: "destructive", href: "/cobranza?tab=morosos",
+        texto: `${alerta.vencidas} ${alerta.vencidas === 1 ? "crédito está" : "créditos están"} en mora` });
+    }
+    return g;
+  }, [alerta, prefs]);
+  /** Cuánto tenía cada grupo la última vez que se abrió la campanita: si creció, es nuevo. */
+  const [vistosCobranza, setVistosCobranza] = useState<Record<string, number>>({});
+  useEffect(() => {
+    try { setVistosCobranza(JSON.parse(localStorage.getItem(SEEN_COBRANZA_KEY) ?? "{}")); } catch { /* sin storage */ }
+  }, []);
+  const gruposNuevos = gruposCobranza.filter((g) => g.n > (vistosCobranza[g.key] ?? 0));
+  const totalNuevas = nuevas.length + arqueosNuevos.length + gruposNuevos.length;
+
+  /*
+    🔴 EL SONIDO, UNA VEZ POR NOVEDAD. La campanita se vuelve a montar en cada pantalla, así
+    que "sonar si hay nuevas" sonaría en cada navegación. Se guarda cuántas ya se anunciaron
+    en la sesión y suena solo cuando el número SUBE.
+  */
+  useEffect(() => {
+    if (prefs?.sonido === false) return;
+    let anunciadas = 0;
+    try { anunciadas = Number(sessionStorage.getItem(ANUNCIADAS_KEY) ?? "0"); } catch { /* sin storage */ }
+    if (totalNuevas > anunciadas) sonarCampanita();
+    try { sessionStorage.setItem(ANUNCIADAS_KEY, String(totalNuevas)); } catch { /* sin storage */ }
+  }, [totalNuevas, prefs?.sonido]);
 
   const [open, setOpen] = useState(false);
   // IDs que eran "nuevos" al abrir (para resaltarlos mientras el panel está abierto).
   const [resaltar, setResaltar] = useState<Set<string>>(new Set());
+  const [resaltarCobranza, setResaltarCobranza] = useState<Set<string>>(new Set());
+  const esAdmin = actions?.usuario?.role === "admin";
 
   const toggle = () => {
     setOpen((o) => {
@@ -219,6 +298,11 @@ export function SystemControls() {
         const now = Date.now();
         localStorage.setItem(SEEN_KEY, String(now)); // marcar leído al abrir → limpia el badge
         setLastSeen(now);
+        // Cobranzas: se guarda cuánto había, así solo vuelve a contar si crece.
+        const vistos = Object.fromEntries(gruposCobranza.map((g) => [g.key, g.n]));
+        try { localStorage.setItem(SEEN_COBRANZA_KEY, JSON.stringify(vistos)); } catch { /* sin storage */ }
+        setVistosCobranza(vistos);
+        setResaltarCobranza(new Set(gruposNuevos.map((g) => g.key)));
       }
       return next;
     });
@@ -257,7 +341,47 @@ export function SystemControls() {
           <>
             <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
             <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
-              <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
+              <div className="flex items-center justify-between px-2 py-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
+                {/* La ruedita: qué avisos aparecen acá. Solo el admin configura la financiera. */}
+                {esAdmin && (
+                  <Link
+                    href="/configuracion?tab=notificaciones"
+                    onClick={() => setOpen(false)}
+                    title="Configurar notificaciones"
+                    aria-label="Configurar notificaciones"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-all hover:rotate-45 hover:bg-accent hover:text-foreground"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Link>
+                )}
+              </div>
+
+              {/* Cobranzas y recupero, agrupadas: un aviso por pestaña. */}
+              {gruposCobranza.map((g) => {
+                const nuevo = resaltarCobranza.has(g.key);
+                const tono = g.tono === "primary" ? "border-primary/20 bg-primary/10" : g.tono === "warning" ? "border-warning/20 bg-warning/10" : "border-destructive/20 bg-destructive/10";
+                const numero = g.tono === "primary" ? "bg-primary text-primary-foreground" : g.tono === "warning" ? "bg-warning text-warning-foreground" : "bg-destructive text-destructive-foreground";
+                return (
+                  <Link
+                    key={g.key}
+                    href={g.href}
+                    onClick={() => setOpen(false)}
+                    className={`group relative flex items-center gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-accent ${nuevo ? "bg-primary/[0.06]" : ""}`}
+                  >
+                    <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${tono}`}>
+                      <Emoji name={g.emoji} className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">{g.titulo}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{g.texto}</p>
+                    </div>
+                    <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${numero}`}>{g.n}</span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                );
+              })}
 
               {/* Cierres de caja sin resolver — PRIMERO: es plata que no cuadra. */}
               {arqueos.map((a) => {
@@ -378,7 +502,7 @@ export function SystemControls() {
               </>)}
 
               {/* Panel vacío: ni movimientos ni avisos activos */}
-              {!verMovimientos && !aviso && !avisoBackup && arqueos.length === 0 && (
+              {!verMovimientos && !aviso && !avisoBackup && arqueos.length === 0 && gruposCobranza.length === 0 && (
                 <div className="px-2.5 py-4 text-sm text-muted-foreground">No hay notificaciones para mostrar.</div>
               )}
             </div>

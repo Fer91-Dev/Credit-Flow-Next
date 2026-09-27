@@ -462,9 +462,22 @@ export interface NotificacionesConfig {
   respaldos: boolean;
   /** Avisos de plan/facturación (vencido / por vencer). Solo admin. */
   plan: boolean;
+  /**
+   * COBRANZAS, agrupadas (Fernando, 27/09/2026): un aviso por pestaña, no uno por cliente —
+   * 32 avisos sueltos serían una invasión. "Hoy" viene prendido; Vencimientos y Morosos
+   * arrancan apagados y se prenden acá.
+   */
+  cobranza_hoy: boolean;
+  cobranza_vencimientos: boolean;
+  cobranza_morosos: boolean;
+  /** Sonido de campanita cuando llega algo nuevo. */
+  sonido: boolean;
 }
 
-export const NOTIFICACIONES_DEFAULT: NotificacionesConfig = { movimientos_caja: true, respaldos: true, plan: true };
+export const NOTIFICACIONES_DEFAULT: NotificacionesConfig = {
+  movimientos_caja: true, respaldos: true, plan: true,
+  cobranza_hoy: true, cobranza_vencimientos: false, cobranza_morosos: false, sonido: true,
+};
 
 /** Mezcla con defaults: cada aviso está encendido salvo que se haya guardado explícitamente en false. */
 export function resolverNotificaciones(raw: unknown): NotificacionesConfig {
@@ -473,6 +486,11 @@ export function resolverNotificaciones(raw: unknown): NotificacionesConfig {
     movimientos_caja: r.movimientos_caja !== false,
     respaldos: r.respaldos !== false,
     plan: r.plan !== false,
+    cobranza_hoy: r.cobranza_hoy !== false,
+    // Apagados salvo que se hayan prendido explícitamente.
+    cobranza_vencimientos: r.cobranza_vencimientos === true,
+    cobranza_morosos: r.cobranza_morosos === true,
+    sonido: r.sonido !== false,
   };
 }
 
