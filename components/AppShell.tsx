@@ -400,7 +400,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         <Link
           href="/"
           aria-label="Ir al inicio"
-          className={`flex shrink-0 items-center transition-opacity hover:opacity-80 ${
+          className={`marca-link flex shrink-0 items-center ${
             colapsado ? "h-[76px] justify-center px-0" : financiera?.logo_url ? "justify-center px-5 pb-2 pt-5" : "h-[76px] px-5"
           }`}
         >
