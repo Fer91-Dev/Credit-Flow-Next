@@ -420,10 +420,11 @@ function AgendaRow({
       tabIndex={0}
       onClick={onDetalle}
       onKeyDown={(e) => { if (teclaDelContenedor(e) && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onDetalle(); } }}
-      className={`group flex items-center gap-3 rounded-xl border border-l-4 border-border bg-card p-4 cursor-pointer transition-all duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${FRANJA[badge]}`}
+      className={`group flex flex-wrap items-center gap-x-3 gap-y-3 sm:flex-nowrap rounded-xl border border-l-4 border-border bg-card p-4 cursor-pointer transition-all duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${FRANJA[badge]}`}
     >
-      {/* Cliente + motivo */}
-      <div className="min-w-0 flex-1">
+      {/* Cliente + motivo. En el celular ocupa el renglón entero y los días + acciones bajan
+          al segundo: en una sola línea los botones de WhatsApp y SMS no entraban (Fernando, 28/09/2026). */}
+      <div className="min-w-0 flex-1 basis-full sm:basis-auto">
         <div className="flex items-center gap-2">
           <p className="font-medium text-foreground truncate">{it.cliente}</p>
           <CreditoLink id={it.credito_id} numero={it.credito_numero} numeroOrigen={it.credito_refinancia_a_numero} conIcono={false} className="text-[11px] shrink-0" />
@@ -505,7 +506,7 @@ function AgendaRow({
       </div>
 
       {/* Acciones */}
-      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="ml-auto flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onGestionar}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
@@ -531,18 +532,18 @@ function AgendaRow({
             en rojo, el que hay que llamar hoy. Con el verde fijo de la marca, el de 120 días
             y el de 3 se veían idénticos y la cola se atendía en el orden en que caía.
           */
-          className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${colorTramo}`}
+          className={`flex items-center justify-center h-9 w-9 sm:h-7 sm:w-7 rounded-lg transition-colors ${colorTramo}`}
         >
-          <WhatsAppIcon className="h-3.5 w-3.5" />
+          <WhatsAppIcon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
         </button>
         <button
           type="button"
           onClick={reclamarSms}
           disabled={!it.telefono || !!enviando}
           title={!it.telefono ? "Sin teléfono cargado" : "Reclamar por SMS (sale por el celular de la financiera y queda registrado en la ficha)"}
-          className={`hidden sm:flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${colorTramo}`}
+          className={`flex items-center justify-center h-9 w-9 sm:h-7 sm:w-7 rounded-lg transition-colors ${colorTramo}`}
         >
-          <MessageSquareText className="h-3.5 w-3.5" />
+          <MessageSquareText className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
         </button>
       </div>
     </div>
