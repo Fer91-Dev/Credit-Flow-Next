@@ -6,6 +6,8 @@ import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw,
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ClienteFormDialog, type ClienteCreado } from "@/components/clientes/ClienteForm";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
@@ -802,74 +804,82 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     }, vistaImp);
   }
 
-  // ── Pantalla de éxito: el crédito ya se otorgó (reemplaza el simulador) ──
-  if (created) {
-    const totalFinal = hayCargos ? totalAPagar : (plan?.totalPagado ?? 0);
-    return (
-      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-6 p-8 text-center">
+  /*
+    ÉXITO DEL OTORGAMIENTO, EN UN MODAL (Fernando, 28/09/2026). Antes reemplazaba todo el
+    simulador y quedaba una pantalla casi vacía con un comprobante chico en el medio. Ahora se
+    abre encima; "Cerrar" (o la X, o Escape) hace lo mismo que antes: vuelve al listado. No se
+    cierra al clickear afuera: se perdería el "Imprimir plan" sin querer.
+  */
+  const totalFinal = hayCargos ? totalAPagar : (plan?.totalPagado ?? 0);
+  const exitoDialog = created && (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(true); }}>
+      <DialogContent className="w-[95vw] sm:max-w-md sm:p-7" {...SIN_CIERRE_ACCIDENTAL}>
+        <DialogTitle className="sr-only">Crédito otorgado</DialogTitle>
+        <div className="flex flex-col items-center gap-5 pt-2 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-success/30 bg-success/15">
-          <Emoji name="check-mark-button" className="h-8 w-8" />
-        </div>
-        <div className="space-y-1.5">
-          <h3 className="text-lg font-semibold text-foreground">Crédito otorgado con éxito</h3>
-          <p className="text-sm text-muted-foreground">La operación se registró correctamente.</p>
-        </div>
-
-        <div className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-5">
-          <div className="text-center">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">N° de crédito</p>
-            <p className="mt-1 font-mono text-3xl font-black text-primary">{formatCreditoNumero(created.numero)}</p>
+            <Emoji name="check-mark-button" className="h-8 w-8" />
           </div>
-          <div className="border-t border-border" />
-          <dl className="space-y-2 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Cliente</dt>
-              <dd className="truncate font-medium text-foreground">{clienteSel ? nombreCompleto(clienteSel) : "—"}</dd>
-            </div>
-            {clienteSel?.documento && (
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted-foreground">DNI</dt>
-                <dd className="font-mono text-foreground">{clienteSel.documento}</dd>
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Capital</dt>
-              <dd className="font-mono font-semibold text-foreground">{formatMonto(created.monto_original)}</dd>
-            </div>
-            {plan && (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted-foreground">Plan</dt>
-                  <dd className="text-foreground">{plan.cuotas.length} {lbl.cuotaPlural}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted-foreground">Total a pagar</dt>
-                  <dd className="font-mono font-semibold text-foreground">{formatMonto(totalFinal)}</dd>
-                </div>
-              </>
-            )}
-          </dl>
-        </div>
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-semibold text-foreground">Crédito otorgado con éxito</h3>
+            <p className="text-sm text-muted-foreground">La operación se registró correctamente.</p>
+          </div>
 
-        <div className="flex w-full max-w-sm flex-col items-center gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => imprimirPlan("cliente")}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground sm:flex-1"
-          >
-            <Emoji name="printer" className="h-4 w-4" /> Imprimir plan
-          </button>
-          <button
-            type="button"
-            onClick={() => onClose(true)}
-            className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:flex-1"
-          >
-            Cerrar
-          </button>
+          <div className="w-full space-y-4 rounded-xl border border-border bg-muted/20 p-5 text-left">
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">N° de crédito</p>
+              <p className="mt-1 font-mono text-3xl font-black text-primary">{formatCreditoNumero(created.numero)}</p>
+            </div>
+            <div className="border-t border-border" />
+            <dl className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Cliente</dt>
+                <dd className="truncate font-medium text-foreground">{clienteSel ? nombreCompleto(clienteSel) : "—"}</dd>
+              </div>
+              {clienteSel?.documento && (
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">DNI</dt>
+                  <dd className="font-mono text-foreground">{clienteSel.documento}</dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">Capital</dt>
+                <dd className="font-mono font-semibold text-foreground">{formatMonto(created.monto_original)}</dd>
+              </div>
+              {plan && (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-muted-foreground">Plan</dt>
+                    <dd className="text-foreground">{plan.cuotas.length} {lbl.cuotaPlural}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-muted-foreground">Total a pagar</dt>
+                    <dd className="font-mono font-semibold text-foreground">{formatMonto(totalFinal)}</dd>
+                  </div>
+                </>
+              )}
+            </dl>
+          </div>
+
+          <div className="flex w-full flex-col items-center gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => imprimirPlan("cliente")}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground sm:flex-1"
+            >
+              <Emoji name="printer" className="h-4 w-4" /> Imprimir plan
+            </button>
+            <button
+              type="button"
+              onClick={() => onClose(true)}
+              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:flex-1"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
-      </div>
-    );
-  }
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <>
@@ -1768,6 +1778,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
 
     {/* Alta rápida de cliente (cuando el DNI buscado no existe) */}
     <ClienteFormDialog open={alta.open} initialDocumento={alta.doc} onClose={handleAltaClose} />
+    {exitoDialog}
 
     {/* Aviso de confirmación previo al otorgamiento */}
     <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!loading) setConfirmOpen(o); }}>
