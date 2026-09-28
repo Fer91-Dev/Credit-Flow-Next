@@ -152,11 +152,12 @@ body {
 /*
   Logo de la financiera suelto en el menú (Fernando, 28/09/2026). En oscuro, `lighten` funde
   su fondo negro con el del menú y quedan solo el ícono y las letras (mismo truco que el
-  login). En claro no se puede: las letras blancas desaparecerían sobre el blanco, así que
-  el logo se muestra con su propio fondo, redondeado.
+  login). En claro tampoco va el recuadro negro (Fernando, 28/09/2026): se invierten los
+  tonos —el negro pasa a blanco y las letras blancas a oscuras— y el `hue-rotate` devuelve
+  el azul a azul; con `darken` el fondo, ya blanco, desaparece contra el menú.
 */
-.logo-marca { border-radius: 0.75rem; }
-.dark .logo-marca { mix-blend-mode: lighten; border-radius: 0; }
+.logo-marca { filter: invert(1) hue-rotate(180deg); mix-blend-mode: darken; }
+.dark .logo-marca { filter: none; mix-blend-mode: lighten; }
 
 .dark body {
   background-color: #060A12;

@@ -37,7 +37,7 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
     return (
       <div className="flex min-w-0 flex-col items-center gap-1.5">
         <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[5.5rem] w-auto max-w-[11.5rem] object-contain" />
-        <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">powered by CreditFlow</span>
+        <span className="text-[7px] uppercase tracking-[0.14em] text-muted-foreground/50">powered by CreditFlow</span>
       </div>
     );
   }
