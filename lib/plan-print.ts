@@ -5,6 +5,7 @@
  * simulador (al otorgar) y por el detalle del crédito (reimpresión). El diseño
  * sigue las reglas permanentes del documento (ver CLAUDE.md → PDF "Plan de pagos").
  */
+import { imgLogoImpreso } from "@/lib/logo-papel";
 import { formatMonto, formatFecha } from "@/lib/utils";
 import { montoEnPalabras } from "@/lib/domain";
 import type { CargoCuotaCol } from "@/lib/domain";
@@ -245,7 +246,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F7FB;c
 .hd{padding:40px 56px 32px;border-bottom:1px solid #E2E8F0;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .brand{display:inline-flex;align-items:center;gap:10px}
 .bicon{width:34px;height:34px;background:linear-gradient(135deg,#6366F1,#818CF8);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-weight:900;font-family:monospace}
-.blogo{height:34px;width:auto;max-width:150px;object-fit:contain}
+.blogo{height:56px;width:auto;max-width:240px;object-fit:contain} /* El nombre escrito solo va si no hay logo: el logo ya lo trae (Fernando, 28/09/2026). */
 .bname{font-size:18px;font-weight:800;color:#6366F1;letter-spacing:-.4px}
 .pwr{margin-top:6px;font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#9CA3AF}
 .cotblk{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
@@ -330,9 +331,9 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
   <div class="hd">
     <div class="brand">${
       data.financiera?.logo_url
-        ? `<img class="blogo" src="${esc(data.financiera.logo_url)}" alt=""/>`
+        ? imgLogoImpreso(data.financiera.logo_url, 'class="blogo"')
         : `<div class="bicon">$</div>`
-    }<span class="bname">${esc(data.financiera?.nombre?.trim() || "CreditFlow")}</span></div>
+    }${data.financiera?.logo_url ? "" : `<span class="bname">${esc(data.financiera?.nombre?.trim() || "CreditFlow")}</span>`}</div>
     <div class="cotblk">
       ${data.numeroCredito ? `<span class="cotlabel">Crédito</span><span class="cotval" style="font-family:ui-monospace,monospace">${esc(data.numeroCredito)}</span>` : ""}
       ${data.cliente ? `<span class="cotlabel">Cliente</span><span class="cotval" style="font-size:14px">${esc(data.cliente)}</span>` : ""}

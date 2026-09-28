@@ -15,6 +15,7 @@
  * función que dibuja la pantalla. Es la única forma de garantizar que el papel y lo que el
  * operador leyó antes de emitirlo digan exactamente lo mismo.
  */
+import { bytesLogoImpreso } from "@/lib/logo-papel";
 import { formatCreditoNumero } from "@/lib/utils";
 import { round2 } from "@/lib/domain";
 import { libreDeudaTexto } from "@/lib/libre-deuda-texto";
@@ -122,25 +123,19 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
 
   // ── Encabezado (co-branding: nombre + logo de la financiera) ─────────────
   const marca = data.financiera?.nombre?.trim() || datos.empresa || "CreditFlow";
-  const logoUrl = data.financiera?.logo_url;
-  // Anti-SSRF: solo descargamos logos alojados en NUESTRO Storage público (nunca URLs ajenas).
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const logoSeguro = !!logoUrl && !!base && logoUrl.startsWith(`${base}/storage/v1/object/public/`);
+  // La versión del logo para papel si existe (sin el recuadro negro); si no, el original.
+  // Solo de NUESTRO Storage público (anti-SSRF): lo controla `bytesLogoImpreso`.
   let logoImg: Awaited<ReturnType<typeof doc.embedPng>> | null = null;
-  if (logoUrl && logoSeguro && /\.(png|jpe?g)$/i.test(logoUrl)) {
-    try {
-      const resp = await fetch(logoUrl);
-      if (resp.ok) {
-        const bytes = new Uint8Array(await resp.arrayBuffer());
-        logoImg = /\.png$/i.test(logoUrl) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      }
-    } catch { /* si falla el logo, seguimos solo con el nombre */ }
+  const logo = await bytesLogoImpreso(data.financiera?.logo_url);
+  if (logo) {
+    try { logoImg = logo.png ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes); }
+    catch { /* si falla el logo, seguimos solo con el nombre */ }
   }
   if (logoImg) {
-    const h = 24;
+    // Solo el logo: el nombre escrito al lado repetía lo que el logo ya dice (Fernando, 28/09/2026).
+    const h = 40;
     const w = (logoImg.width / logoImg.height) * h;
-    page.drawImage(logoImg, { x: M, y: y - 4, width: w, height: h });
-    text(marca, M + w + 10, y, bold, 18, PRIMARY);
+    page.drawImage(logoImg, { x: M, y: y - 12, width: w, height: h });
   } else {
     text(marca, M, y, bold, 20, PRIMARY);
   }

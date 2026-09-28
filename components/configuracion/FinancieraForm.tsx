@@ -1,5 +1,6 @@
 "use client";
 
+import { generarLogoPapel } from "@/lib/logo-papel";
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2, Upload, X, Building2 } from "lucide-react";
 import { Field, Input, CuitInput, TelInput } from "@/components/ui/field";
@@ -45,6 +46,10 @@ export function FinancieraForm() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      // Versión para papel (PDF e impresos): sin el recuadro oscuro. Si no se puede armar,
+      // se sube igual el logo y los impresos usan el original.
+      const papel = await generarLogoPapel(file).catch(() => null);
+      if (papel) fd.append("papel", new File([papel], "papel.png", { type: "image/png" }));
       const res = await fetch("/api/financiera/logo", { method: "POST", body: fd });
       const j = await res.json();
       if (j.ok) set("logo_url", j.data.url);

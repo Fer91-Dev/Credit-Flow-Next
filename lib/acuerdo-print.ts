@@ -21,6 +21,7 @@
  * ⚠️ El texto de las cláusulas está redactado en castellano claro, NO por un abogado. Es
  * mejor que lo que había (nada), y queda pendiente de revisión legal junto con el pagaré.
  */
+import { imgLogoImpreso } from "@/lib/logo-papel";
 import { formatMonto, formatFecha } from "@/lib/utils";
 import { montoEnPalabras } from "@/lib/domain";
 
@@ -120,7 +121,7 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
   .doc{max-width:720px;margin:0 auto}
   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111827;padding-bottom:12px}
   .brand{display:flex;align-items:center;gap:10px}
-  .brand img{height:26px}
+  .brand img{height:46px;width:auto;max-width:220px;object-fit:contain} /* El nombre escrito solo va si no hay logo: el logo ya lo trae (Fernando, 28/09/2026). */
   .bname{font-size:18px;font-weight:800;background:linear-gradient(90deg,#6366F1,#818CF8);-webkit-background-clip:text;background-clip:text;color:transparent}
   .tag{font-size:10px;text-transform:uppercase;letter-spacing:.14em;font-weight:700;text-align:right}
   h1{font-size:20px;margin:26px 0 4px;letter-spacing:-.01em}
@@ -161,8 +162,8 @@ export function imprimirAcuerdo(d: AcuerdoPrintData): void {
 
   <div class="head">
     <div class="brand">${
-      d.financiera?.logo_url ? `<img src="${esc(d.financiera.logo_url)}" alt="" />` : ""
-    }<span class="bname">${esc(marca)}</span></div>
+      d.financiera?.logo_url ? imgLogoImpreso(d.financiera.logo_url) : ""
+    }${d.financiera?.logo_url ? "" : `<span class="bname">${esc(marca)}</span>`}</div>
     <div class="tag">Acuerdo de pago<br/>${esc(formatFecha(d.fecha))}</div>
   </div>
 

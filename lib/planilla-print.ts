@@ -19,6 +19,7 @@
  *  - La FECHA va en el encabezado de cada página, porque los importes son los de ese día:
  *    la mora corre por día y una planilla vieja pide de menos.
  */
+import { imgLogoImpreso } from "@/lib/logo-papel";
 import { formatMonto, formatFecha, formatCreditoNumero } from "@/lib/utils";
 
 export interface FilaPlanillaPrint {
@@ -160,7 +161,7 @@ export function imprimirPlanillaCalle(d: PlanillaPrintData): void {
   .doc{max-width:1040px;margin:0 auto}
   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111827;padding-bottom:10px}
   .brand{display:flex;align-items:center;gap:9px}
-  .brand img{height:24px}
+  .brand img{height:40px;width:auto;max-width:200px;object-fit:contain} /* El nombre escrito solo va si no hay logo: el logo ya lo trae (Fernando, 28/09/2026). */
   .bname{font-size:17px;font-weight:800}
   .tag{font-size:10px;text-transform:uppercase;letter-spacing:.14em;font-weight:700;text-align:right}
   h1{font-size:18px;margin:18px 0 3px;letter-spacing:-.01em}
@@ -207,8 +208,8 @@ export function imprimirPlanillaCalle(d: PlanillaPrintData): void {
 
   <div class="head">
     <div class="brand">${
-      d.financiera?.logo_url ? `<img src="${esc(d.financiera.logo_url)}" alt="" />` : ""
-    }<span class="bname">${esc(marca)}</span></div>
+      d.financiera?.logo_url ? imgLogoImpreso(d.financiera.logo_url) : ""
+    }${d.financiera?.logo_url ? "" : `<span class="bname">${esc(marca)}</span>`}</div>
     <div class="tag">Planilla de cobranza<br/>${esc(fecha)}</div>
   </div>
 

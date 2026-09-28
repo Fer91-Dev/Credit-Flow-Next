@@ -1,3 +1,4 @@
+import { rutaLogoPapel } from "@/lib/logo-papel";
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import type { NextRequest } from "next/server";
@@ -43,6 +44,21 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     const detail = await res.text().catch(() => "");
     console.error("[financiera/logo]", res.status, detail);
     return errorResponse("No se pudo subir el logo", "UPLOAD_FAILED", 502);
+  }
+
+  /*
+    La versión para papel (sin recuadro oscuro) la arma el navegador y viaja en el campo
+    `papel`; se guarda al lado con el sufijo `-papel.png` (ver lib/logo-papel.ts). Si falla,
+    el logo igual queda subido: los impresos vuelven al original.
+  */
+  const papel = form.get("papel");
+  if (papel instanceof File && papel.type === "image/png" && papel.size <= MAX_BYTES) {
+    const r2 = await fetch(`${url}/storage/v1/object/productos/${rutaLogoPapel(path)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "image/png", "x-upsert": "true" },
+      body: Buffer.from(await papel.arrayBuffer()),
+    }).catch(() => null);
+    if (!r2?.ok) console.error("[financiera/logo] papel", r2?.status);
   }
 
   return successResponse({ url: `${url}/storage/v1/object/public/productos/${path}`, path }, 201);
