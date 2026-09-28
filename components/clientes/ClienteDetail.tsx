@@ -674,23 +674,25 @@ export function ClienteDetail({
         // misma altura y encuadradas. Las columnas no se estiran (`items-start`).
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-4">
+          {/* Todos los datos de la ficha al mismo tamaño (Fernando, 28/09/2026): DNI, CUIT, email,
+              teléfono e ingreso iban más grandes que el resto y la ficha se leía despareja. */}
           <InfoBlock icon="bust-in-silhouette" title="Identidad" accent="primary" emptyText="Sin datos de identidad cargados." items={[
-            { label: "DNI / Documento", value: cliente.documento, mono: true, emphasis: true },
-            { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true, emphasis: true },
+            { label: "DNI / Documento", value: cliente.documento, mono: true },
+            { label: "CUIT / CUIL", value: cliente.cuit_cuil, mono: true },
             { label: "Nacimiento", value: cliente.fecha_nacimiento ? `${fmtDate(cliente.fecha_nacimiento)}${edad(cliente.fecha_nacimiento) ? ` · ${edad(cliente.fecha_nacimiento)}` : ""}` : null },
             { label: "Estado civil", value: cliente.estado_civil ? ESTADO_CIVIL[cliente.estado_civil] ?? cliente.estado_civil : null },
             { label: "Nacionalidad", value: cliente.nacionalidad },
           ]} />
           <InfoBlock icon="envelope" title="Contacto" accent="warning" emptyText="Sin datos de contacto cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
-            { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined, emphasis: true },
-            { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined, emphasis: true },
+            { label: "Email", value: cliente.email, icon: Mail, href: cliente.email ? `mailto:${cliente.email}` : undefined },
+            { label: "Teléfono", value: cliente.telefono, icon: Phone, href: cliente.telefono ? `tel:${cliente.telefono}` : undefined },
           ]} />
           <InfoBlock icon="briefcase" title="Laboral e ingresos" accent="success" emptyText="Sin datos laborales cargados." onEditar={puedeEditar ? onEditar : undefined} items={[
             { label: "Situación", value: cliente.situacion_laboral ? SITUACION_LABORAL[cliente.situacion_laboral] ?? cliente.situacion_laboral : null },
             { label: "Ocupación", value: cliente.ocupacion },
             { label: "Empleador", value: cliente.empleador },
             { label: "Antigüedad", value: cliente.antiguedad_laboral_meses != null ? `${cliente.antiguedad_laboral_meses} meses` : null },
-            { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? formatMonto(cliente.ingreso_mensual) : null, mono: true, emphasis: true },
+            { label: "Ingreso mensual", value: cliente.ingreso_mensual != null ? formatMonto(cliente.ingreso_mensual) : null, mono: true },
             { label: "Otros ingresos", value: cliente.otros_ingresos != null ? formatMonto(cliente.otros_ingresos) : null, mono: true },
             { label: "Teléfono laboral", value: cliente.telefono_laboral, icon: Phone, href: cliente.telefono_laboral ? `tel:${cliente.telefono_laboral}` : undefined },
             { label: "Dirección laboral", value: cliente.direccion_laboral },
