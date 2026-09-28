@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Emoji } from "@/components/ui/Emoji";
+import { useState, useEffect, useRef } from "react";
+import { Check, Circle } from "lucide-react";
+import { IconBadge } from "@/components/ui/IconBadge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ModalHeader, FormActions, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Field, Input, Select } from "@/components/ui/field";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto, formatCuit } from "@/lib/utils";
 import { normalizarEstadoCliente } from "@/lib/domain";
@@ -59,14 +62,13 @@ function soloDigitos(v: string, max: number) {
   return v.replace(/\D/g, "").slice(0, max);
 }
 
+/** Bloque del formulario: el mismo encabezado (IconBadge + título) que los paneles del SaaS. */
 function SectionCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-muted/10 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border/60">
-          <Emoji name={icon} className="h-4 w-4" />
-        </div>
-        <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{title}</p>
+    <section className="group rounded-xl border border-border bg-card/60 p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2.5">
+        <IconBadge emoji={icon} hoverable />
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       {children}
     </section>
@@ -90,6 +92,9 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   // poder completarlos de a poco. El sueldo lo pedirá igual el motor de riesgo al dar un crédito.
   const [migrado, setMigrado] = useState(false);
   const [reseteando, setReseteando] = useState(false);
+  // El aviso de error vive arriba; el modal scrollea, así que al fallar se lo trae a la vista.
+  const errorRef = useRef<HTMLDivElement>(null);
+  const mostrarError = () => requestAnimationFrame(() => errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   const confirm = useConfirm();
   const toast = useToast();
   // El consentimiento de bureau solo aplica al plan Pro (verificación externa).
@@ -285,8 +290,8 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (cuitDup) { setError(`Ya existe un cliente con el CUIT ${formData.cuit_cuil.trim()}: ${cuitDup.nombre}.`); return; }
-    if (necesitaCuit) { setError(avisoDni!); return; }
+    if (cuitDup) { setError(`Ya existe un cliente con el CUIT ${formData.cuit_cuil.trim()}: ${cuitDup.nombre}.`); mostrarError(); return; }
+    if (necesitaCuit) { setError(avisoDni!); mostrarError(); return; }
     const errs = validar();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -294,7 +299,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
       // parecía que "no hacía nada" al guardar.
       const primero = Object.values(errs)[0];
       setError(`No se pudo guardar. Revisá los campos en rojo${primero ? `: ${primero}` : "."}`);
-      (ev.currentTarget as HTMLFormElement)?.scrollTo?.({ top: 0, behavior: "smooth" });
+      mostrarError();
       return;
     }
     setErrors({});
@@ -366,233 +371,325 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   const sueldoBloqueado = !!sueldoControl && !sueldoControl.puedeEditar;
   const edicionesRestantes = sueldoControl && sueldoControl.max > 0 ? sueldoControl.max - sueldoControl.ediciones : null;
 
+  /*
+    Los obligatorios, a la vista (Fernando, 28/09/2026): el formulario tiene cinco secciones
+    y solo cuatro campos frenan el alta. La tira de arriba dice cuáles faltan y lleva a cada
+    uno de un clic. En un migrado solo nombre y apellido son obligatorios (validar()).
+  */
+  const obligatorios = [
+    { campo: "nombre", label: "Nombre", ok: !!formData.nombre.trim() },
+    { campo: "apellido", label: "Apellido", ok: !!formData.apellido.trim() },
+    ...(migrado ? [] : [
+      { campo: "documento", label: "DNI", ok: RE.dni.test(formData.documento.trim()) },
+      { campo: "ingreso_mensual", label: "Ingreso mensual", ok: parseMontoInput(formData.ingreso_mensual || "0") > 0 },
+    ]),
+  ];
+  const completos = obligatorios.filter((o) => o.ok).length;
+  const irAlCampo = (campo: string) => {
+    const el = document.getElementsByName(campo)[0] as HTMLElement | undefined;
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.focus({ preventScroll: true });
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
-      {error && (
-        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Datos personales */}
-      <SectionCard icon="bust-in-silhouette" title="Datos personales">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Nombre" required error={errors.nombre}>
-            <Input name="nombre" type="text" placeholder="Ej: Juan" value={formData.nombre}
-              onChange={set("nombre")} className={errCls("nombre")} autoFocus />
-          </Field>
-          <Field label="Apellido" required error={errors.apellido}>
-            <Input name="apellido" type="text" placeholder="Ej: Rodríguez" value={formData.apellido}
-              onChange={set("apellido")} className={errCls("apellido")} />
-          </Field>
-          <Field
-            label="DNI"
-            required
-            error={errors.documento || avisoDni}
-            hint={dniDup && !necesitaCuit ? "DNI repetido — diferenciado por el CUIT" : "Solo números, sin puntos"}
-          >
-            <Input name="documento" type="text" inputMode="numeric" placeholder="Ej: 36049884" value={formData.documento}
-              onChange={setDni} className={cnMono(necesitaCuit ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("documento"))} />
-          </Field>
-          <Field
-            label={necesitaCuit ? "CUIL / CUIT (requerido)" : "CUIT / CUIL"}
-            required={necesitaCuit}
-            error={errors.cuit_cuil || (cuitDup ? `Ya existe un cliente con este CUIT: ${cuitDup.nombre}.` : undefined)}
-            hint={necesitaCuit ? "Cargalo para diferenciar la persona del DNI repetido" : undefined}
-          >
-            <Input name="cuit_cuil" type="text" inputMode="numeric" placeholder="Ej: 20-36049884-3" value={formData.cuit_cuil}
-              onChange={setCuit} className={cnMono((cuitDup || necesitaCuit) ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("cuit_cuil"))} />
-          </Field>
-          <Field label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined}>
-            <Input name="fecha_nacimiento" type="date" value={formData.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
-          </Field>
-          <Field label="Estado civil">
-            <Select name="estado_civil" value={formData.estado_civil} onChange={set("estado_civil")}>
-              <option value="">Sin especificar</option>
-              <option value="soltero">Soltero/a</option>
-              <option value="casado">Casado/a</option>
-              <option value="divorciado">Divorciado/a</option>
-              <option value="viudo">Viudo/a</option>
-              <option value="union_convivencial">Unión convivencial</option>
-            </Select>
-          </Field>
-          <Field label="Nacionalidad">
-            <Input name="nacionalidad" type="text" placeholder="Ej: Argentina" value={formData.nacionalidad} onChange={set("nacionalidad")} />
-          </Field>
-        </div>
-      </SectionCard>
-
-      {/* Domicilio (georef AR: provincia→localidad; CP manual) */}
-      <SectionCard icon="house" title="Domicilio">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Provincia">
-            <Select name="provincia" value={formData.provincia} onChange={setProvincia}>
-              <option value="">Seleccioná…</option>
-              {provincias.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-            </Select>
-          </Field>
-          <Field
-            label="Localidad"
-            hint={loadingLoc ? "Cargando localidades…" : (!formData.provincia ? "Elegí primero la provincia" : undefined)}
-          >
-            <Select name="localidad" value={formData.localidad} onChange={set("localidad")} disabled={!formData.provincia || loadingLoc}>
-              <option value="">Seleccioná…</option>
-              {localidades.map((l) => <option key={l.id} value={l.nombre}>{l.nombre}</option>)}
-            </Select>
-          </Field>
-          <Field label="Dirección" hint="Calle y número">
-            <Input name="direccion" type="text" placeholder="Ej: San Martín 1234" value={formData.direccion} onChange={set("direccion")} />
-          </Field>
-          <Field label="Código postal">
-            <Input name="codigo_postal" type="text" inputMode="numeric" placeholder="Ej: 4000" value={formData.codigo_postal} onChange={set("codigo_postal")} className="font-mono tabular-nums" />
-          </Field>
-          <Field label="Tipo de domicilio">
-            <Select name="tipo_domicilio" value={formData.tipo_domicilio} onChange={set("tipo_domicilio")}>
-              <option value="">Sin especificar</option>
-              <option value="casa">Casa</option>
-              <option value="departamento">Departamento</option>
-            </Select>
-          </Field>
-          <Field label="Zona de cobranza" hint="Si la dejás vacía, se completa sola con el barrio del domicilio (según el mapa). Lo que escribas acá vale más, y el sistema lo recuerda para los próximos clientes del mismo barrio.">
-            <Input name="zona" type="text" placeholder="Vacío = la completa el mapa" value={formData.zona} onChange={set("zona")} />
-          </Field>
-          {formData.tipo_domicilio === "departamento" && (
-            <>
-              <Field label="Piso">
-                <Input name="piso" type="text" inputMode="numeric" placeholder="Ej: 3" value={formData.piso} onChange={set("piso")} className="text-center font-mono tabular-nums" />
-              </Field>
-              <Field label="Departamento" hint="Letra o número de la unidad (ej. C)">
-                <Input name="depto" type="text" placeholder="Ej: C" value={formData.depto} onChange={set("depto")} className="text-center uppercase" />
-              </Field>
-            </>
-          )}
-        </div>
-      </SectionCard>
-
-      {/* Situación laboral */}
-      <SectionCard icon="briefcase" title="Situación laboral">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Situación">
-            <Select name="situacion_laboral" value={formData.situacion_laboral} onChange={set("situacion_laboral")}>
-              <option value="">Sin especificar</option>
-              <option value="relacion_dependencia">Relación de dependencia</option>
-              <option value="autonomo">Autónomo</option>
-              <option value="monotributista">Monotributista</option>
-              <option value="jubilado">Jubilado/Pensionado</option>
-              <option value="desempleado">Desempleado</option>
-              <option value="otro">Otro</option>
-            </Select>
-          </Field>
-          <Field label="Ocupación / Puesto">
-            <Input name="ocupacion" type="text" placeholder="Ej: Comerciante" value={formData.ocupacion} onChange={set("ocupacion")} />
-          </Field>
-          <Field label="Empleador">
-            <Input name="empleador" type="text" placeholder="Ej: Empresa S.A." value={formData.empleador} onChange={set("empleador")} />
-          </Field>
-        </div>
-      </SectionCard>
-
-      {/* Ingresos */}
-      <SectionCard icon="money-bag" title="Ingresos / capacidad de pago">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field
-            label="Ingreso mensual ($)"
-            required
-            error={errors.ingreso_mensual || (sueldoBloqueado ? "Límite de ediciones alcanzado — un admin debe resetear el contador" : undefined)}
-            hint={sueldoBloqueado ? undefined : (edicionesRestantes != null && !sueldoControl?.esAdmin ? `Te quedan ${edicionesRestantes} edición${edicionesRestantes === 1 ? "" : "es"} del sueldo` : "Variable clave del motor financiero (capacidad de pago)")}
-          >
-            <Input
-              name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00"
-              value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} readOnly={sueldoBloqueado}
-              className={`text-right font-mono tabular-nums ${errCls("ingreso_mensual")} ${sueldoBloqueado ? "opacity-60 cursor-not-allowed" : ""}`}
-            />
-          </Field>
-          <Field label="Otros ingresos ($)">
-            <Input name="otros_ingresos" type="text" inputMode="decimal" placeholder="150.000,00" value={formData.otros_ingresos} onChange={setMonto("otros_ingresos")} className="text-right font-mono tabular-nums" />
-          </Field>
-        </div>
-
-        {/* Panel admin: contador de ediciones del sueldo + reseteo (anti-fraude del vendedor) */}
-        {sueldoControl?.esAdmin && sueldoControl.max > 0 && sueldoControl.ediciones > 0 && (
-          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
-            <p className="text-xs text-muted-foreground">
-              Ediciones del sueldo por vendedores: <span className="font-mono font-semibold text-foreground">{sueldoControl.ediciones}/{sueldoControl.max}</span>
-            </p>
-            <button
-              type="button" onClick={resetearContador} disabled={reseteando}
-              className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
-            >
-              {reseteando ? "Reseteando…" : "Resetear contador"}
-            </button>
+    <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+      <div ref={errorRef} className="scroll-mt-4">
+        {error && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+            {error}
           </div>
         )}
-
-        {/* Motivo del cambio de sueldo: aparece al editar el ingreso (requerido si el salto es grande) */}
-        {sueldoCambiado && !sueldoBloqueado && (
-          <div className="mt-3">
-            <Field label="Motivo del cambio de sueldo" error={errors.motivo_sueldo} hint="Requerido si el aumento supera el % configurado. Queda auditado.">
-              <Input name="motivo_sueldo" type="text" placeholder="Ej: actualización por recibo de sueldo nuevo"
-                value={motivoSueldo}
-                onChange={(e) => { setMotivoSueldo(e.target.value); clearError("motivo_sueldo"); }}
-                className={errCls("motivo_sueldo")} />
-            </Field>
-          </div>
-        )}
-        {tieneRiesgo && (
-          <label className={`mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2.5 transition-colors ${formData.consentimiento_bureau ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
-            <input
-              type="checkbox"
-              checked={formData.consentimiento_bureau}
-              onChange={(e) => setFormData((p) => ({ ...p, consentimiento_bureau: e.target.checked }))}
-              className="mt-0.5 accent-primary"
-            />
-            <span className="text-xs text-foreground">
-              El cliente presta conformidad para la consulta a bureaus de crédito (BCRA/Nosis/Veraz).
-              <span className="block text-[11px] text-muted-foreground">Requisito legal (Ley 25.326 — habeas data) para consultas externas.</span>
-            </span>
-          </label>
-        )}
-      </SectionCard>
-
-      {/* Contacto */}
-      <SectionCard icon="mobile-phone" title="Contacto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Email" error={errors.email}>
-            <Input name="email" type="email" placeholder="ejemplo@correo.com" value={formData.email}
-              onChange={set("email")} onBlur={blurEmail} className={errCls("email")} />
-          </Field>
-          <Field label="Teléfono / WhatsApp" error={errors.telefono}>
-            <Input name="telefono" type="tel" inputMode="tel" placeholder="Ej: 3814123693" value={formData.telefono}
-              onChange={setTel("telefono")} className={errCls("telefono")} />
-          </Field>
-          <Field label="Teléfono laboral" error={errors.telefono_laboral}>
-            <Input name="telefono_laboral" type="tel" inputMode="tel" placeholder="Ej: 3814555000" value={formData.telefono_laboral}
-              onChange={setTel("telefono_laboral")} className={errCls("telefono_laboral")} />
-          </Field>
-          <Field label="Dirección laboral">
-            <Input name="direccion_laboral" type="text" placeholder="Calle y número" value={formData.direccion_laboral} onChange={set("direccion_laboral")} />
-          </Field>
-        </div>
-      </SectionCard>
-
-      {/* Acciones — botones finos y centrados */}
-      <div className="sticky bottom-0 flex items-center justify-center gap-2.5 border-t border-border bg-card pt-3">
-        <button
-          type="button"
-          onClick={() => onClose(false)}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={loading || bloqueadoDup}
-          className="rounded-lg bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {loading ? "Guardando…" : clienteId ? "Actualizar cliente" : "Crear cliente"}
-        </button>
       </div>
+
+      {/* Tira de obligatorios */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/20 px-4 py-3">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Obligatorios <span className={`font-mono tabular-nums ${completos === obligatorios.length ? "text-success" : "text-foreground"}`}>{completos} de {obligatorios.length}</span>
+        </span>
+        {obligatorios.map((o) => (
+          <button
+            key={o.campo}
+            type="button"
+            onClick={() => irAlCampo(o.campo)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+              o.ok
+                ? "bg-success/10 text-success ring-1 ring-inset ring-success/25"
+                : errors[o.campo]
+                  ? "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/30 hover:bg-destructive/15"
+                  : "bg-card text-muted-foreground ring-1 ring-inset ring-border hover:text-foreground"
+            }`}
+          >
+            {o.ok ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+            {o.label}
+          </button>
+        ))}
+        {migrado && <span className="ml-auto text-[11px] text-muted-foreground">Cliente migrado</span>}
+      </div>
+
+      {/*
+        Dos columnas en pantallas anchas (Fernando, 28/09/2026: "más tamaño"). A la izquierda
+        la persona, sus ingresos y cómo contactarla; a la derecha, dónde vive y dónde trabaja.
+        Son dos pilas independientes, así una sección alta no deja huecos en la otra columna.
+      */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          {/* Datos personales */}
+          <SectionCard icon="bust-in-silhouette" title="Datos personales">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Nombre" required error={errors.nombre}>
+                <Input name="nombre" type="text" placeholder="Ej: Juan" value={formData.nombre}
+                  onChange={set("nombre")} className={errCls("nombre")} autoFocus />
+              </Field>
+              <Field label="Apellido" required error={errors.apellido}>
+                <Input name="apellido" type="text" placeholder="Ej: Rodríguez" value={formData.apellido}
+                  onChange={set("apellido")} className={errCls("apellido")} />
+              </Field>
+              <Field
+                label="DNI"
+                required={!migrado}
+                error={errors.documento || avisoDni}
+                hint={dniDup && !necesitaCuit ? "DNI repetido — diferenciado por el CUIT" : "Solo números, sin puntos"}
+              >
+                <Input name="documento" type="text" inputMode="numeric" placeholder="Ej: 36049884" value={formData.documento}
+                  onChange={setDni} className={cnMono(necesitaCuit ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("documento"))} />
+              </Field>
+              <Field
+                label={necesitaCuit ? "CUIL / CUIT (requerido)" : "CUIT / CUIL"}
+                required={necesitaCuit}
+                error={errors.cuit_cuil || (cuitDup ? `Ya existe un cliente con este CUIT: ${cuitDup.nombre}.` : undefined)}
+                hint={necesitaCuit ? "Cargalo para diferenciar la persona del DNI repetido" : undefined}
+              >
+                <Input name="cuit_cuil" type="text" inputMode="numeric" placeholder="Ej: 20-36049884-3" value={formData.cuit_cuil}
+                  onChange={setCuit} className={cnMono((cuitDup || necesitaCuit) ? "border-destructive focus:border-destructive focus:ring-destructive/20" : errCls("cuit_cuil"))} />
+              </Field>
+              <Field label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined}>
+                <Input name="fecha_nacimiento" type="date" value={formData.fecha_nacimiento} onChange={set("fecha_nacimiento")} />
+              </Field>
+              <Field label="Estado civil">
+                <Select name="estado_civil" value={formData.estado_civil} onChange={set("estado_civil")}>
+                  <option value="">Sin especificar</option>
+                  <option value="soltero">Soltero/a</option>
+                  <option value="casado">Casado/a</option>
+                  <option value="divorciado">Divorciado/a</option>
+                  <option value="viudo">Viudo/a</option>
+                  <option value="union_convivencial">Unión convivencial</option>
+                </Select>
+              </Field>
+              <Field label="Nacionalidad">
+                <Input name="nacionalidad" type="text" placeholder="Ej: Argentina" value={formData.nacionalidad} onChange={set("nacionalidad")} />
+              </Field>
+            </div>
+          </SectionCard>
+
+          {/* Ingresos */}
+          <SectionCard icon="money-bag" title="Ingresos / capacidad de pago">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field
+                label="Ingreso mensual"
+                required={!migrado}
+                error={errors.ingreso_mensual || (sueldoBloqueado ? "Límite de ediciones alcanzado — un admin debe resetear el contador" : undefined)}
+                hint={sueldoBloqueado ? undefined : (edicionesRestantes != null && !sueldoControl?.esAdmin ? `Te quedan ${edicionesRestantes} edición${edicionesRestantes === 1 ? "" : "es"} del sueldo` : undefined)}
+              >
+                <ConPesos>
+                  <Input
+                    name="ingreso_mensual" type="text" inputMode="decimal" placeholder="850.000,00"
+                    value={formData.ingreso_mensual} onChange={setMonto("ingreso_mensual")} readOnly={sueldoBloqueado}
+                    className={`pl-8 text-right font-mono tabular-nums ${errCls("ingreso_mensual")} ${sueldoBloqueado ? "cursor-not-allowed opacity-60" : ""}`}
+                  />
+                </ConPesos>
+              </Field>
+              <Field label="Otros ingresos">
+                <ConPesos>
+                  <Input name="otros_ingresos" type="text" inputMode="decimal" placeholder="150.000,00" value={formData.otros_ingresos} onChange={setMonto("otros_ingresos")} className="pl-8 text-right font-mono tabular-nums" />
+                </ConPesos>
+              </Field>
+            </div>
+
+            {/* Panel admin: contador de ediciones del sueldo + reseteo (anti-fraude del vendedor) */}
+            {sueldoControl?.esAdmin && sueldoControl.max > 0 && sueldoControl.ediciones > 0 && (
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">
+                  Ediciones del sueldo por vendedores: <span className="font-mono font-semibold text-foreground">{sueldoControl.ediciones}/{sueldoControl.max}</span>
+                </p>
+                <button
+                  type="button" onClick={resetearContador} disabled={reseteando}
+                  className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  {reseteando ? "Reseteando…" : "Resetear contador"}
+                </button>
+              </div>
+            )}
+
+            {/* Motivo del cambio de sueldo: aparece al editar el ingreso (requerido si el salto es grande) */}
+            {sueldoCambiado && !sueldoBloqueado && (
+              <div className="mt-3">
+                <Field label="Motivo del cambio de sueldo" error={errors.motivo_sueldo} hint="Requerido si el aumento supera el % configurado. Queda auditado.">
+                  <Input name="motivo_sueldo" type="text" placeholder="Ej: actualización por recibo de sueldo nuevo"
+                    value={motivoSueldo}
+                    onChange={(e) => { setMotivoSueldo(e.target.value); clearError("motivo_sueldo"); }}
+                    className={errCls("motivo_sueldo")} />
+                </Field>
+              </div>
+            )}
+            {tieneRiesgo && (
+              <label className={`mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2.5 transition-colors ${formData.consentimiento_bureau ? "bg-primary/[0.06] ring-1 ring-inset ring-primary/25" : "bg-muted/20"}`}>
+                <input
+                  type="checkbox"
+                  checked={formData.consentimiento_bureau}
+                  onChange={(e) => setFormData((p) => ({ ...p, consentimiento_bureau: e.target.checked }))}
+                  className="mt-0.5 accent-primary"
+                />
+                <span className="text-xs text-foreground">
+                  El cliente presta conformidad para la consulta a bureaus de crédito (BCRA/Nosis/Veraz).
+                  <span className="block text-[11px] text-muted-foreground">Ley 25.326 (habeas data)</span>
+                </span>
+              </label>
+            )}
+          </SectionCard>
+
+          {/* Contacto: en la columna de la persona (lo que usa Cobranzas todos los días) */}
+          <SectionCard icon="mobile-phone" title="Contacto">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Teléfono / WhatsApp" error={errors.telefono} hint="10 dígitos, con característica">
+                <Input name="telefono" type="tel" inputMode="tel" placeholder="Ej: 3814123693" value={formData.telefono}
+                  onChange={setTel("telefono")} className={cnMono(errCls("telefono"))} />
+              </Field>
+              <Field label="Email" error={errors.email}>
+                <Input name="email" type="email" placeholder="ejemplo@correo.com" value={formData.email}
+                  onChange={set("email")} onBlur={blurEmail} className={errCls("email")} />
+              </Field>
+            </div>
+          </SectionCard>
+        </div>
+
+        <div className="space-y-4">
+          {/* Domicilio (georef AR: provincia→localidad; CP manual) */}
+          <SectionCard icon="house" title="Domicilio">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Provincia">
+                <Select name="provincia" value={formData.provincia} onChange={setProvincia}>
+                  <option value="">Seleccioná…</option>
+                  {provincias.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                </Select>
+              </Field>
+              <Field label="Localidad" hint={loadingLoc ? "Cargando localidades…" : undefined}>
+                <Select name="localidad" value={formData.localidad} onChange={set("localidad")} disabled={!formData.provincia || loadingLoc}>
+                  <option value="">{formData.provincia ? "Seleccioná…" : "Elegí la provincia"}</option>
+                  {localidades.map((l) => <option key={l.id} value={l.nombre}>{l.nombre}</option>)}
+                </Select>
+              </Field>
+              <Field label="Dirección" hint="Calle y número">
+                <Input name="direccion" type="text" placeholder="Ej: San Martín 1234" value={formData.direccion} onChange={set("direccion")} />
+              </Field>
+              <Field label="Código postal">
+                <Input name="codigo_postal" type="text" inputMode="numeric" placeholder="Ej: 4000" value={formData.codigo_postal} onChange={set("codigo_postal")} className="font-mono tabular-nums" />
+              </Field>
+              <Field label="Tipo de domicilio">
+                <Select name="tipo_domicilio" value={formData.tipo_domicilio} onChange={set("tipo_domicilio")}>
+                  <option value="">Sin especificar</option>
+                  <option value="casa">Casa</option>
+                  <option value="departamento">Departamento</option>
+                </Select>
+              </Field>
+              {/* Vacía, el sistema la completa con el barrio del domicilio y recuerda lo que se
+                  escriba acá para los próximos clientes del mismo barrio. */}
+              <Field label="Zona de cobranza" hint="Vacía: la completa el mapa">
+                <Input name="zona" type="text" placeholder="Ej: Centro" value={formData.zona} onChange={set("zona")} />
+              </Field>
+              {formData.tipo_domicilio === "departamento" && (
+                <>
+                  <Field label="Piso">
+                    <Input name="piso" type="text" inputMode="numeric" placeholder="Ej: 3" value={formData.piso} onChange={set("piso")} className="text-center font-mono tabular-nums" />
+                  </Field>
+                  <Field label="Departamento">
+                    <Input name="depto" type="text" placeholder="Ej: C" value={formData.depto} onChange={set("depto")} className="text-center uppercase" />
+                  </Field>
+                </>
+              )}
+            </div>
+          </SectionCard>
+
+          {/* Situación laboral (con los datos de contacto del trabajo) */}
+          <SectionCard icon="briefcase" title="Situación laboral">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Situación">
+                <Select name="situacion_laboral" value={formData.situacion_laboral} onChange={set("situacion_laboral")}>
+                  <option value="">Sin especificar</option>
+                  <option value="relacion_dependencia">Relación de dependencia</option>
+                  <option value="autonomo">Autónomo</option>
+                  <option value="monotributista">Monotributista</option>
+                  <option value="jubilado">Jubilado/Pensionado</option>
+                  <option value="desempleado">Desempleado</option>
+                  <option value="otro">Otro</option>
+                </Select>
+              </Field>
+              <Field label="Ocupación / Puesto">
+                <Input name="ocupacion" type="text" placeholder="Ej: Comerciante" value={formData.ocupacion} onChange={set("ocupacion")} />
+              </Field>
+              <Field label="Empleador">
+                <Input name="empleador" type="text" placeholder="Ej: Empresa S.A." value={formData.empleador} onChange={set("empleador")} />
+              </Field>
+              <Field label="Teléfono laboral" error={errors.telefono_laboral}>
+                <Input name="telefono_laboral" type="tel" inputMode="tel" placeholder="Ej: 3814555000" value={formData.telefono_laboral}
+                  onChange={setTel("telefono_laboral")} className={cnMono(errCls("telefono_laboral"))} />
+              </Field>
+              <Field label="Dirección laboral" className="sm:col-span-2">
+                <Input name="direccion_laboral" type="text" placeholder="Calle y número" value={formData.direccion_laboral} onChange={set("direccion_laboral")} />
+              </Field>
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+
+      <FormActions
+        onCancel={() => onClose(false)}
+        loading={loading}
+        disabled={bloqueadoDup}
+        submitLabel={clienteId ? "Guardar cambios" : "Crear cliente"}
+      />
     </form>
+  );
+}
+
+/** Prefijo "$" dentro del campo de un importe. */
+function ConPesos({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-muted-foreground">$</span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * El modal de alta/edición de cliente, igual en todos lados (Clientes y el alta rápida del
+ * simulador). Rediseño de Fernando (28/09/2026): más ancho, a dos columnas en pantallas
+ * grandes, y NO se cierra al clickear afuera — se perdía todo lo cargado sin preguntar.
+ * Quedan la X, Cancelar y Escape.
+ */
+export function ClienteFormDialog({
+  open, clienteId, initialDocumento, onClose,
+}: {
+  open: boolean;
+  clienteId?: string | null;
+  initialDocumento?: string;
+  onClose: (success?: boolean, creado?: ClienteCreado) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
+      <DialogContent
+        className="w-[95vw] max-h-[92dvh] overflow-y-auto overscroll-contain sm:max-w-3xl sm:p-7 lg:max-w-[76rem]"
+        {...SIN_CIERRE_ACCIDENTAL}
+      >
+        <ModalHeader
+          icon="bust-in-silhouette"
+          title={clienteId ? "Editar cliente" : "Nuevo cliente"}
+          subtitle={clienteId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}
+        />
+        {/* `key`: al pasar de un cliente a otro (o a uno nuevo) el formulario arranca limpio. */}
+        {open && <ClienteForm key={clienteId ?? "nuevo"} clienteId={clienteId} initialDocumento={initialDocumento} onClose={onClose} />}
+      </DialogContent>
+    </Dialog>
   );
 }
 

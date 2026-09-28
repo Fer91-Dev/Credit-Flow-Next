@@ -3,7 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
 import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, Clock, X } from "lucide-react";
-import { ClienteForm } from "./ClienteForm";
+import { ClienteFormDialog } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, useKpisClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,8 +12,6 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { ModalHeader } from "@/components/ui/form-kit";
 import { nombreCompleto, formatDias, pctDe } from "@/lib/utils";
 import { useDebounce } from "@/lib/use-debounce";
 import type { Role } from "@/lib/auth/roles";
@@ -160,16 +158,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
 
   // Diálogo de alta/edición (compartido por ambas vistas).
   const formDialog = (
-    <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleFormClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-3xl sm:p-7">
-        <ModalHeader
-          icon="bust-in-silhouette"
-          title={editingId ? "Editar cliente" : "Nuevo cliente"}
-          subtitle={editingId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}
-        />
-        <ClienteForm clienteId={editingId} onClose={handleFormClose} />
-      </DialogContent>
-    </Dialog>
+    <ClienteFormDialog open={dialogOpen} clienteId={editingId} onClose={handleFormClose} />
   );
 
   // ── Vista de ficha (cliente seleccionado) ──

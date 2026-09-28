@@ -5,8 +5,7 @@ import { motion } from "framer-motion";
 import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered, ArrowRight, AlertTriangle } from "lucide-react";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, Select } from "@/components/ui/field";
-import { ClienteForm, type ClienteCreado } from "@/components/clientes/ClienteForm";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ClienteFormDialog, type ClienteCreado } from "@/components/clientes/ClienteForm";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel,
@@ -1768,14 +1767,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
     </div>
 
     {/* Alta rápida de cliente (cuando el DNI buscado no existe) */}
-    <Dialog open={alta.open} onOpenChange={open => { if (!open) handleAltaClose(false); }}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Nuevo cliente</DialogTitle>
-        </DialogHeader>
-        <ClienteForm initialDocumento={alta.doc} onClose={handleAltaClose} />
-      </DialogContent>
-    </Dialog>
+    <ClienteFormDialog open={alta.open} initialDocumento={alta.doc} onClose={handleAltaClose} />
 
     {/* Aviso de confirmación previo al otorgamiento */}
     <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!loading) setConfirmOpen(o); }}>
