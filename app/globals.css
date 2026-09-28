@@ -149,6 +149,15 @@ body {
 }
 
 /* Aurora de fondo — SOLO en modo oscuro */
+/*
+  Logo de la financiera suelto en el menú (Fernando, 28/09/2026). En oscuro, `lighten` funde
+  su fondo negro con el del menú y quedan solo el ícono y las letras (mismo truco que el
+  login). En claro no se puede: las letras blancas desaparecerían sobre el blanco, así que
+  el logo se muestra con su propio fondo, redondeado.
+*/
+.logo-marca { border-radius: 0.75rem; }
+.dark .logo-marca { mix-blend-mode: lighten; border-radius: 0; }
+
 .dark body {
   background-color: #060A12;
   background-image:

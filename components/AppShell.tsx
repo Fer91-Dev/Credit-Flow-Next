@@ -22,12 +22,25 @@ import { useAlertaCobranza, type Financiera } from "@/lib/swr";
 
 /** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
  *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
-function Brand({ financiera, size = "lg", soloIcono = false }: { financiera?: Financiera | null; size?: "lg" | "sm"; soloIcono?: boolean }) {
+function Brand({ financiera, size = "lg", soloIcono = false, protagonista = false }: { financiera?: Financiera | null; size?: "lg" | "sm"; soloIcono?: boolean; protagonista?: boolean }) {
   const nombre = financiera?.nombre?.trim();
   const marca = nombre || "CreditFlow";
   const inicial = (nombre?.[0] ?? "C").toUpperCase();
   const box = size === "lg" ? "h-11 w-11 rounded-2xl text-xl" : "h-9 w-9 rounded-xl text-base";
   const txt = size === "lg" ? "text-base" : "text-sm";
+  /*
+    🔴 CON LOGO, EL LOGO ES LA MARCA (Fernando, 28/09/2026): solo, grande, sin recuadro y
+    con "powered by CreditFlow" debajo. El nombre escrito al lado sobraba: el logo ya lo trae.
+    Solo en el menú desplegado; contraído o en la barra del celular no hay lugar.
+  */
+  if (protagonista && financiera?.logo_url && !soloIcono) {
+    return (
+      <div className="flex min-w-0 flex-col items-center gap-1.5">
+        <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[5.5rem] w-auto max-w-[11.5rem] object-contain" />
+        <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/60">powered by CreditFlow</span>
+      </div>
+    );
+  }
   return (
     <div className={`flex min-w-0 items-center ${soloIcono ? "justify-center" : "gap-3"}`}>
       {financiera?.logo_url ? (
@@ -381,16 +394,20 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside
-        className={`group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar/85 backdrop-blur-xl border-r border-edge transition-[width] duration-200 ease-out ${
+        className={`group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar border-r border-edge transition-[width] duration-200 ease-out ${
           colapsado ? "w-16" : "w-64"
         }`}
       >
-        {/* Branding — alto alineado con la línea inferior del PageHeader del contenido */}
+        {/* Branding. Sin la línea de abajo (Fernando, 28/09/2026): el logo va suelto y el menú
+            arranca debajo. Desplegado con logo, el alto lo pone el logo. */}
         <Link
           href="/"
-          className={`flex h-[76px] shrink-0 items-center border-b border-edge transition-opacity hover:opacity-80 ${colapsado ? "justify-center px-0" : "px-5"}`}
+          aria-label="Ir al inicio"
+          className={`flex shrink-0 items-center transition-opacity hover:opacity-80 ${
+            colapsado ? "h-[76px] justify-center px-0" : financiera?.logo_url ? "justify-center px-5 pb-2 pt-5" : "h-[76px] px-5"
+          }`}
         >
-          <Brand financiera={financiera} size={colapsado ? "sm" : "lg"} soloIcono={colapsado} />
+          <Brand financiera={financiera} size={colapsado ? "sm" : "lg"} soloIcono={colapsado} protagonista />
         </Link>
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
@@ -522,10 +539,10 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card/70 backdrop-blur-xl border-r border-border/50 shadow-2xl">
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
+          <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card border-r border-border/50 shadow-2xl">
+            <div className="flex min-h-16 shrink-0 items-center justify-between px-4 pb-1 pt-4">
               <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center transition-opacity hover:opacity-80">
-                <Brand financiera={financiera} size="sm" />
+                <Brand financiera={financiera} size="sm" protagonista />
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}
