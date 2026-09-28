@@ -258,7 +258,7 @@ export function FieldLabel({ children, required }: { children: React.ReactNode; 
 
 /** Botonera del pie: primario ancho + cancelar ghost. */
 export function FormActions({
-  onCancel, loading, disabled, submitLabel, loadingLabel = "Guardando…", tone = "primary",
+  onCancel, loading, disabled, submitLabel, loadingLabel = "Guardando…", tone = "primary", compacto = false,
 }: {
   onCancel: () => void;
   loading?: boolean;
@@ -266,6 +266,12 @@ export function FormActions({
   submitLabel: string;
   loadingLabel?: string;
   tone?: "primary" | "destructive";
+  /**
+   * Botones de su tamaño, juntos a la derecha, en vez del primario estirado. Para modales
+   * anchos: en el de Nuevo cliente (76rem) el "Crear cliente" a todo el ancho quedaba
+   * desproporcionado (Fernando, 28/09/2026). En el celular sigue a todo el ancho.
+   */
+  compacto?: boolean;
 }) {
   return (
     /**
@@ -287,7 +293,7 @@ export function FormActions({
      * con Chrome a 1366×768, 16/09/2026). Pasaba en todos los modales; solo se notaba
      * cuando el último campo no tenía aire de sobra.
      */
-    <div className="sticky -bottom-6 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border/60 bg-card px-6 py-4 sm:-bottom-7 sm:-mx-7 sm:-mb-7 sm:flex-row sm:items-center sm:px-7">
+    <div className={cn("sticky -bottom-6 z-10 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t border-border/60 bg-card px-6 py-4 sm:-bottom-7 sm:-mx-7 sm:-mb-7 sm:flex-row sm:items-center sm:px-7", compacto && "sm:justify-end")}>
       <button
         type="button"
         onClick={onCancel}
@@ -299,7 +305,8 @@ export function FormActions({
         type="submit"
         disabled={loading || disabled}
         className={cn(
-          "flex-1 rounded-lg px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40",
+          "rounded-lg px-5 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40",
+          compacto ? "sm:min-w-[11rem] sm:px-8" : "flex-1",
           tone === "destructive" ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground",
         )}
       >

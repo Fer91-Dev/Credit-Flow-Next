@@ -646,6 +646,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         loading={loading}
         disabled={bloqueadoDup}
         submitLabel={clienteId ? "Guardar cambios" : "Crear cliente"}
+        compacto
       />
     </form>
   );
