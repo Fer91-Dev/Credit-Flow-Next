@@ -20,7 +20,7 @@ import { HelpPanel } from "@/components/ui/HelpPanel";
 import { getHelpDoc } from "@/lib/help/content";
 import { useAlertaCobranza, type Financiera } from "@/lib/swr";
 
-/** Marca co-branded: logo + nombre de la financiera, con "powered by CreditFlow". Fallback
+/** Marca de la financiera: logo + nombre (sin "powered by", que quedó solo en el login). Fallback
  *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
 function Brand({ financiera, size = "lg", soloIcono = false, protagonista = false }: { financiera?: Financiera | null; size?: "lg" | "sm"; soloIcono?: boolean; protagonista?: boolean }) {
   const nombre = financiera?.nombre?.trim();
@@ -30,15 +30,13 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
   const txt = size === "lg" ? "text-base" : "text-sm";
   /*
     🔴 CON LOGO, EL LOGO ES LA MARCA (Fernando, 28/09/2026): solo, grande, sin recuadro y
-    con "powered by CreditFlow" debajo. El nombre escrito al lado sobraba: el logo ya lo trae.
+    sin nada al lado: el nombre escrito sobraba (el logo ya lo trae) y el "powered by
+    CreditFlow" se sacó del menú (decisión de Fernando, 28/09/2026; queda en el login).
     Solo en el menú desplegado; contraído o en la barra del celular no hay lugar.
   */
   if (protagonista && financiera?.logo_url && !soloIcono) {
     return (
-      <div className="flex min-w-0 flex-col items-center gap-1.5">
-        <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[5.5rem] w-auto max-w-[11.5rem] object-contain" />
-        <span className="text-[7px] uppercase tracking-[0.14em] text-muted-foreground/50">powered by CreditFlow</span>
-      </div>
+      <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[5.5rem] w-auto max-w-[11.5rem] object-contain" />
     );
   }
   return (
@@ -55,7 +53,6 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
       {!soloIcono && (
         <div className="min-w-0 leading-tight">
           <span className={`block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
-          {nombre && <span className="block text-[9px] uppercase tracking-wider text-muted-foreground/50">powered by CreditFlow</span>}
         </div>
       )}
     </div>
