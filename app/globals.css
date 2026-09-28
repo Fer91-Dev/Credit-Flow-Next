@@ -278,6 +278,12 @@ button:not(:disabled),
 }
 .fila-deslizable::-webkit-scrollbar { display: none; }
 
+/* Scroll SIN barra (menú lateral, Fernando 28/09/2026). Tiene que vivir acá, fuera de las
+   capas: la regla global `* { scrollbar-width: thin }` no tiene capa y le gana a cualquier
+   utilidad de Tailwind (`[scrollbar-width:none]`), que sí la tiene — por eso la barra volvía. */
+.sin-scrollbar { scrollbar-width: none; }
+.sin-scrollbar::-webkit-scrollbar { display: none; }
+
 /* ─── Foco accesible global (navegación por teclado) ─────────────────────────
    Anillo de foco consistente en TODO lo interactivo (botones, links, filas/cards
    con role="button" o tabindex). Solo aparece con teclado (:focus-visible), no al

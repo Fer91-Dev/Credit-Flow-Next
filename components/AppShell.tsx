@@ -36,7 +36,7 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
   */
   if (protagonista && financiera?.logo_url && !soloIcono) {
     return (
-      <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[5.5rem] w-auto max-w-[11.5rem] object-contain" />
+      <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[4.6rem] w-auto max-w-[11.5rem] object-contain" />
     );
   }
   return (
@@ -396,12 +396,13 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         }`}
       >
         {/* Branding. Sin la línea de abajo (Fernando, 28/09/2026): el logo va suelto y el menú
-            arranca debajo. Desplegado con logo, el alto lo pone el logo. */}
+            arranca debajo. Mismo alto que el PageHeader (76px): el logo queda centrado a la
+            altura del título de cada sección. */}
         <Link
           href="/"
           aria-label="Ir al inicio"
-          className={`marca-link flex shrink-0 items-center ${
-            colapsado ? "h-[76px] justify-center px-0" : financiera?.logo_url ? "justify-center px-5 pb-2 pt-5" : "h-[76px] px-5"
+          className={`marca-link flex h-[76px] shrink-0 items-center ${
+            colapsado ? "justify-center px-0" : financiera?.logo_url ? "justify-center px-5" : "px-5"
           }`}
         >
           <Brand financiera={financiera} size={colapsado ? "sm" : "lg"} soloIcono={colapsado} protagonista />
@@ -409,7 +410,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        <nav className={`flex-1 overflow-y-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${colapsado ? "px-2" : "px-3"}`}>
+        <nav className={`flex-1 overflow-y-auto py-3 sin-scrollbar ${colapsado ? "px-2" : "px-3"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
 
@@ -558,7 +559,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <nav className="flex-1 overflow-y-auto p-3 sin-scrollbar">
               {renderNav(() => setMobileOpen(false))}
             </nav>
 
