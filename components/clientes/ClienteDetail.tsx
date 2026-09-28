@@ -707,7 +707,7 @@ export function ClienteDetail({
               { label: "Barrio (mapa)", value: cliente.barrio },
               {
                 label: "Ubicación",
-                value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}${cliente.geo_estado === "manual" ? " (corregida a mano)" : ""}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,
+                value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}${cliente.geo_estado === "manual" ? " (carga manual)" : ""}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,
                 mono: cliente.latitud != null,
                 href: cliente.latitud != null && cliente.longitud != null ? `https://www.google.com/maps?q=${cliente.latitud},${cliente.longitud}` : undefined,
               },
@@ -2033,7 +2033,7 @@ function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHec
       const res = await fetch(`/api/clientes/${clienteId}/ubicar`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coordenadas: coords }) });
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo corregir"); return; }
-      toast.success("Ubicación corregida a mano");
+      toast.success("Ubicación cargada en forma manual");
       setCorrigiendo(false); setCoords("");
       onHecho();
     } catch {

@@ -44,7 +44,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const r = await ubicarManual(tenantId, id, coords.lat, coords.lon);
   await registrarAuditoria({
     tenantId, entidad: "clientes", entidadId: id, accion: "actualizar",
-    descripcion: `Ubicación corregida a mano: ${coords.lat}, ${coords.lon} (${[existe.nombre, existe.apellido].filter(Boolean).join(" ")})`,
+    descripcion: `Ubicación cargada en forma manual: ${coords.lat}, ${coords.lon} (${[existe.nombre, existe.apellido].filter(Boolean).join(" ")})`,
     meta: { latitud: coords.lat, longitud: coords.lon, origen: "manual" },
   });
   return successResponse(r);
