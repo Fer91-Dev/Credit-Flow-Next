@@ -132,7 +132,7 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
  * nueva ni una fórmula paralela — es la resta de los dos que están arriba, así que no puede
  * discrepar con ellos.
  */
-export function DashboardDinero({ data, acciones }: { data: DashboardData; acciones?: React.ReactNode }) {
+export function DashboardDinero({ data, acciones, actualizado }: { data: DashboardData; acciones?: React.ReactNode; actualizado?: Date | null }) {
   const { resumen } = data;
   const prestado = resumen.capital_en_calle ?? resumen.cartera_total;
   // El dato que acompaña a cada cifra, no una frase que la explique (regla: datos, no
@@ -160,87 +160,99 @@ export function DashboardDinero({ data, acciones }: { data: DashboardData; accio
     return () => clearTimeout(t);
   }, [pctCapital, reducir]);
 
+  /*
+    BANDA DE ENCABEZADO, NO UNA CAJA (Fernando, 29/09/2026: "una caja gigante, muy cuadrada").
+    Sin borde duro: fondo con un degradé suave de la marca y dos luces, esquinas más redondas.
+    La barra partida a todo el ancho pasó a una DONA al costado (misma cuenta: capital vs.
+    interés y cargos), y el pulso de HOY entró como pastilla arriba: era otra franja suelta.
+  */
+  const hoy = data.hoy ?? { cobrado: 0, cobros: 0 };
+  const hubo = hoy.cobros > 0;
+  const R = 42, C = 2 * Math.PI * R;
   return (
-    <div className="group animate-entrada relative overflow-hidden rounded-2xl border border-border/70 bg-card px-5 py-5 sm:px-6 sm:py-6
-      shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)]
-      transition-all duration-300 hover:-translate-y-0.5 hover:border-border
-      hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_22px_50px_-20px_rgba(0,0,0,0.85)]
-      motion-reduce:transition-none motion-reduce:hover:translate-y-0" style={{ animationDelay: "35ms" }}>
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent" />
-      {/* Halo que se enciende al pasar el mouse, como en las tarjetas de KPI. */}
-      <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100
-        bg-[radial-gradient(ellipse_70%_50%_at_50%_-15%,rgba(16,185,129,0.10),transparent)]" />
+    <div className="animate-entrada relative overflow-hidden rounded-[1.75rem] px-5 py-6 sm:px-8 sm:py-7
+      bg-gradient-to-br from-primary/[0.14] via-card to-success/[0.08]
+      shadow-[0_18px_45px_-25px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-border/40" style={{ animationDelay: "35ms" }}>
+      <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-success/10 blur-3xl" />
 
-      {/*
-        Los filtros viven ACÁ, en la esquina de la tarjeta que gobiernan, y no en una fila
-        propia: sueltos arriba dejaban un botón flotando solo en una banda vacía, que es lo
-        que partía la vista en dos. `absolute` para que no empuje a las cifras.
-      */}
-      {acciones && <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">{acciones}</div>}
-
-      <div className="relative grid gap-5 sm:grid-cols-2 sm:gap-8">
-        <div className="flex items-start gap-3">
-          <IconBadge emoji="money-with-wings" accent="success" hoverable />
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Prestado</p>
-            <p className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-success sm:text-[28px]">
-              <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCreditos, "crédito", "créditos")}</span>
-              <span className="px-1 text-muted-foreground/70">·</span>
-              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nClientes, "cliente", "clientes")}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* La línea divisoria solo en desktop: apilado, dos cifras seguidas ya se leen separadas. */}
-        <div className="flex items-start gap-3 sm:border-l sm:border-border/70 sm:pl-8">
-          <IconBadge emoji="chart-increasing" accent="destructive" hoverable />
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Deuda total</p>
-            <p className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-destructive sm:text-[28px]">
-              <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCuotas, "cuota", "cuotas")}</span>
-              {" por cobrar"}
-            </p>
-          </div>
-        </div>
+      {/* Arriba: el pulso del día a la izquierda, los filtros a la derecha. */}
+      <div className="relative flex flex-wrap items-center gap-3">
+        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1 ring-inset ${
+          hubo ? "bg-success/10 text-success ring-success/25" : "bg-background/40 text-muted-foreground ring-border/60"
+        }`}>
+          <span className="relative flex h-2 w-2">
+            <span className={`absolute inline-flex h-full w-full rounded-full animate-latido-vivo ${hubo ? "bg-success" : "bg-muted-foreground/50"}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${hubo ? "bg-success" : "bg-muted-foreground/50"}`} />
+          </span>
+          <span className="font-semibold uppercase tracking-widest text-[10px]">Hoy</span>
+          <span className={`font-mono font-bold tabular-nums ${hubo ? "text-success" : "text-foreground"}`}>
+            <NumeroAnimado valor={hoy.cobrado} decimales={2} prefijo="$" />
+          </span>
+          <span className="text-muted-foreground">
+            en {hoy.cobros} {hoy.cobros === 1 ? "cobro" : "cobros"}
+          </span>
+        </span>
+        {actualizado && (
+          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+            actualizado {actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+        {acciones && <div className="ml-auto">{acciones}</div>}
       </div>
 
-      {/*
-        Una sola barra = la deuda entera, partida en sus dos pedazos. Es el punto del bloque:
-        que se vea de un vistazo qué parte de lo que le deben es plata que puso la financiera
-        y qué parte es lo que gana. Sin la barra habría que restar dos números de memoria.
-      */}
-      <div className="relative mt-5 border-t border-border/50 pt-4">
-        <div className="relative flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
-          <div
-            className="relative bg-success transition-[width] duration-[1100ms] ease-out motion-reduce:transition-none"
-            style={{ width: `${anchoCapital}%` }}
-          />
-          <div className="flex-1 bg-destructive transition-[width] duration-[1100ms] ease-out motion-reduce:transition-none" />
-          {/* Brillo que recorre la barra una vez, para que el bloque no se lea como una foto. */}
-          {!reducir && (
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-1/4 animate-brillo-barra bg-gradient-to-r from-transparent via-white/25 to-transparent" />
-          )}
+      <div className="relative mt-6 grid items-center gap-6 sm:grid-cols-[1fr_1fr_auto] sm:gap-10">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-success" /> Prestado
+          </p>
+          <p className="mt-2 font-mono text-3xl font-bold tracking-tight tabular-nums text-foreground sm:text-4xl">
+            <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
+          </p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCreditos, "crédito", "créditos")}</span>
+            <span className="px-1 text-muted-foreground/70">·</span>
+            <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nClientes, "cliente", "clientes")}</span>
+          </p>
         </div>
-        <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
-            <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-success" />
-            Capital
-            <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(prestado)}</span>
-            <span className="tabular-nums">· {pctCapital}%</span>
-          </span>
-          <span className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
-            <span className="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full bg-destructive" />
-            Interés y cargos
-            <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(ganancia)}</span>
-            <span className="tabular-nums">· {100 - pctCapital}%</span>
-          </span>
+
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-destructive" /> Deuda total
+          </p>
+          <p className="mt-2 font-mono text-3xl font-bold tracking-tight tabular-nums text-foreground sm:text-4xl">
+            <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
+          </p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCuotas, "cuota", "cuotas")}</span>
+            {" por cobrar"}
+          </p>
+        </div>
+
+        {/* La deuda, partida: cuánto es capital (vuelve) y cuánto interés y cargos (se gana). */}
+        <div className="flex items-center gap-4">
+          <div className="relative h-24 w-24 shrink-0">
+            <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+              <circle cx="50" cy="50" r={R} fill="none" strokeWidth="10" className="stroke-destructive/85" />
+              <circle cx="50" cy="50" r={R} fill="none" strokeWidth="10" strokeLinecap="round"
+                className="stroke-success transition-[stroke-dasharray] duration-[1100ms] ease-out motion-reduce:transition-none"
+                strokeDasharray={`${(anchoCapital / 100) * C} ${C}`} />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-mono text-lg font-bold tabular-nums text-foreground">{pctCapital}%</span>
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">capital</span>
+            </div>
+          </div>
+          <div className="space-y-2 text-[11px] text-muted-foreground">
+            <p>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /> Capital</span>
+              <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(prestado)}</span>
+            </p>
+            <p>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-destructive" /> Interés y cargos</span>
+              <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(ganancia)}</span>
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -329,13 +341,19 @@ export function DashboardMoraGrid({ data, apilado = false }: { data: DashboardDa
         </div>
         <div className="space-y-4">
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Total en mora</p>
-            <p className="text-2xl font-bold text-warning font-mono">${n0(mora.montos.total_mora)}</p>
+            {/* 🔴 Es el CAPITAL que queda de los créditos atrasados (lo que está en riesgo), no lo
+                vencido ni los punitorios. Lo dice el rótulo y lo acompaña de cuántos créditos son
+                (Fernando, 29/09/2026: verificado contra la base al centavo). */}
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Capital de créditos en mora</p>
+            <p className="text-2xl font-bold text-warning font-mono tabular-nums">{formatMonto(mora.montos.total_mora)}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground"><span className="font-mono font-semibold text-foreground">{totalMoraItems}</span> {totalMoraItems === 1 ? "crédito" : "créditos"}</p>
           </div>
           <div className="border-t border-border" />
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Mora crítica (30+ días)</p>
-            <p className="text-2xl font-bold text-destructive font-mono">${n0(mora.montos.mora_critica)}</p>
+            {/* El corte es el configurado: decía "30+ días" fijo mientras contaba desde el día 60. */}
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Mora crítica (+{mora.tramos_mora.alta_hasta} días)</p>
+            <p className="text-2xl font-bold text-destructive font-mono tabular-nums">{formatMonto(mora.montos.mora_critica)}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground"><span className="font-mono font-semibold text-foreground">{mora.detalle.critica}</span> {mora.detalle.critica === 1 ? "crédito" : "créditos"}</p>
           </div>
         </div>
       </div>
@@ -345,16 +363,18 @@ export function DashboardMoraGrid({ data, apilado = false }: { data: DashboardDa
         <div className="flex items-center gap-2 mb-4">
           <IconBadge emoji="dollar-banknote" accent="success" hoverable />
           <h3 className="text-sm font-semibold text-foreground">Cobros registrados</h3>
+          {/* Es el acumulado desde el primer pago (no toma el filtro de fechas del Home). */}
+          <span className="ml-auto text-[10px] uppercase tracking-widest text-muted-foreground">histórico</span>
         </div>
         <div className="space-y-4">
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Cantidad de pagos</p>
-            <p className="text-3xl font-bold text-foreground">{transacciones.total_pagos_registrados}</p>
+            <p className="text-3xl font-bold text-foreground font-mono tabular-nums">{transacciones.total_pagos_registrados}</p>
           </div>
           <div className="border-t border-border" />
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Monto total cobrado</p>
-            <p className="text-2xl font-bold text-success font-mono">${n0(transacciones.monto_pagos_total)}</p>
+            <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatMonto(transacciones.monto_pagos_total)}</p>
           </div>
         </div>
       </div>

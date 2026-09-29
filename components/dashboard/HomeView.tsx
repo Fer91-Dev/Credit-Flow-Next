@@ -8,7 +8,7 @@ import { TIPOS_CREDITO_COMISION } from "@/lib/domain";
 import { LiquidacionesLista } from "@/components/comisiones/LiquidacionesLista";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { IconBadge } from "@/components/ui/IconBadge";
-import { DashboardKpis, DashboardDinero, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton, PulsoDelDia } from "./DashboardMetrics";
+import { DashboardKpis, DashboardDinero, DashboardCobranzaAvance, DashboardMoraGrid, DashboardKpisSkeleton } from "./DashboardMetrics";
 import { BarraAvance } from "@/components/ui/NumeroAnimado";
 import { formatMonto } from "@/lib/utils";
 import { MetricChart } from "./MetricChart";
@@ -113,9 +113,8 @@ export function HomeView({ role }: { role: Role }) {
         </>
       ) : (
         <div className={`space-y-6 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
-          <DashboardDinero data={data} acciones={controlFiltros} />
-          {/* El pulso del día: lo único que cambia mientras el panel está abierto. */}
-          <PulsoDelDia data={data} actualizado={actualizado} />
+          {/* El pulso del día (lo único que cambia con el panel abierto) va DENTRO de la banda. */}
+          <DashboardDinero data={data} acciones={controlFiltros} actualizado={actualizado} />
         </div>
       )}
 
