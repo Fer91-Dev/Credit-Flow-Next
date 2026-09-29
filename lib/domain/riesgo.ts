@@ -113,6 +113,20 @@ export interface PoliticaOriginacion {
    * escrita a fuego en el código, no una configuración de la financiera.
    */
   permitirOverrideCuotasVencidas: boolean;
+  /**
+   * 🔴 No se le presta a quien tiene un crédito INCOBRABLE en la financiera (Fernando,
+   * 29/09/2026: "es un mal cliente porque nunca pagó"). Bloqueo absoluto, sin firma de admin.
+   *
+   * Hacía falta porque el freno por mora mira solo los créditos VIVOS, y un incobrable no lo
+   * es: salió de la cartera. Así, Silvia Molina —con un crédito castigado— sacó dos créditos
+   * nuevos sin que nada la frenara; el incobrable solo le bajaba el score.
+   */
+  bloquearConIncobrables: boolean;
+  /**
+   * 🔴 No se le presta a quien tiene una REFINANCIACIÓN sin cancelar (Fernando, 29/09/2026):
+   * primero termina de pagar la deuda que hubo que reestructurarle. Bloqueo absoluto.
+   */
+  bloquearConRefinanciacionVigente: boolean;
   /** Qué hace el sistema si el cliente NO califica: cortar el otorgamiento o permitir con autorización del admin. */
   accionAlNoCalificar: "bloquear" | "autorizar";
   /**
@@ -149,6 +163,8 @@ export const POLITICA_ORIGINACION_DEFAULT: PoliticaOriginacion = {
   alertaSaltoSueldoPct: 50, // subir el sueldo +50% de golpe exige un motivo (auditado)
   bloquearConCuotasVencidas: true, // no se le presta a quien ya está en mora
   permitirOverrideCuotasVencidas: false, // ...y por defecto ni el admin lo pasa por encima
+  bloquearConIncobrables: true,           // quien tiene un incobrable no vuelve a sacar crédito
+  bloquearConRefinanciacionVigente: true, // ni quien no terminó de pagar su refinanciación
   // Por defecto avisa y deja autorizar (mismo criterio que el límite de otorgamiento del vendedor).
   accionAlNoCalificar: "autorizar",
   // Sin sueldo no se otorga solo: lo firma un admin. Prestar sin saber cuánto gana el cliente
@@ -331,6 +347,10 @@ export interface EntradaOriginacion {
   creditosActivos?: number;
   /** true si el cliente tiene al menos una cuota vencida e impaga en un crédito vigente. */
   tieneCuotasVencidas?: boolean;
+  /** Cuántos créditos INCOBRABLES tiene el cliente en la financiera. Default 0. */
+  creditosIncobrables?: number;
+  /** Cuántas REFINANCIACIONES vivas (sin cancelar) tiene el cliente. Default 0. */
+  refinanciacionesVigentes?: number;
 }
 
 export interface ResultadoOriginacion {
@@ -508,6 +528,25 @@ export function evaluarOriginacion(
       bloqueoDuro = true;
       motivos.push("Tiene cuotas vencidas impagas en créditos vigentes: no se puede otorgar.");
     }
+  }
+
+  /*
+    8b) Crédito INCOBRABLE y 8c) REFINANCIACIÓN sin cancelar: los dos son absolutos (ni el admin
+    los firma). Van aparte del freno por mora porque ese mira solo créditos vivos: el
+    incobrable ya salió de la cartera, y la refinanciación puede estar al día y aun así el
+    cliente no terminó de pagar la deuda que hubo que reestructurarle.
+  */
+  const incobrables = entrada.creditosIncobrables ?? 0;
+  if (politica.bloquearConIncobrables && incobrables > 0) {
+    escalar("rechazado");
+    bloqueoDuro = true;
+    motivos.push(`Tiene ${incobrables === 1 ? "un crédito incobrable" : `${incobrables} créditos incobrables`} en la financiera: no se le puede otorgar.`);
+  }
+  const refiVivas = entrada.refinanciacionesVigentes ?? 0;
+  if (politica.bloquearConRefinanciacionVigente && refiVivas > 0) {
+    escalar("rechazado");
+    bloqueoDuro = true;
+    motivos.push(`Tiene ${refiVivas === 1 ? "una refinanciación" : `${refiVivas} refinanciaciones`} sin cancelar: no se le puede otorgar hasta que la termine de pagar.`);
   }
 
   // 9) Tope de créditos activos simultáneos (respeta accionAlNoCalificar, salvo que ya haya bloqueo duro).

@@ -491,7 +491,9 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Tope por múltiplo de ingreso y límites de monto.",
       "Máx. créditos activos y bloqueo por mora previa.",
       "Si no califica: avisar y dejar autorizar, o bloquear.",
-      "Cuotas vencidas impagas: es la única regla que puede frenar el otorgamiento aunque «Si no califica» esté en «autorizar». Con la excepción prendida, el admin puede firmarlo igual y queda registrado quién lo autorizó; el vendedor nunca.",
+      "Cuotas vencidas impagas: frena el otorgamiento aunque «Si no califica» esté en «autorizar». Con la excepción prendida, el admin puede firmarlo igual y queda registrado quién lo autorizó; el vendedor nunca.",
+      "Crédito incobrable: quien tiene uno castigado no vuelve a sacar crédito. Es un freno absoluto: no lo autoriza nadie.",
+      "Refinanciación sin cancelar: hasta que no termine de pagarla, no se le otorga otro crédito. También es absoluto.",
       "Sin sueldo cargado: no hay capacidad de pago que evaluar, así que el ratio y el múltiplo de ingreso no corren. Por defecto lo firma un administrador; también se puede bloquear o dejar pasar con aviso.",
     ],
   },
@@ -1991,6 +1993,20 @@ export function ConfigForm() {
                 </div>
               )}
 
+              {/* Los dos frenos absolutos del 29/09/2026: sin excepción de admin. */}
+              <SwitchRow
+                title="Bloquear si tiene un crédito incobrable"
+                desc="Quien tiene un crédito castigado como incobrable no vuelve a sacar crédito. Ni el administrador lo puede autorizar."
+                checked={riesgo.politica.bloquearConIncobrables}
+                onChange={v => setRiesgo({ bloquearConIncobrables: v })}
+              />
+              <SwitchRow
+                title="Bloquear si tiene una refinanciación sin cancelar"
+                desc="Hasta que no termine de pagar su refinanciación, no se le otorga otro crédito. Ni el administrador lo puede autorizar."
+                checked={riesgo.politica.bloquearConRefinanciacionVigente}
+                onChange={v => setRiesgo({ bloquearConRefinanciacionVigente: v })}
+              />
+
               <SwitchRow
                 title="Rechazar con cheques rechazados"
                 desc="Si el bureau informa cheques rechazados sin regularizar, el cliente no califica."
@@ -3245,6 +3261,8 @@ function defaultRiesgo(): RiesgoConfig {
       alertaSaltoSueldoPct: 50,
       bloquearConCuotasVencidas: true,
       permitirOverrideCuotasVencidas: false,
+      bloquearConIncobrables: true,
+      bloquearConRefinanciacionVigente: true,
       accionSinIngreso: "autorizar",
       accionAlNoCalificar: "autorizar",
     },

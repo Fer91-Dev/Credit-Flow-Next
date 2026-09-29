@@ -112,8 +112,12 @@ export async function evaluarClienteParaCredito(params: {
     // `frecuencia` y `frecuencia_def` hacen falta para mensualizar la cuota de cada crédito:
     // uno semanal se paga 52 veces al año, no 12.
     // `proximo_pago` para computar la mora EN VIVO (ver abajo); `dias_mora` ya no se usa.
-    select: { id: true, estado: true, proximo_pago: true, frecuencia: true, frecuencia_def: true },
+    select: { id: true, estado: true, proximo_pago: true, frecuencia: true, frecuencia_def: true, es_refinanciacion: true },
   });
+  // Los dos frenos absolutos nuevos (ver `bloquearConIncobrables` y
+  // `bloquearConRefinanciacionVigente`): se cuentan sobre la misma lista, sin anulados.
+  const creditosIncobrables = creditos.filter((c) => c.estado === "incobrable").length;
+  const refinanciacionesVigentes = creditos.filter((c) => c.es_refinanciacion && esCreditoVivo(c.estado)).length;
   const idsVivos = creditos.filter((c) => c.estado === "activo" || c.estado === "vencido").map((c) => c.id);
   /**
    * 🔴 Mora EN VIVO, no del cache.
@@ -235,6 +239,8 @@ export async function evaluarClienteParaCredito(params: {
       scoreInterno, senalesBureau,
       creditosActivos: idsVivos.length,
       tieneCuotasVencidas,
+      creditosIncobrables,
+      refinanciacionesVigentes,
     },
     politica,
   );

@@ -442,6 +442,9 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
     if (p.bloquearConCuotasVencidas !== undefined && typeof p.bloquearConCuotasVencidas !== "boolean") {
       return errorResponse("politica.bloquearConCuotasVencidas debe ser booleano", "INVALID_INPUT", 400);
     }
+    for (const k of ["bloquearConIncobrables", "bloquearConRefinanciacionVigente"] as const) {
+      if (p[k] !== undefined && typeof p[k] !== "boolean") return errorResponse(`politica.${k} debe ser booleano`, "INVALID_INPUT", 400);
+    }
     /**
      * Los cuatro que faltaban. Ninguno abría un agujero —el motor los guarda con `> 0` o con
      * `!= null`, así que un valor sin sentido apaga la regla en vez de invertirla— pero un
