@@ -1490,9 +1490,12 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               {calcAbierta ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
             </button>
             <Emoji name="calendar" className="h-4 w-4 shrink-0" />
-            <span className="text-sm font-semibold text-foreground whitespace-nowrap shrink-0">Plan de pagos</span>
+            {/* En el celular no entraban el título, "N cuotas mensuales" Y los botones de vista:
+                "mensuales" quedaba debajo del selector (Fernando, 29/09/2026). Ahí el calendario
+                ya dice qué es, así que el título se oculta, y la etiqueta se acorta si igual no entra. */}
+            <span className="hidden text-sm font-semibold text-foreground whitespace-nowrap shrink-0 sm:inline">Plan de pagos</span>
             {plan && (
-              <span className="text-[11px] font-mono bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
+              <span className="min-w-0 truncate text-[11px] font-mono bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 whitespace-nowrap">
                 {plan.cuotas.length} {lbl.cuotaPlural}
               </span>
             )}
