@@ -48,7 +48,8 @@ const CLAVE = "cf:dolarAbierto";
  * La preferencia se guarda en el navegador de cada uno: el que las mira todos los días no
  * tiene que volver a abrirlo cada mañana.
  */
-export function CotizacionDolar() {
+/** `angosto`: Blue y Oficial uno debajo del otro (columna angosta del Home en grilla). */
+export function CotizacionDolar({ angosto = false }: { angosto?: boolean } = {}) {
   const { cotizaciones, isLoading, error } = useCotizacion();
   const [abierto, setAbierto] = useState(false);
 
@@ -97,7 +98,7 @@ export function CotizacionDolar() {
       </div>
 
       {/* Protagonistas: Blue + Oficial */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-3 ${angosto ? "" : "sm:grid-cols-2"}`}>
         {principales.map((c) => (
           <PrincipalCard key={c.casa} c={c} referencia={c.casa === "blue"} />
         ))}
@@ -128,7 +129,7 @@ export function CotizacionDolar() {
           */}
           <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${abierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden">
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <div className={`mt-3 grid grid-cols-2 gap-2 ${angosto ? "" : "sm:grid-cols-3 lg:grid-cols-5"}`}>
                 {secundarias.map((c) => (
                   <SecundariaTile key={c.casa} c={c} />
                 ))}

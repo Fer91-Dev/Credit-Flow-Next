@@ -295,12 +295,13 @@ export function DashboardCobranzaAvance({ data }: { data: DashboardData }) {
 }
 
 /** Fila secundaria: distribución de mora · exposición en mora · cobros registrados. */
-export function DashboardMoraGrid({ data }: { data: DashboardData }) {
+/** `apilado`: una tarjeta debajo de la otra (columna angosta del Home en grilla). */
+export function DashboardMoraGrid({ data, apilado = false }: { data: DashboardData; apilado?: boolean }) {
   const { mora, transacciones } = data;
   const totalMoraItems = mora.detalle.media + mora.detalle.alta + mora.detalle.critica;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className={`grid grid-cols-1 gap-4 ${apilado ? "" : "md:grid-cols-3"}`}>
 
       {/* Distribución mora */}
       <div className="group rounded-xl bg-card border border-border p-5">

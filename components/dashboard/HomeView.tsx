@@ -119,32 +119,45 @@ export function HomeView({ role }: { role: Role }) {
         </div>
       )}
 
-      {/* ── 2 · Cotización del dólar: contexto, no protagonista. Nace contraída. ── */}
-      <CotizacionDolar />
-
-      {/* ── 3 · Conteos + avance de cobranzas (reaccionan a los filtros) ── */}
+      {/* ── 2 · Conteos de la cartera (reaccionan a los filtros) ── */}
       {data && (
-        <div className={`space-y-6 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
+        <div className={`transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           <DashboardKpis data={data} />
-          <DashboardCobranzaAvance data={data} />
         </div>
       )}
 
-      {/* ── 4 · Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) ── */}
-      <CobranzaDelDia />
+      {/*
+        ── 3 · TABLERO EN GRILLA (Fernando, 29/09/2026: "que no se vean como cajas apiladas") ──
+        Antes eran once paneles a todo el ancho, uno debajo del otro (~2.800 px de scroll) y
+        todos con el mismo peso. Ahora dos columnas: la ANCHA con lo que se analiza (avance,
+        tendencia, equipo) y la ANGOSTA con lo que se atiende hoy (agenda, mora) y el dólar
+        como contexto al final. En el celular vuelve a ser una columna, con la agenda primero.
+      */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+        <div className="order-2 min-w-0 space-y-6 lg:order-1 lg:col-span-8">
+          {data && (
+            <div className={`transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
+              <DashboardCobranzaAvance data={data} />
+            </div>
+          )}
+          {/* Tendencia mensual (cobranzas · morosidad · circulación) */}
+          <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
+          {/* Rendimiento del equipo (admin) o del propio usuario (vendedor) */}
+          {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
+          {esAdmin && <ContactosPorAgente />}
+          {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
+          {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
+          {!esAdmin && <MiEfectividadCobranza />}
+        </div>
 
-      {/* ── 5 · Rendimiento del equipo (admin) o del propio usuario (vendedor) ── */}
-      {esAdmin && <RendimientoVendedores filas={data?.por_vendedor ?? []} />}
-      {esAdmin && <ContactosPorAgente />}
-      {esAdmin && <ObjetivosEquipo vendedores={vendedores} />}
-      {!esAdmin && perfil && <MiConfiguracionVendedor perfil={perfil} />}
-      {!esAdmin && <MiEfectividadCobranza />}
-
-      {/* ── 6 · Tendencia mensual (analítico: cobranzas · morosidad · circulación) ── */}
-      <MetricChart vendedorId={esAdmin ? (vendedorId || undefined) : undefined} />
-
-      {/* ── 7 · Distribución de mora · Exposición en mora · Cobros registrados ── */}
-      {data && <DashboardMoraGrid data={data} />}
+        <div className="order-1 min-w-0 space-y-6 lg:order-2 lg:col-span-4">
+          {/* Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) */}
+          <CobranzaDelDia />
+          {data && <DashboardMoraGrid data={data} apilado />}
+          {/* Cotización del dólar: contexto, no protagonista. */}
+          <CotizacionDolar angosto />
+        </div>
+      </div>
     </div>
   );
 }
