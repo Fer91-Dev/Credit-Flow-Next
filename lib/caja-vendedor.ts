@@ -244,10 +244,11 @@ export async function registrarGastoCajaVendedor(opts: {
    * vendedor. Arranca en 0 = no registra gastos por su cuenta, igual que
    * `quita_max_vendedor_pct`. Un admin siempre puede cargarlo desde la caja principal.
    */
-  const { tope_gasto_vendedor: tope } = await getCajaConfig(tenantId);
-  if (abs > tope) {
+  const { tope_gasto_vendedor: tope, gasto_vendedor: modo } = await getCajaConfig(tenantId);
+  // "libre": sin tope, por decisión de la financiera (ver `CajaConfig.gasto_vendedor`).
+  if (modo !== "libre" && (modo === "no" || abs > tope)) {
     throw new ApiError(
-      tope === 0
+      modo === "no"
         ? "No podés registrar gastos de tu caja por tu cuenta. Pedile a un administrador que lo cargue."
         : `El gasto máximo que podés registrar solo es de ${formatPesos(tope)}. Por encima de eso lo tiene que cargar un administrador.`,
       "GASTO_EXCEDIDO",

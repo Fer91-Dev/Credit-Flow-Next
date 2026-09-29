@@ -175,7 +175,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Cada vendedor tiene su propia caja: ahí entra lo que cobra y de ahí sale lo que rinde. La tuya es la caja principal. " +
       "Estos dos números definen qué puede hacer alguien con la plata sin pedirte permiso.",
     puntos: [
-      "Gasto máximo del vendedor: cuánto puede descontar de su caja por su cuenta, por gasto. En 0 no puede ninguno.",
+      "Gastos del vendedor: si puede descontar gastos de su caja por su cuenta — no puede, hasta un monto por gasto, o sin tope.",
       "Días para anular un cobro: la ventana para deshacer un pago cargado por error. Después queda firme.",
       "El cierre de turno no se configura: cada caja cierra con su acta (contado, diferencia, retiro y fondo). La diferencia de un vendedor queda declarada y la conciliás vos; la de la caja principal se ajusta en el acto.",
     ],
@@ -184,7 +184,9 @@ const AYUDA: Record<string, AyudaBloque> = {
       "compara con lo que debería tener. Si falta, queda pendiente y lo resolvés vos con un motivo escrito. Si pudiera " +
       "anotar gastos solo, a uno al que le faltan $80.000 le alcanzaría con escribir «combustible $80.000» para que esa " +
       "noche le cierre cuadrado y el faltante no aparezca nunca. Si le querés dar caja chica para nafta o viáticos, " +
-      "ponele el techo que te parezca: por encima de ese número, el gasto lo cargás vos desde la caja principal.",
+      "ponele el techo que te parezca: por encima de ese número, el gasto lo cargás vos desde la caja principal. " +
+      "«Sin tope» también se puede: cada gasto te llega a la campanita y sale en el cierre de turno, pero ahí lo " +
+      "tenés que mirar vos, porque el arqueo no lo marca como diferencia.",
   },
   escalera: {
     titulo: "Refinanciaciones",
@@ -2767,14 +2769,29 @@ export function ConfigForm() {
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-xl">
               <Field
-                label="Gasto máximo del vendedor ($)"
-                hint="Cuánto puede descontar de su propia caja sin que lo apruebes. En 0 no registra ninguno: se los cargás vos."
+                label="Gastos del vendedor"
+                advertencia={caja.gasto_vendedor === "libre" ? "Un faltante cargado como gasto cierra cuadrado en el arqueo: revisá los gastos en la campanita y en el cierre de turno." : undefined}
               >
-                <NumeroInput min="0"
-                  value={caja.tope_gasto_vendedor}
-                  onValueChange={v => setCaja({ tope_gasto_vendedor: Math.max(0, v) })}
-                />
+                <Select
+                  value={caja.gasto_vendedor}
+                  onChange={e => {
+                    const modo = e.target.value as CajaConfig["gasto_vendedor"];
+                    setCaja({ gasto_vendedor: modo, ...(modo === "tope" && caja.tope_gasto_vendedor === 0 ? { tope_gasto_vendedor: 10000 } : {}) });
+                  }}
+                >
+                  <option value="no">No puede (los cargás vos)</option>
+                  <option value="tope">Hasta un monto por gasto</option>
+                  <option value="libre">Sin tope</option>
+                </Select>
               </Field>
+              {caja.gasto_vendedor === "tope" && (
+                <Field label="Monto máximo por gasto ($)">
+                  <NumeroInput min="0"
+                    value={caja.tope_gasto_vendedor}
+                    onValueChange={v => setCaja({ tope_gasto_vendedor: Math.max(0, v) })}
+                  />
+                </Field>
+              )}
               <Field
                 label="Días para anular un cobro"
                 hint="Pasado este plazo desde que se registró, el cobro queda firme y solo se corrige con un ajuste de caja (0 = solo el mismo día)."
@@ -2955,7 +2972,7 @@ function defaultCobranza(): CobranzaConfig {
 }
 
 function defaultCaja(): CajaConfig {
-  return { tope_gasto_vendedor: 0, dias_anulacion_pago: 3 };
+  return { tope_gasto_vendedor: 0, gasto_vendedor: "no", dias_anulacion_pago: 3 };
 }
 
 function defaultNotificaciones(): NotificacionesConfig {

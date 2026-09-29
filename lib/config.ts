@@ -384,14 +384,28 @@ export interface CajaConfig {
    */
   tope_gasto_vendedor: number;
   /**
+   * Qué puede gastar el vendedor de su caja por su cuenta (Fernando, 28/09/2026):
+   *  · "no"    → nada; los gastos los carga un admin desde la caja principal.
+   *  · "tope"  → hasta `tope_gasto_vendedor` por gasto.
+   *  · "libre" → sin tope. Cada gasto igual lleva motivo, comprobante GAS, auditoría, aviso
+   *    en la campanita del admin y sale discriminado en el cierre. 🔴 Lo que NO hace es marcar
+   *    diferencia en el arqueo: un faltante cargado como gasto cierra cuadrado. Por eso es una
+   *    elección explícita de la financiera y no el default.
+   * Sin este campo (configs viejas) se deduce del tope: 0 = "no", más de 0 = "tope".
+   */
+  gasto_vendedor: GastoVendedorModo;
+  /**
    * Ventana (en días desde que se REGISTRÓ el pago) para poder anularlo. Control de
    * tesorería: pasado el plazo, el pago queda inmutable. 0 = solo el mismo día del registro.
    */
   dias_anulacion_pago: number;
 }
 
+export type GastoVendedorModo = "no" | "tope" | "libre";
+
 export const CAJA_DEFAULT: CajaConfig = {
   tope_gasto_vendedor: 0,
+  gasto_vendedor: "no",
   dias_anulacion_pago: 3,
 };
 
@@ -410,7 +424,12 @@ export function resolverCaja(raw: unknown, legacy?: unknown): CajaConfig {
   const a = Number(pick(r.dias_anulacion_pago, l.dias_anulacion_pago));
   const diasAnul = Number.isFinite(a) && a >= 0 ? Math.min(365, Math.max(0, Math.round(a))) : CAJA_DEFAULT.dias_anulacion_pago;
 
-  return { tope_gasto_vendedor: tope, dias_anulacion_pago: diasAnul };
+  const m = pick(r.gasto_vendedor, l.gasto_vendedor);
+  let modo: GastoVendedorModo = m === "no" || m === "tope" || m === "libre" ? m : tope > 0 ? "tope" : "no";
+  // "Hasta $0" no es un tope: es no poder gastar.
+  if (modo === "tope" && tope === 0) modo = "no";
+
+  return { tope_gasto_vendedor: tope, gasto_vendedor: modo, dias_anulacion_pago: diasAnul };
 }
 
 /** Config de cajas del tenant (mezclada con defaults, con fallback al lugar viejo). */
