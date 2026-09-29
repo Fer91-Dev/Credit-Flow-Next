@@ -24,7 +24,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   });
   if (!vendedor) return errorResponse("Vendedor no encontrado", "NOT_FOUND", 404);
 
-  return successResponse(await cajaDeVendedor(tenantId, id));
+  // `?todos=1`: la historia entera, para el CSV (la pantalla usa los últimos 500).
+  const todos = new URL(req.url).searchParams.get("todos") === "1";
+  return successResponse(await cajaDeVendedor(tenantId, id, { todos }));
 });
 
 /**

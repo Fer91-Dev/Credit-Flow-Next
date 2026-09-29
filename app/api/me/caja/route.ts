@@ -23,7 +23,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       400,
     );
   }
-  return successResponse(await cajaDeVendedor(tenantId, vendedorId));
+  // `?todos=1`: la historia entera, para el CSV (la pantalla usa los últimos 500).
+  const todos = new URL(req.url).searchParams.get("todos") === "1";
+  return successResponse(await cajaDeVendedor(tenantId, vendedorId, { todos }));
 });
 
 /**

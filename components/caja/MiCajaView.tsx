@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight,
+  Wallet, Banknote, CircleDollarSign, ArrowUpRight, ArrowDownLeft, Scale, Send, MinusCircle, FileText, ArrowRight, ArrowLeftRight, Download,
 } from "lucide-react";
+import { exportarMovimientosCSV, hoyAR } from "@/components/caja/exportar-movimientos";
 import { refrescarNotificaciones, useMiCaja, useMisArqueos, useCierresTurno, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { formatFechaHora, parseMontoInput } from "@/lib/utils";
 import { FechaMovimiento } from "@/components/caja/FechaMovimiento";
@@ -72,6 +73,28 @@ export function MiCajaView() {
   const [refrescando, setRefrescando] = useState<CuentaCaja | null>(null);
 
   const refrescar = () => { mutate(); globalMutate("/api/dashboard"); };
+
+  /*
+    EXPORTAR CSV (Fernando, 28/09/2026): todos los ingresos y egresos de la caja. Se pide la
+    historia ENTERA al servidor (la pantalla trae los últimos 500). Respeta la cuenta
+    filtrada, si hay una: exporta lo que se está mirando.
+  */
+  const toastCsv = useToast();
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => {
+    setExportando(true);
+    try {
+      const r = await fetch("/api/me/caja?todos=1");
+      const j = await r.json();
+      if (!j.ok) { toastCsv.error(j.error ?? "No se pudo exportar"); return; }
+      const movs: MovimientoCaja[] = j.data.movimientos;
+      const lista = cuentaFiltro === "all" ? movs : movs.filter((m) => m.cuenta === cuentaFiltro);
+      const hoy = hoyAR();
+      const n = exportarMovimientosCSV(lista, `mi_caja${cuentaFiltro === "all" ? "" : "_" + cuentaFiltro}_${hoy}.csv`, (t) => TIPO_META[t]?.label ?? t);
+      toastCsv.success(`${n} movimiento${n === 1 ? "" : "s"} exportado${n === 1 ? "" : "s"}`);
+    } catch { toastCsv.error("No se pudo exportar"); }
+    finally { setExportando(false); }
+  };
 
   /** Cierres declarados que el administrador todavía no resolvió. */
   const arqueosPendientes = arqueos.filter((a) => a.estado === "pendiente");
@@ -144,6 +167,14 @@ export function MiCajaView() {
             icon={<Lock className="h-4 w-4" strokeWidth={1.75} />}
             title="Cerrar turno"
             onClick={() => setCierreOpen(true)}
+          />
+          {/* Al final, como en la caja principal: la única que no mueve plata. */}
+          <AccionCaja
+            tenue
+            disabled={!caja || caja.movimientos.length === 0 || exportando}
+            icon={<Download className="h-4 w-4" strokeWidth={1.75} />}
+            title={exportando ? "Exportando…" : "Exportar CSV"}
+            onClick={exportar}
           />
         </div>
       </div>

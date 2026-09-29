@@ -16,13 +16,15 @@ import { getCajaConfig } from "@/lib/config";
  * de la que desembolsa el admin. Saldo = suma de los montos (ya firmados). Mismo shape
  * que /api/caja para reusar UI.
  */
-export async function cajaDeVendedor(tenantId: string, vendedorId: string | null) {
+export async function cajaDeVendedor(tenantId: string, vendedorId: string | null, opts?: { todos?: boolean }) {
   const [movimientos, saldoMovs] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },
       include: { credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
-      take: 500,
+      // La pantalla muestra los últimos 500; el CSV (`todos`) pide la historia entera, con un
+      // techo de seguridad para que una caja enorme no tumbe la respuesta.
+      take: opts?.todos ? 50_000 : 500,
     }),
     prisma.movimientos_caja.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },

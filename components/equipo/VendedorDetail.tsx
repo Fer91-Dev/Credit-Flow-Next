@@ -6,8 +6,9 @@ import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
   UserCog, Trash2, TrendingUp, Target, Percent,
-  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange,
+  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange, Download,
 } from "lucide-react";
+import { exportarMovimientosCSV, hoyAR } from "@/components/caja/exportar-movimientos";
 import { refrescarNotificaciones, useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
 import { calcularComisionTotal, comisionDeVenta, rangoDePeriodo, periodoActual, PERIODOS_META, PERIODO_LABEL, TIPOS_CREDITO_COMISION, type TipoPeriodo } from "@/lib/domain";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
@@ -853,6 +854,21 @@ const CAJA_CUENTA_LABEL: Record<CuentaCaja, string> = { efectivo: "Efectivo", ba
 
 function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guardar: (b: Record<string, unknown>, m: SaveMsgs) => Promise<boolean> }) {
   const { caja, isLoading, mutate } = useVendedorCaja(vendedor.id);
+  const toastCsv = useToast();
+  const [exportando, setExportando] = useState(false);
+  /** CSV con la historia ENTERA de la caja (la pantalla muestra los últimos 500). */
+  const exportarCaja = async () => {
+    setExportando(true);
+    try {
+      const r = await fetch(`/api/vendedores/${vendedor.id}/caja?todos=1`);
+      const j = await r.json();
+      if (!j.ok) { toastCsv.error(j.error ?? "No se pudo exportar"); return; }
+      const slug = (vendedor.nombre ?? "agente").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const n = exportarMovimientosCSV(j.data.movimientos, `caja_${slug}_${hoyAR()}.csv`, (t) => CAJA_TIPO_META[t]?.label ?? t);
+      toastCsv.success(`${n} movimiento${n === 1 ? "" : "s"} exportado${n === 1 ? "" : "s"}`);
+    } catch { toastCsv.error("No se pudo exportar"); }
+    finally { setExportando(false); }
+  };
   const [limite, setLimite] = useState(vendedor.limite_aprobacion != null ? numeroAInput(vendedor.limite_aprobacion) : "");
   const [savingLimite, setSavingLimite] = useState(false);
   const [dialog, setDialog] = useState<null | "entrega" | "rendicion">(null);
@@ -911,6 +927,11 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
             </button>
             <button onClick={() => setDialog("rendicion")} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted">
               <Send className="h-3.5 w-3.5" /> Rendir
+            </button>
+            {/* Todos los ingresos y egresos de esta caja (Fernando, 28/09/2026). */}
+            <button onClick={exportarCaja} disabled={!caja || caja.movimientos.length === 0 || exportando}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40">
+              <Download className="h-3.5 w-3.5" /> {exportando ? "Exportando…" : "Exportar CSV"}
             </button>
           </div>
         </div>
