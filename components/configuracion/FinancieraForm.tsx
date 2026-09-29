@@ -39,6 +39,35 @@ export function FinancieraForm() {
     if (financiera && !hidratado.current) { setForm(financiera); hidratado.current = true; }
   }, [financiera]);
 
+  /*
+    COMPLETAR LAS VERSIONES DEL LOGO YA CARGADO (Fernando, 29/09/2026). Un logo subido antes de
+    que existieran la versión para papel y el ícono de la pestaña no las tiene. Al abrir esta
+    pantalla se fija, y si falta alguna la arma desde el logo guardado y la sube, sin pedir que
+    se vuelva a subir el archivo. Una vez por logo y en silencio: si falla, queda como estaba.
+    Va sobre el logo GUARDADO (`financiera`), que es del que el servidor deduce la ruta.
+  */
+  const completado = useRef<string | null>(null);
+  useEffect(() => {
+    const logo = financiera?.logo_url;
+    if (!logo || completado.current === logo || !/\.(png|jpe?g|webp)$/i.test(logo)) return;
+    completado.current = logo;
+    (async () => {
+      const base = logo.replace(/\.(png|jpe?g|webp)$/i, "");
+      const existe = async (u: string) => { try { return (await fetch(u, { method: "HEAD", cache: "no-store" })).ok; } catch { return true; } };
+      const [hayPapel, hayIcono] = await Promise.all([existe(`${base}-papel.png`), existe(`${base}-icono.png`)]);
+      if (hayPapel && hayIcono) return;
+      const blob = await (await fetch(logo, { cache: "no-store" })).blob();
+      const file = new File([blob], "logo", { type: blob.type || "image/png" });
+      const fd = new FormData();
+      const papel = hayPapel ? null : await generarLogoPapel(file).catch(() => null);
+      if (papel) fd.append("papel", new File([papel], "papel.png", { type: "image/png" }));
+      const icono = hayIcono ? null : await generarIconoLogo(file).catch(() => null);
+      if (icono) fd.append("icono", new File([icono], "icono.png", { type: "image/png" }));
+      if (!papel && !icono) return;
+      await fetch("/api/financiera/logo/variantes", { method: "POST", body: fd });
+    })().catch(() => { /* en silencio: los impresos usan el logo original */ });
+  }, [financiera?.logo_url]);
+
   const set = <K extends keyof Financiera>(k: K, v: Financiera[K]) => { setForm((p) => ({ ...p, [k]: v })); setSaved(false); };
   const dirty = !!financiera && JSON.stringify(form) !== JSON.stringify(financiera);
 
