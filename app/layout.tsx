@@ -4,6 +4,7 @@ import { Geist, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipsNativos } from "@/components/ui/TooltipsNativos";
 import "./globals.css";
+import { getMarcaPestana } from "@/lib/branding";
 
 // Fuente UI: Geist (variable) — más geométrica/moderna que el default. La variable
 // sigue llamándose --font-inter para no tocar globals.css (ahí se mapea a --font-sans).
@@ -17,10 +18,15 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "CreditFlow",
-  description: "Sistema de gestión de cartera crediticia",
-};
+/** Título e ícono de la pestaña: los de la financiera (ver `getMarcaPestana`). */
+export async function generateMetadata(): Promise<Metadata> {
+  const { titulo, icono } = await getMarcaPestana().catch(() => ({ titulo: "CreditFlow", icono: null }));
+  return {
+    title: titulo,
+    description: "Sistema de gestión de cartera crediticia",
+    icons: icono ? { icon: [{ url: icono, type: "image/png" }], apple: [{ url: icono }] } : { icon: "/icon-creditflow.svg" },
+  };
+}
 
 export default async function RootLayout({
   children,

@@ -1,4 +1,5 @@
 import { rutaLogoPapel } from "@/lib/logo-papel";
+import { rutaLogoIcono } from "@/lib/logo-icono";
 import { requireRole } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import type { NextRequest } from "next/server";
@@ -59,6 +60,17 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       body: Buffer.from(await papel.arrayBuffer()),
     }).catch(() => null);
     if (!r2?.ok) console.error("[financiera/logo] papel", r2?.status);
+  }
+
+  // Lo mismo con el ícono de la pestaña (`-icono.png`, ver lib/logo-icono.ts).
+  const icono = form.get("icono");
+  if (icono instanceof File && icono.type === "image/png" && icono.size <= MAX_BYTES) {
+    const r3 = await fetch(`${url}/storage/v1/object/productos/${rutaLogoIcono(path)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "image/png", "x-upsert": "true" },
+      body: Buffer.from(await icono.arrayBuffer()),
+    }).catch(() => null);
+    if (!r3?.ok) console.error("[financiera/logo] icono", r3?.status);
   }
 
   return successResponse({ url: `${url}/storage/v1/object/public/productos/${path}`, path }, 201);
