@@ -1583,7 +1583,10 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
               {/* La tabla va sobre una TARJETA semitransparente: el dibujo del fondo es textura y no
                   puede competir con los números. `overflow-clip` y no `hidden`: el segundo crea un
                   contenedor de scroll y rompe el encabezado pegajoso. */}
-              <div className={`animate-aparece-plan relative z-10 mx-auto overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${hayCargoCols ? "w-full min-w-max" : "w-full max-w-[56rem]"}`}>
+              <div className={`animate-aparece-plan relative z-10 mx-auto overflow-clip rounded-xl bg-card/85 shadow-2xl ring-1 ring-border backdrop-blur-sm ${hayCargoCols ? "w-full min-w-max" : "w-full min-w-max max-w-[56rem]"}`}>
+              {/* 🔴 `min-w-max` también SIN cargos (Fernando, 29/09/2026): en el celular la tabla
+                  pide ~553 px y la tarjeta tenía 358, y el `overflow-clip` CORTABA Interés, Capital
+                  y Saldo. Ahora la tarjeta crece con la tabla y el panel se desliza de costado. */}
               <table className={`w-full ${hayCargoCols ? "[&_th]:px-2 [&_td]:px-2 text-xs [&_tfoot_td]:text-sm [&_tbody_td.brillo-cuota]:text-[14px]" : "text-sm"} [&_tbody_td]:py-3 border-separate border-spacing-0 [&_th:first-child]:pl-4 [&_td:first-child]:pl-4 [&_th:last-child]:pr-4 [&_td:last-child]:pr-4`}>
                 <thead className="sticky top-0 z-10 bg-muted">
                   <tr>
