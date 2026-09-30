@@ -1,4 +1,5 @@
 "use client";
+import { Skeleton } from "./skeleton";
 import type { ComponentType, ReactNode } from "react";
 import { Emoji } from "./Emoji";
 import { BarraAvance } from "./NumeroAnimado";
@@ -42,6 +43,13 @@ interface KpiCardProps {
   onClick?: () => void;
   /** El filtro de esta tarjeta está aplicado: se marca con un anillo del acento. */
   active?: boolean;
+  /**
+   * 🔴 MIENTRAS LLEGAN LOS DATOS, BARRAS GRISES — NO UN CERO (Fernando, 29/09/2026). Varias
+   * pantallas mostraban "$0,00" o "0" durante la carga (Clientes, Comisiones, Equipo,
+   * Movimientos de stock): un número falso que se lee como cierto. Con `cargando`, el dato,
+   * el pie y la barra esperan en gris, y la tarjeta no late ni se colorea.
+   */
+  cargando?: boolean;
 }
 
 const COLORS: Record<KpiAccent, { text: string; iconBg: string; iconBorder: string; glow: string; hoverBorder: string; tono: "primary" | "success" | "warning" | "destructive" }> = {
@@ -65,7 +73,10 @@ const COLORS: Record<KpiAccent, { text: string; iconBg: string; iconBorder: stri
  * las cifras de tarjetas vecinas queden alineadas, y `sujeto` y `barra` aparecen solo cuando
  * la pantalla TIENE ese dato.
  */
-export function KpiCard({ icon, label, value, accent = "muted", mono, sub, sujeto, barra, pulse, onClick, active }: KpiCardProps) {
+export function KpiCard({ icon, label, value, accent: accentProp = "muted", mono, sub, sujeto, barra: barraProp, pulse: pulseProp, onClick, active, cargando = false }: KpiCardProps) {
+  const accent = cargando ? "muted" : accentProp;
+  const pulse = cargando ? false : pulseProp;
+  const barra = cargando ? undefined : barraProp;
   const c = COLORS[accent];
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -123,10 +134,19 @@ export function KpiCard({ icon, label, value, accent = "muted", mono, sub, sujet
         fijo, un importe largo —"$20.921.124,69"— se comía el aire del borde y uno más largo
         directamente se cortaba, porque la tarjeta recorta lo que se sale.
       */}
-      <p className={`relative ${sujeto ? "mt-1.5" : "mt-3"} text-lg font-bold leading-none tracking-tight tabular-nums @[13rem]/kpi:text-2xl ${c.text} ${mono ? "font-mono" : ""}`}>
-        {value}
-      </p>
-      {sub && <p className="relative mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{sub}</p>}
+      {cargando ? (
+        <>
+          <Skeleton className={`relative ${sujeto ? "mt-1.5" : "mt-3"} h-6 w-28 rounded`} />
+          {sub !== undefined && <Skeleton className="relative mt-2 h-3 w-24 rounded" />}
+        </>
+      ) : (
+        <>
+          <p className={`relative ${sujeto ? "mt-1.5" : "mt-3"} text-lg font-bold leading-none tracking-tight tabular-nums @[13rem]/kpi:text-2xl ${c.text} ${mono ? "font-mono" : ""}`}>
+            {value}
+          </p>
+          {sub && <p className="relative mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{sub}</p>}
+        </>
+      )}
 
       {/* La barra cierra la tarjeta. Con `mt-auto` todas las de una fila terminan a la misma
           altura, tengan o no barra. */}

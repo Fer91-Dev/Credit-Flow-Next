@@ -4,6 +4,7 @@
  * de un drawer/ficha. Respeta los tokens semánticos del Design Contract.
  */
 import { Emoji } from "./Emoji";
+import { Skeleton } from "./skeleton";
 
 export type StatAccent = "muted" | "success" | "primary" | "warning" | "destructive";
 
@@ -17,6 +18,7 @@ export function Stat({
   accent,
   onClick,
   title,
+  cargando = false,
 }: {
   /** Componente Lucide, o nombre de un Fluent Emoji (`public/emoji/<icon>.svg`). */
   icon: React.ComponentType<{ className?: string }> | string;
@@ -43,6 +45,13 @@ export function Stat({
   /** Si viene, la tarjeta se vuelve un botón: hover, foco y cursor. */
   onClick?: () => void;
   title?: string;
+  /**
+   * 🔴 MIENTRAS LLEGAN LOS DATOS, UNA BARRA GRIS — NO UN CERO (Fernando, 29/09/2026).
+   * La ficha del crédito mostraba "Deuda total $0,00 · sin cuotas pendientes" durante la
+   * carga: un número falso que se lee como cierto. Con `cargando`, el importe y el pie
+   * esperan en gris y la tarjeta no toma color de alerta ni de éxito.
+   */
+  cargando?: boolean;
 }) {
   const isEmoji = typeof icon === "string";
   const Icon = isEmoji ? null : icon;
@@ -96,8 +105,17 @@ export function Stat({
           {tag}
         </span>
       )}
-      <p className={`font-mono text-lg font-bold leading-tight ${c.text}`}>{value}</p>
-      <p className="mt-0.5 min-h-[0.95rem] text-[10px] leading-tight text-muted-foreground/60">{sub}</p>
+      {cargando ? (
+        <>
+          <Skeleton className="mt-0.5 h-5 w-28 rounded" />
+          <Skeleton className="mt-1.5 h-2.5 w-20 rounded" />
+        </>
+      ) : (
+        <>
+          <p className={`font-mono text-lg font-bold leading-tight ${c.text}`}>{value}</p>
+          <p className="mt-0.5 min-h-[0.95rem] text-[10px] leading-tight text-muted-foreground/60">{sub}</p>
+        </>
+      )}
     </Wrapper>
   );
 }

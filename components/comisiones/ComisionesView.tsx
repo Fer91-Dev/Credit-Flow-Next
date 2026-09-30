@@ -169,16 +169,16 @@ export function ComisionesView() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon="money-bag" label="A liquidar" value={formatMonto(aPagar)} sub={`${pendientes.filter((f) => f.comision_total > 0).length} agentes`} accent="warning" mono />
-        <KpiCard
+        <KpiCard cargando={isLoading} icon="money-bag" label="A liquidar" value={formatMonto(aPagar)} sub={`${pendientes.filter((f) => f.comision_total > 0).length} agentes`} accent="warning" mono />
+        <KpiCard cargando={isLoading}
           icon="check-mark-button" label="Ya liquidado" value={formatMonto(yaPagado)} accent="success" mono
           sub={aPagar + yaPagado > 0 ? `de ${formatMonto(aPagar + yaPagado)} de comisión del período` : "en este período"}
           barra={aPagar + yaPagado > 0
             ? { pct: pctDe(yaPagado, aPagar + yaPagado), label: `${Math.round(pctDe(yaPagado, aPagar + yaPagado))}%` }
             : undefined}
         />
-        <KpiCard icon="credit-card" label="Otorgado" value={formatMonto(filas.reduce((s, f) => s + f.monto_otorgado, 0))} sub="base del cálculo" mono />
-        <KpiCard icon="busts-in-silhouette" label="Agentes" value={String(filas.length)} sub="activos" />
+        <KpiCard cargando={isLoading} icon="credit-card" label="Otorgado" value={formatMonto(filas.reduce((s, f) => s + f.monto_otorgado, 0))} sub="base del cálculo" mono />
+        <KpiCard cargando={isLoading} icon="busts-in-silhouette" label="Agentes" value={String(filas.length)} sub="activos" />
       </div>
 
       {/* Selector de período — mismos largos y el mismo helper que el formulario de

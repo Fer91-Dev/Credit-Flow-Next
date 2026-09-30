@@ -841,13 +841,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             resta completa.
           */}
           {credito.estado === "refinanciado" ? (
-            <Stat icon="counterclockwise-arrows-button" label="Deuda del plan" accent="warning"
+            <Stat icon="counterclockwise-arrows-button" label="Deuda del plan" accent="warning" cargando={loadingCuotas}
               value={`$${n2(r2(sumaPlan + moraTotalPlan))}`}
               sub={`plan $${n2(sumaPlan)}${moraTotalPlan > 0 ? ` + punitorios $${n2(moraTotalPlan)}` : ""}`}
               onClick={irAlPlan}
               title="Ver el plan que se trasladó" />
           ) : (
-          <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"}
+          <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"} cargando={loadingCuotas}
             tag={DEL_CREDITO}
             value={`$${n2(deudaTotal)}`}
             sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
@@ -895,6 +895,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             />
           ) : (
           <Stat
+            cargando={loadingCuotas}
             icon="chart-increasing"
             label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
             accent="primary"
@@ -910,7 +911,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           />
           )}
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
-          <Stat icon="chart-increasing" label="Total cobrado" accent="success"
+          <Stat icon="chart-increasing" label="Total cobrado" accent="success" cargando={loadingPagos}
             tag={DEL_CREDITO}
             value={`$${n2(totalCobrado)}`}
             sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
@@ -931,6 +932,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             const moraCongelada = !!acuerdoVigente && acuerdoVigente.congela_punitorios && diasMora > 0;
             return (
           <Stat
+            cargando={loadingCuotas}
             icon={moraCongelada ? "handshake" : "warning"}
             label={moraCongelada ? "Mora congelada" : diasMora > 0 ? "En mora" : "Próximo pago"}
             accent={moraCongelada ? "muted" : diasMora > 30 ? "destructive" : diasMora > 0 ? "warning" : "muted"}

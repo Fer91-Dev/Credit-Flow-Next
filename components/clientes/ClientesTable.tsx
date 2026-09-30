@@ -256,8 +256,8 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         tenerlo, porque se actúa sobre él.
       */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon="busts-in-silhouette" label="Clientes" value={String(kpis?.total ?? 0)} accent="primary" />
-        <KpiCard
+        <KpiCard cargando={!kpis} icon="busts-in-silhouette" label="Clientes" value={String(kpis?.total ?? 0)} accent="primary" />
+        <KpiCard cargando={!kpis}
           icon="hourglass-done"
           label="Sin movimiento"
           value={String(kpis?.enfriados ?? 0)}
@@ -269,7 +269,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           onClick={(kpis?.enfriados ?? 0) > 0 ? () => alternar("enfriados") : undefined}
           active={recorte === "enfriados"}
         />
-        <KpiCard
+        <KpiCard cargando={!kpis}
           icon="warning"
           label="Calificación C o D"
           value={String(kpis?.riesgo ?? 0)}
@@ -281,7 +281,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           onClick={(kpis?.riesgo ?? 0) > 0 ? () => alternar("riesgo") : undefined}
           active={recorte === "riesgo"}
         />
-        <KpiCard
+        <KpiCard cargando={!kpis}
           icon="calendar"
           label="Cargados este mes"
           value={String(kpis?.nuevos ?? 0)}

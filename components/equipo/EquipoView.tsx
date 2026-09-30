@@ -441,13 +441,13 @@ export function EquipoView() {
           alerta —sin cuenta e inactivos—: por separado ocupaban media fila para mostrar
           cero casi siempre. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
+        <KpiCard cargando={isLoading}
           icon="busts-in-silhouette"
           label="Personas"
           value={String(kpis.total)}
           sub={`${kpis.agentes} con ficha de agente`}
         />
-        <KpiCard
+        <KpiCard cargando={isLoading}
           icon="dollar-banknote"
           label="Otorgado (total)"
           value={formatMonto(kpis.vendido)}
@@ -455,7 +455,7 @@ export function EquipoView() {
           accent="success"
           mono
         />
-        <KpiCard
+        <KpiCard cargando={isLoading}
           icon="bar-chart"
           label="Comisiones"
           value={formatMonto(kpis.comision)}
@@ -463,7 +463,7 @@ export function EquipoView() {
           accent="warning"
           mono
         />
-        <KpiCard
+        <KpiCard cargando={isLoading}
           icon={kpis.sinAcceso + kpis.inactivos > 0 ? "warning" : "locked-with-key"}
           label="Requieren atención"
           value={String(kpis.sinAcceso + kpis.inactivos)}
