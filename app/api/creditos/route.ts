@@ -373,12 +373,49 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Enriquecemos con el interés moratorio calculado por el motor de dominio
   // (mismo criterio que el endpoint de pagos: cuota francesa × tasa diaria × días).
   // Solo se calcula para créditos activos en mora; el resto queda en 0.
-  const config = await getConfiguracion(tenantId);
+  /*
+    🔴 TODO LO QUE SIGUE DEPENDE SOLO DE LA LISTA, ASÍ QUE SE PIDE JUNTO (Fernando, 30/09/2026:
+    la lista de créditos tardaba ~3,9 s en desarrollo). Eran nueve consultas en fila —config,
+    acuerdos, cadenas, gestiones, rotos, último contacto, pagos post-castigo— y ninguna
+    necesitaba la anterior. Los comentarios de cada una siguen abajo, donde se usan.
+  */
+  const idsLista = creditos.map((c) => c.id);
+  const incobrables = creditos.filter((c) => c.estado === "incobrable" && c.incobrable_at);
+  const refis = creditos.filter((c) => c.es_refinanciacion && c.refinancia_a);
+  const [config, acuerdosVig, cadenas, cadenasRefi, cfgCobranzaLista, gestionesAgg, rotosAgg, ultimosContactos, pagosIncobrables] = await Promise.all([
+    getConfiguracion(tenantId),
+    situacionAcuerdoPorCredito(tenantId, idsLista),
+    plataDeLaCadenaLote(tenantId, incobrables.map((c) => c.id)),
+    refis.length > 0 ? plataDeLaCadenaLote(tenantId, refis.map((c) => c.id)) : Promise.resolve(new Map()),
+    getCobranzaConfig(tenantId),
+    prisma.acciones_cobranza.groupBy({
+      by: ["credito_id"],
+      where: { ...withTenant(tenantId), automatico: false, credito_id: { in: idsLista } },
+      _count: { _all: true },
+    }),
+    prisma.acuerdos_pago.groupBy({
+      by: ["credito_id"],
+      where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: idsLista } },
+      _count: { _all: true },
+    }),
+    prisma.acciones_cobranza.findMany({
+      where: { ...withTenant(tenantId), credito_id: { in: idsLista } },
+      select: { credito_id: true, created_at: true, tipo: true, nota: true },
+      orderBy: { created_at: "desc" },
+      distinct: ["credito_id"],
+    }),
+    incobrables.length > 0
+      ? prisma.pagos.findMany({
+          where: { ...withTenant(tenantId), anulado: false, credito_id: { in: incobrables.map((c) => c.id) } },
+          select: { credito_id: true, monto: true, fecha: true },
+        })
+      : Promise.resolve([] as { credito_id: string; monto: number; fecha: Date }[]),
+  ]);
   const hoy = hoyComercial();
   // Acuerdos vigentes: con uno encima el crédito NO se lee por su plan viejo (ver
   // `situacionAcuerdoPorCredito`). Sin esto, la lista mostraba "Legales" a alguien que está
   // cumpliendo su arreglo.
-  const acuerdosVig = await situacionAcuerdoPorCredito(tenantId, creditos.map((c) => c.id));
+  // (acuerdosVig: pedido arriba, junto con el resto.)
   /** La fecha en la que un acuerdo vigente frenó los punitorios de este crédito, o null. */
   const acuerdoVigenteDe = (creditoId: string): Date | null => {
     const a = acuerdosVig.get(creditoId);
@@ -396,7 +433,6 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    *
    * Una sola consulta, y solo si hay incobrables: son pocos por definición.
    */
-  const incobrables = creditos.filter((c) => c.estado === "incobrable" && c.incobrable_at);
   /**
    * 🔴 CUÁNTA PLATA SALIÓ DE VERDAD DE LA CAJA, mirando toda la cadena.
    *
@@ -410,16 +446,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * el cierre del caso hablan del mismo número. Solo para los castigados —son pocos por
    * definición— y en una consulta por salto de cadena, no una por crédito.
    */
-  const cadenas = await plataDeLaCadenaLote(tenantId, incobrables.map((c) => c.id));
+  // (cadenas: pedido arriba.)
   /**
    * Cuántas refinanciaciones hay DETRÁS de cada crédito vivo que nació de una. Hace falta
    * para saber si la deuda ya agotó los escalones que la financiera admite, que es una de las
    * señales de `puedeDarsePorIncobrableManual`. Solo para los que son refinanciación: en un
    * crédito original la respuesta es 0 sin consultar nada.
    */
-  const refis = creditos.filter((c) => c.es_refinanciacion && c.refinancia_a);
-  const cadenasRefi = refis.length > 0 ? await plataDeLaCadenaLote(tenantId, refis.map((c) => c.id)) : new Map();
-  const { recupero: cfgRecupero, fallecidos: fallecidosCfg } = await getCobranzaConfig(tenantId);
+  // (cadenasRefi: pedido arriba.)
+  const { recupero: cfgRecupero, fallecidos: fallecidosCfg } = cfgCobranzaLista;
   /**
    * Acuerdos ROTOS por credito. Los mira `puedeRefinanciar` cuando la financiera exige haber
    * intentado un acuerdo antes de reestructurar. Una consulta agrupada para toda la lista, no
@@ -436,19 +471,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * regla: los envíos de campaña y las alertas del cron no son un contacto con el deudor.
    */
   const gestionesPorCredito = new Map<string, number>(
-    (await prisma.acciones_cobranza.groupBy({
-      by: ["credito_id"],
-      where: { ...withTenant(tenantId), automatico: false, credito_id: { in: creditos.map((c) => c.id) } },
-      _count: { _all: true },
-    })).map((r) => [r.credito_id, r._count._all]),
+    gestionesAgg.map((r) => [r.credito_id, r._count._all]),
   );
 
   const rotosPorCredito = new Map<string, number>(
-    (await prisma.acuerdos_pago.groupBy({
-      by: ["credito_id"],
-      where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: creditos.map((c) => c.id) } },
-      _count: { _all: true },
-    })).map((r) => [r.credito_id, r._count._all]),
+    rotosAgg.map((r) => [r.credito_id, r._count._all]),
   );
   /**
    * ÚLTIMO CONTACTO por crédito (gestión humana o automática, campaña incluida). Fernando
@@ -456,18 +483,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * nadie los hubiera tocado. Una consulta para toda la lista: la más reciente de cada uno.
    */
   const ultimoContacto = new Map<string, { fecha: Date; tipo: string; campana: boolean }>();
-  for (const a of await prisma.acciones_cobranza.findMany({
-    where: { ...withTenant(tenantId), credito_id: { in: creditos.map((c) => c.id) } },
-    select: { credito_id: true, created_at: true, tipo: true, nota: true },
-    orderBy: { created_at: "desc" },
-    distinct: ["credito_id"],
-  })) ultimoContacto.set(a.credito_id, { fecha: a.created_at, tipo: a.tipo, campana: (a.nota ?? "").startsWith("[CAMPAÑA") });
+  for (const a of ultimosContactos) ultimoContacto.set(a.credito_id, { fecha: a.created_at, tipo: a.tipo, campana: (a.nota ?? "").startsWith("[CAMPAÑA") });
   const cobradoPostCastigo = new Map<string, number>();
   if (incobrables.length > 0) {
-    const pagos = await prisma.pagos.findMany({
-      where: { ...withTenant(tenantId), anulado: false, credito_id: { in: incobrables.map((c) => c.id) } },
-      select: { credito_id: true, monto: true, fecha: true },
-    });
+    const pagos = pagosIncobrables;
     const castigoDe = new Map(incobrables.map((c) => [c.id, c.incobrable_at as Date]));
     for (const p of pagos) {
       // La regla ("¿entró después del castigo?") vive en el dominio: la comparten el motor de
@@ -744,19 +763,19 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    *
    * Una sola consulta agrupada para todo el lote, y ninguna si la regla está apagada.
    */
-  const { recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
-  const bloqueados = await cobroBloqueadoPorCredito(
-    tenantId,
-    creditosConMora.map((c) => ({ id: c.id, diasMora: c.dias_mora, acuerdoVigente: c.acuerdo != null })),
-    recuperoCfg,
-  );
-  for (const c of creditosConMora as (typeof creditosConMora[number] & { cobro_bloqueado?: boolean })[]) {
-    c.cobro_bloqueado = bloqueados.get(c.id) ?? false;
-  }
-
-  // El número del crédito que cada refinanciación reemplaza, para poder mostrar REF-000060
-  // en vez de un CRD- suelto sin relación visible con su origen. Una sola query para el lote.
-  const creditosConOrigen = await conNumeroDeOrigen(tenantId, creditosConMora);
+  // Qué créditos ya no se cobran, y el número del crédito que cada refinanciación reemplaza
+  // (para mostrar REF-000060 en vez de un CRD- suelto): las dos consultas juntas. La config de
+  // recupero ya se leyó arriba (`cfgRecupero`). El `cobro_bloqueado` se pone DESPUÉS, sobre
+  // la lista final: `conNumeroDeOrigen` copia cada crédito y perdería lo marcado antes.
+  const [bloqueados, creditosConOrigenBase] = await Promise.all([
+    cobroBloqueadoPorCredito(
+      tenantId,
+      creditosConMora.map((c) => ({ id: c.id, diasMora: c.dias_mora, acuerdoVigente: c.acuerdo != null })),
+      cfgRecupero,
+    ),
+    conNumeroDeOrigen(tenantId, creditosConMora),
+  ]);
+  const creditosConOrigen = creditosConOrigenBase.map((c) => ({ ...c, cobro_bloqueado: bloqueados.get(c.id) ?? false }));
 
   return successResponse({
     creditos: creditosConOrigen,

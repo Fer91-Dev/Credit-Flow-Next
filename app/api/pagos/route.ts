@@ -59,7 +59,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const scope = scopeCreditosVendedor({ role, vendedorId });
   if (scope.vendedor_id) where.credito = { vendedor_id: scope.vendedor_id };
 
-  const [pagos, total] = await Promise.all([
+  // El resumen de la terminal no depende de la página: va EN PARALELO con la lista
+  // (Fernando, 30/09/2026: Pagos tardaba ~2 s en mostrarse; eran cuatro pasos en fila).
+  const [pagos, total, resumen] = await Promise.all([
     prisma.pagos.findMany({
       where,
       include: {
@@ -113,14 +115,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       skip: offset,
     }),
     prisma.pagos.count({ where }),
+    resumenTerminal(where),
   ]);
 
-  const resumen = await resumenTerminal(where);
-
-  // Un cobro sobre una refinanciación se identifica como REF-<origen>, igual que el crédito.
-  const origenesRefi = await numerosRefinanciados(tenantId, pagos.map((p) => p.credito));
-  // Qué cobros fueron la entrega de una refinanciación: el historial los rotula por su nombre.
-  const entregasRefi = await entregasDeRefinanciacion(tenantId, pagos.map((p) => p.id));
+  // Un cobro sobre una refinanciación se identifica como REF-<origen>, igual que el crédito;
+  // y la entrega de una refinanciación se rotula por su nombre. Las dos juntas.
+  const [origenesRefi, entregasRefi] = await Promise.all([
+    numerosRefinanciados(tenantId, pagos.map((p) => p.credito)),
+    entregasDeRefinanciacion(tenantId, pagos.map((p) => p.id)),
+  ]);
 
   return successResponse({
     pagos: pagos.map((p) => ({

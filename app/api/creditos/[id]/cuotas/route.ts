@@ -29,7 +29,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   const { tenantId, role, vendedorId } = await requireAuth(req);
   const { id } = await params;
 
-  const credito = await prisma.creditos.findFirst({
+  /*
+    🔴 LO QUE NO DEPENDE DEL CRÉDITO SE PIDE JUNTO CON ÉL (Fernando, 30/09/2026: las cuotas
+    tardaban ~3 s en desarrollo; eran diez consultas en fila). La configuración, el acuerdo que
+    congela la mora, la configuración de cobranza y las campañas activas solo necesitan el id.
+    Cada una conserva su explicación más abajo, donde se usa.
+  */
+  const [credito, config, acuerdoQueCongela, cfgCobranza, objetivosCampana] = await Promise.all([
+  prisma.creditos.findFirst({
     where: { ...withTenant(tenantId), ...(await scopeCreditoParaCobrar({ role, vendedorId, tenantId })), id },
     select: {
       id: true,
@@ -55,7 +62,18 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         },
       },
     },
-  });
+  }),
+  getConfiguracion(tenantId),
+  prisma.acuerdos_pago.findFirst({
+    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente", congela_punitorios: true },
+    select: { fecha: true },
+  }),
+  getCobranzaConfig(tenantId),
+  prisma.campana_objetivo.findMany({
+    where: { ...withTenant(tenantId), credito_id: id, campana: { estado: "activa" } },
+    include: { campana: { select: { id: true, nombre: true, promo_tipo: true, promo_valor: true, promo_vence: true } } },
+  }),
+  ]);
 
   if (!credito) {
     return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
@@ -78,7 +96,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * imputa al cobrar. Replicarla en el navegador sería una segunda fuente para un número
    * que es plata — el error que ya se pagó caro con los cargos del plan.
    */
-  const config = await getConfiguracion(tenantId);
+  // (config: pedida arriba, junto con el crédito.)
   const moraCred = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
 
   /**
@@ -97,14 +115,21 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * Aparte a propósito: es un HISTÓRICO, no un pendiente. Si alimentara `mora` volvería a
    * aparecer en "A cobrar", que es exactamente lo que no puede pasar sobre un crédito muerto.
    */
-  let fechaRefi: Date | null = null;
-  if (credito.estado === "refinanciado" && credito.refinanciado_en) {
-    const nuevo = await prisma.creditos.findFirst({
-      where: { ...withTenant(tenantId), id: credito.refinanciado_en },
-      select: { fecha_inicio: true, created_at: true },
-    });
-    fechaRefi = nuevo?.fecha_inicio ?? nuevo?.created_at ?? null;
-  }
+  // El veredicto de cobro (más abajo) y el crédito que recibió la deuda, juntos: los dos
+  // dependen solo del crédito ya leído.
+  const { fallecidos: fallecidosCfg, recupero: recuperoCfg } = cfgCobranza;
+  const [nuevo, cobro] = await Promise.all([
+    credito.estado === "refinanciado" && credito.refinanciado_en
+      ? prisma.creditos.findFirst({
+          where: { ...withTenant(tenantId), id: credito.refinanciado_en },
+          select: { fecha_inicio: true, created_at: true },
+        })
+      : Promise.resolve(null),
+    // El estado va porque el veredicto incluye la regla de la campaña de recupero, que
+    // solo aplica a los castigados (ver `veredictoCobroEnCampanaRecupero`).
+    veredictoCobro(tenantId, id, recuperoCfg, credito.estado),
+  ]);
+  const fechaRefi: Date | null = nuevo ? (nuevo.fecha_inicio ?? nuevo.created_at ?? null) : null;
   /* Qué cobro fue la ENTREGA con la que este crédito se refinanció: su chip lo dice por su
      nombre en vez de "a cuenta de la cuota 2". Solo en un crédito refinanciado. */
   const entregasRefi = fechaRefi
@@ -124,17 +149,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * Se pide antes del cálculo (la consulta del acuerdo estaba más abajo, solo para mostrarlo)
    * y con `congela_punitorios: true`, el mismo filtro que usa el cobro.
    */
-  const acuerdoQueCongela = await prisma.acuerdos_pago.findFirst({
-    where: { ...withTenant(tenantId), credito_id: id, estado: "vigente", congela_punitorios: true },
-    select: { fecha: true },
-  });
+  // (acuerdoQueCongela: pedido arriba, junto con el crédito.)
   const congeladaAl = acuerdoQueCongela?.fecha ?? null;
   /**
    * Y el freno por FALLECIMIENTO, que es un tope distinto: recorta todas las cuotas, no solo
    * las que ya estaban vencidas. Tiene que estar acá y en `POST /pagos` con el mismo dato, o
    * la pantalla le diría un importe al operador y la caja tomaría otro.
    */
-  const { fallecidos: fallecidosCfg, recupero: recuperoCfg } = await getCobranzaConfig(tenantId);
+  // (fallecidosCfg / recuperoCfg: leídos arriba.)
   // El más TEMPRANO de los dos frenos absolutos: el fallecimiento del titular y la
   // declaración de incobrable. Tiene que salir igual que en `POST /pagos` o la pantalla
   // diría un importe y la caja tomaría otro.
@@ -151,9 +173,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * si el operador se entera del bloqueo recién al confirmar, ya le dijo un importe al cliente
    * que tiene enfrente. La barrera real sigue siendo `POST /api/pagos`; esto informa.
    */
-  // El estado va porque el veredicto incluye la regla de la campaña de recupero, que
-  // solo aplica a los castigados (ver `veredictoCobroEnCampanaRecupero`).
-  const cobro = await veredictoCobro(tenantId, id, recuperoCfg, credito.estado);
+  // (cobro: calculado arriba, junto con la fecha de la refinanciación.)
 
   /**
    * 🔴 EL DESCUENTO DE UNA CAMPAÑA VIGENTE, TAMBIÉN ACÁ.
@@ -169,10 +189,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * acuerdo y con el fallecimiento. La condición es exactamente la del cobro: campaña
    * ACTIVA —una en borrador no descuenta nada— y promo vigente a la fecha.
    */
-  const objetivosCampana = await prisma.campana_objetivo.findMany({
-    where: { ...withTenant(tenantId), credito_id: id, campana: { estado: "activa" } },
-    include: { campana: { select: { id: true, nombre: true, promo_tipo: true, promo_valor: true, promo_vence: true } } },
-  });
+  // (objetivosCampana: pedidos arriba, junto con el crédito.)
   const promo = objetivosCampana.reduce<{ pct: number; nombre: string; vence: Date | null } | null>((mejor, o) => {
     const c = o.campana;
     const vigente = c.promo_tipo === "quita_interes" && c.promo_valor > 0 && promoVigenteAl(c.promo_vence, hoy);
@@ -393,16 +410,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * un `orderBy` por estado: ordenar el estado alfabéticamente pondría "vigente" ÚLTIMO
    * (anulado < cumplido < roto < vigente), justo al revés de lo que hace falta.
    */
-  const acuerdo =
-    (await prisma.acuerdos_pago.findFirst({
+  // Las dos juntas, y se queda con el vigente si lo hay.
+  const [acuerdoVigente, acuerdoUltimo] = await Promise.all([
+    prisma.acuerdos_pago.findFirst({
       where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
       select: SELECT_ACUERDO,
-    })) ??
-    (await prisma.acuerdos_pago.findFirst({
+    }),
+    prisma.acuerdos_pago.findFirst({
       where: { ...withTenant(tenantId), credito_id: id },
       orderBy: { created_at: "desc" },
       select: SELECT_ACUERDO,
-    }));
+    }),
+  ]);
+  const acuerdo = acuerdoVigente ?? acuerdoUltimo;
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
   /**
    * 🔴 EL RECIBO DE CADA CUOTA PACTADA SE DERIVA, no sale de `pagos.acuerdo_cuota_id`.

@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
-import { conNumeroDeOrigen } from "@/lib/creditos-numero";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
@@ -72,16 +72,33 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // ── Estado de cuenta consolidado (calculado por el motor de dominio) ──
   // Mismo criterio que /api/creditos y /api/reportes: cuota por frecuencia,
   // interés moratorio = cuota × tasa diaria × días, solo créditos activos en mora.
-  const config = await getConfiguracion(tenantId);
+  /*
+    🔴 TODO LO QUE SIGUE DEPENDE SOLO DE LOS CRÉDITOS DEL CLIENTE: SE PIDE JUNTO (Fernando,
+    30/09/2026: la ficha tardaba ~2 s en desarrollo; eran siete consultas en fila). Cada una
+    conserva su explicación donde se usa.
+  */
+  const idsCreditosCliente = cliente.creditos.map((c) => c.id);
+  const [config, acuerdos, entregasRefi, cfgRiesgo, cuotasDeSusCreditos, cfgCobranzaFicha, origenesFicha] = await Promise.all([
+    getConfiguracion(tenantId),
+    situacionAcuerdoPorCredito(tenantId, idsCreditosCliente),
+    entregasDeRefinanciacion(tenantId, cliente.creditos.flatMap((c) => c.pagos.map((p) => p.id))),
+    getRiesgoConfig(tenantId),
+    prisma.cuotas.findMany({
+      where: { ...withTenant(tenantId), credito_id: { in: idsCreditosCliente } },
+      select: { fecha_vencimiento: true, estado: true },
+    }),
+    getCobranzaConfig(tenantId),
+    numerosRefinanciados(tenantId, cliente.creditos),
+  ]);
   /**
    * Acuerdos VIGENTES de estos créditos. Con uno encima, el plan viejo se cayó: sus cuotas
    * siguen figurando vencidas pero ya no son lo que el cliente se comprometió a pagar, y sin
    * este dato la ficha lo mostraba como moroso estando al día.
    */
-  const acuerdos = await situacionAcuerdoPorCredito(tenantId, cliente.creditos.map((c) => c.id));
+  // (acuerdos: pedidos arriba.)
 
   // Qué cobros fueron la entrega de una refinanciación: el historial los llama por su nombre.
-  const entregasRefi = await entregasDeRefinanciacion(tenantId, cliente.creditos.flatMap((c) => c.pagos.map((p) => p.id)));
+  // (entregasRefi: pedidas arriba.)
 
   const creditosConFinanzas = cliente.creditos.map((c) => {
     // Estado reconciliado: nunca mostrar un terminal SALDADO (pagado/cancelado)
@@ -292,7 +309,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   // Control de integridad del sueldo (rol-aware): la UI muestra el contador y bloquea el
   // campo a los vendedores que agotaron sus ediciones (el backend igual lo hace cumplir).
-  const { politica } = await getRiesgoConfig(tenantId);
+  const { politica } = cfgRiesgo;
   const maxEd = politica.maxEdicionesSueldoVendedor;
   const esAdmin = role === "admin";
   const sueldo_control = {
@@ -315,10 +332,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * vencidas y cuántas de ésas cumplió.
    */
   const hoyMs = hoyComercial().getTime();
-  const cuotasDeSusCreditos = await prisma.cuotas.findMany({
-    where: { ...withTenant(tenantId), credito_id: { in: creditosConFinanzas.map((c) => c.id) } },
-    select: { fecha_vencimiento: true, estado: true },
-  });
+  // (cuotasDeSusCreditos: pedidas arriba; son las de los mismos créditos.)
   let cuotasVencidas = 0;
   let cuotasCumplidas = 0;
   for (const q of cuotasDeSusCreditos) {
@@ -367,7 +381,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     Lo que se abre es exactamente esto: los créditos de ESE cliente, con su plan, para poder
     cobrarlos. La lista de créditos, la agenda y las campañas siguen scopeadas.
   */
-  const { cobranza_abierta } = await getCobranzaConfig(tenantId);
+  const { cobranza_abierta } = cfgCobranzaFicha;
   const acotarAlVendedor = role === "vendedor" && !cobranza_abierta;
   const propios = acotarAlVendedor
     ? creditosConFinanzas.filter((c) => c.vendedor_id === vendedorId)
@@ -395,7 +409,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     role !== "vendedor" || creditosConFinanzas.length === 0 || propios.length > 0;
 
   // REF-XXXXXX: los créditos de la ficha se nombran por el que reemplazan si son refis.
-  const creditosConOrigen = await conNumeroDeOrigen(tenantId, propios);
+  // (Mismo resultado que `conNumeroDeOrigen`, con los números ya pedidos arriba.)
+  const creditosConOrigen = propios.map((c) => ({
+    ...c,
+    refinancia_a_numero: c.es_refinanciacion && c.refinancia_a ? origenesFicha.get(c.refinancia_a) ?? null : null,
+  }));
 
   return successResponse({ ...cliente, creditos: creditosConOrigen, estado_cuenta, otros_agentes, sueldo_control, score, puede_anular_pago: esAdmin, puede_editar });
 });
