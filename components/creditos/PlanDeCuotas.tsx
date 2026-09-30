@@ -1,5 +1,6 @@
 "use client";
 
+import { Deslizable } from "@/components/ui/Deslizable";
 import { Printer, Check } from "lucide-react";
 import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -174,7 +175,8 @@ export function PlanDeCuotas({
         `overflow-x-auto` se queda: en pantallas angostas la tabla es más ancha que la tarjeta
         y ahí sí hace falta correrla de costado.
       */}
-      <div className={`rounded-xl border border-border overflow-x-auto ${sinAlto ? "" : `overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}`}>
+      {/* Con pista de que sigue de costado (Mora, Comprobante…): ver `Deslizable`. */}
+      <Deslizable className={`rounded-xl border border-border overflow-x-auto ${sinAlto ? "" : `overflow-y-auto ${denso ? "max-h-[46vh]" : "max-h-[62vh]"}`}`}>
         {/*
           🔴 LA TABLA VA EN `text-sm`, NO EN `text-xs`, Y ES A PROPÓSITO.
 
@@ -714,7 +716,7 @@ export function PlanDeCuotas({
             </tr>
           </tfoot>
         </table>
-      </div>
+      </Deslizable>
 
       {/*
         🔴 LAS REGLAS DEL PLAN, EN UN CUADRO — no en un párrafo de letra chica.

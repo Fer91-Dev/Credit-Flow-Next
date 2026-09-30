@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { Deslizable } from "@/components/ui/Deslizable";
 import { estadoBadgeCredito } from "./estado-badge";
 
 import Link from "next/link";
@@ -1470,6 +1471,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               <h3 className={`text-sm font-semibold ${credito.es_refinanciacion ? "text-warning" : "text-foreground"}`}>
                 {credito.es_refinanciacion ? "Plan de cuotas de la refinanciación" : "Plan de cuotas"}
               </h3>
+              {/* Celular: "Ir a pagar" a la vista, al lado del título (Fernando, 29/09/2026). */}
+              {puedeCobrar && !cobroCerrado && (
+                <Link
+                  href={`/pagos?cliente=${credito.cliente_id}`}
+                  onClick={(ev) => ev.stopPropagation()}
+                  className="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-success-foreground shadow-sm transition-opacity hover:opacity-90 md:hidden"
+                >
+                  <Wallet className="h-3.5 w-3.5" /> Ir a pagar
+                </Link>
+              )}
               {/*
                 🔴 CON UN ACUERDO VIGENTE ESTE PLAN YA NO ES EL COMPROMISO, pero sigue siendo
                 el LIBRO: cada cobro de una cuota pactada se imputa acá abajo, cuota por cuota.
@@ -1517,9 +1528,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               borde de la tarjeta. Abajo de `sm` ocupan una línea propia y se arrastran de
               costado, con el mismo `.fila-deslizable` de las pestañas de Cobranzas.
             */}
-            <div
+            <Deslizable
+              envoltorio="w-full"
               // Renglón propio, con los botones CENTRADOS en el ancho de la tarjeta (Fernando,
-              // 27/09/2026). En el celular sigue deslizándose de costado.
+              // 27/09/2026). En el celular sigue deslizándose de costado, con pista.
               className="fila-deslizable flex w-full items-center gap-5 sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2 sm:overflow-visible"
               onClick={(e) => e.stopPropagation()}
               role="presentation"
@@ -1751,8 +1763,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               )}
               {cobroCerrado && (
                 <Tooltip texto={[cobroCerrado.motivo, cobroCerrado.sugerencia].filter(Boolean).join(" ")}>
-                  <span className="inline-flex shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted/30 px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 ring-1 ring-inset ring-border">
-                    <Wallet className="h-3.5 w-3.5" /> Cobrar
+                  <span className="hidden shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted/30 px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 ring-1 ring-inset ring-border md:inline-flex">
+                    <Wallet className="h-3.5 w-3.5" /> Ir a pagar
                   </span>
                 </Tooltip>
               )}
@@ -1760,14 +1772,18 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <Tooltip texto="Ir a la terminal de cobro con este cliente cargado">
                   <Link
                     href={`/pagos?cliente=${credito.cliente_id}`}
-                    className={`${BTN_OPERACION} bg-success text-success-foreground ring-success/60 hover:bg-success/90`}
+                    // En el celular este botón vive junto al título "Plan de cuotas" (al final de la
+                    // barra quedaba fuera de la pantalla): acá se oculta para no tener dos.
+                    className={`${BTN_OPERACION} max-md:hidden bg-success text-success-foreground ring-success/60 hover:bg-success/90`}
                   >
-                    <Wallet className="h-3.5 w-3.5" /> Cobrar
+                    {/* "Ir a pagar", no "Cobrar": acá no se cobra, lleva a la terminal de Pagos
+                        con el cliente cargado (Fernando, 29/09/2026). */}
+                    <Wallet className="h-3.5 w-3.5" /> Ir a pagar
                   </Link>
                 </Tooltip>
               )}
               </div>
-            </div>
+            </Deslizable>
           </summary>
           <div className="px-4 pb-4 pt-3">
           {/*

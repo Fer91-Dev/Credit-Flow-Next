@@ -1,5 +1,6 @@
 "use client";
 
+import { Deslizable } from "@/components/ui/Deslizable";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { DollarSign, Eye, EyeOff, Info, Percent, Search, UserPlus, X, RefreshCw, PanelLeftClose, PanelLeftOpen, ListOrdered, ArrowRight, AlertTriangle } from "lucide-react";
@@ -1563,7 +1564,8 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-foreground/[0.06] to-transparent animate-[shimmer-sweep_1.1s_ease-in-out_infinite]" />
               </div>
             )}
-            <div className={`relative h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
+            {/* Con pista de "sigue de costado" en el celular (ver `Deslizable`). */}
+            <Deslizable envoltorio="h-full" fondo="from-background" className={`relative h-full overflow-auto transition-opacity duration-200 ${calculando ? "opacity-50" : "opacity-100"}`}>
             {vista === "operador" ? (
               /* ── Vista operador: desglose completo ── */
               /* Centrada en el panel, también en ALTO (pedido de Fernando, 25/09/2026): con pocas
@@ -1683,7 +1685,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                 totalAPagar={totalAPagar}
               />
             )}
-            </div>{/* fin scroll tabla */}
+            </Deslizable>{/* fin scroll tabla */}
           </div>
         ) : (
           <div className="relative flex-1 flex flex-col items-center justify-center px-8 text-center">

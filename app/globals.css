@@ -283,6 +283,11 @@ button:not(:disabled),
    utilidad de Tailwind (`[scrollbar-width:none]`), que sí la tiene — por eso la barra volvía. */
 .sin-scrollbar { scrollbar-width: none; }
 
+/* Pista de "hay más a la derecha" (<Deslizable>): la flechita se corre apenas y vuelve. Sin
+   corte por "reducir movimiento": es chica y es la única señal de que la tabla sigue. */
+@keyframes empuje-lateral { 0%, 100% { transform: translateX(0); opacity: .55; } 50% { transform: translateX(3px); opacity: 1; } }
+.animate-empuje-lateral { animation: empuje-lateral 1.4s ease-in-out infinite; }
+
 /* ─── Tabla APILABLE (celular) ────────────────────────────────────────────────
    Fernando, 29/09/2026: las tablas hechas a mano con muchas columnas se deslizaban de
    costado en el celular. Con `tabla-apilable`, debajo de 768px cada fila es una tarjeta:
