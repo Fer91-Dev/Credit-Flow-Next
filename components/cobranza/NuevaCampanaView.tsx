@@ -235,7 +235,12 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
     nombre: "",
     descripcion: "",
     canal: "whatsapp" as CanalCampana,
-    promoActiva: true,
+    /**
+     * 🔴 EL DESCUENTO ARRANCA APAGADO (Fernando, 29/09/2026). Venía tildado con 50%, y una
+     * campaña se podía mandar con descuento sin que nadie lo decidiera: son punitorios que se
+     * regalan por error. Se prende a mano; el % sugerido aparece recién al tildarlo.
+     */
+    promoActiva: false,
     promo_valor: "50",
     /**
      * 🔴 ARRANCA HOY, Y NO SE PUEDE DEJAR VACÍO.
@@ -255,7 +260,8 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
       ? TEMPLATE_VENCIMIENTO_DEFAULT
       : leerTipoCampana() === "recupero"
         ? TEMPLATE_RECUPERO_DEFAULT
-        : TEMPLATE_DEFAULT,
+        // Sin descuento de entrada, el texto de mora no puede ofrecerlo.
+        : TEMPLATE_MORA_SIN_PROMO,
     /** Nombre de la plantilla de Meta elegida ("" = texto libre). */
     plantilla_meta: "",
     /** Recupero: fijar un mismo % para todos en vez de la sugerencia por caso. */
@@ -444,16 +450,19 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
    * Pisarle un mensaje que escribió a mano por haber clickeado una pestaña sería peor que
    * dejarle el texto equivocado: al menos el equivocado se ve.
    */
+  /** El texto por defecto para esta audiencia; el de mora ofrece descuento solo si está prendido. */
+  const textoPorDefecto = (t: TipoCampana, promo: boolean) =>
+    t === "refinanciacion" ? TEMPLATE_REFINANCIACION_DEFAULT
+      : t === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT
+      : t === "recupero" ? TEMPLATE_RECUPERO_DEFAULT
+      : promo ? TEMPLATE_DEFAULT : TEMPLATE_MORA_SIN_PROMO;
+
   const cambiarTipo = (t: TipoCampana) => {
     setTipoCampana(t);
     setForm((p) => {
       const esDefault = TEMPLATES_DEFAULT.includes(p.mensaje_template.trim());
       if (!esDefault) return p;
-      const nuevo = t === "refinanciacion" ? TEMPLATE_REFINANCIACION_DEFAULT
-        : t === "vencimiento" ? TEMPLATE_VENCIMIENTO_DEFAULT
-        : t === "recupero" ? TEMPLATE_RECUPERO_DEFAULT
-        : p.promoActiva ? TEMPLATE_DEFAULT : TEMPLATE_MORA_SIN_PROMO;
-      return { ...p, mensaje_template: nuevo };
+      return { ...p, mensaje_template: textoPorDefecto(t, p.promoActiva) };
     });
   };
 
@@ -961,7 +970,7 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                           // Una plantilla de Meta es de WhatsApp: cambiando de canal deja de
                           // aplicar, y el mensaje vuelve a ser editable.
                           ...(k !== "whatsapp" && p.plantilla_meta
-                            ? { plantilla_meta: "", mensaje_template: TEMPLATE_DEFAULT }
+                            ? { plantilla_meta: "", mensaje_template: textoPorDefecto(tipoCampana, p.promoActiva) }
                             : {}),
                         }))
                       }
@@ -1167,7 +1176,8 @@ function CampanaWorkspace({ role, creditos: todosCreditos, bloqueados, onCancela
                         ...prev,
                         plantilla_meta: nombre,
                         // Al elegirla, el mensaje pasa a ser el suyo; al volver a texto libre, el default.
-                        mensaje_template: p ? p.template : TEMPLATE_DEFAULT,
+                        // (con el texto de la audiencia: el genérico ofrecía un descuento apagado)
+                        mensaje_template: p ? p.template : textoPorDefecto(tipoCampana, prev.promoActiva),
                       }));
                     }}
                   >
