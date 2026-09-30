@@ -665,7 +665,9 @@ function MiEfectividadCobranza() {
       {/* Fernando (19/09/2026): "no quiero textos sueltos". El título arriba; la frase que
           explica qué se está mirando, en su cajita. */}
       <Nota compacta acento="muted">
-        Tu gestión sobre tus clientes en mora, {rango === "mes" ? "en este mes" : "en este año"}.
+        {/* Cuenta TODAS las gestiones sobre sus créditos, también las de otro agente (cobranza
+            abierta: el mérito es del dueño). Decía "Tu gestión" y no era solo la suya. */}
+        La cobranza sobre tus clientes en mora, {rango === "mes" ? "en este mes" : "en este año"}.
       </Nota>
 
       {isLoading || !e ? (
@@ -740,18 +742,25 @@ function MiMetaBarra({ label, actual, meta, avance, money }: { label: string; ac
 }
 
 function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVendedores>["vendedores"] }) {
-  // Solo vendedores activos; primero los que tienen meta, ordenados por avance.
+  /*
+    🔴 TODO DEL PERÍODO DE LA META VIGENTE (30/09/2026). Mostraba lo vendido en TODA la historia
+    al lado de la meta y un % calculado sobre el período: "$1.300.000 / $600.000 · 142%", cuando
+    en el período llevaba $850.000. Y un agente con `meta_venta` cargada pero sin meta vigente
+    aparecía con una barra en 0%, como si tuviera un objetivo en curso.
+  */
   const equipo = useMemo(() => {
     return vendedores
       .filter((v) => v.activo)
-      .map((v) => ({
-        id: v.id,
-        nombre: v.nombre,
-        vendido: v.resumen?.monto_vendido ?? 0,
-        meta: v.meta_venta,
-        avance: v.resumen?.avance_meta ?? 0,
-        comision: v.resumen?.comision_total ?? 0,
-      }))
+      .map((v) => {
+        const vigente = !!v.meta_periodo && v.meta_venta > 0;
+        return {
+          id: v.id,
+          nombre: v.nombre,
+          vendido: vigente ? v.resumen?.monto_meta ?? 0 : 0,
+          meta: vigente ? v.meta_venta : 0,
+          avance: vigente ? v.resumen?.avance_meta ?? 0 : 0,
+        };
+      })
       .sort((a, b) => b.avance - a.avance || b.vendido - a.vendido);
   }, [vendedores]);
 
@@ -776,9 +785,11 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   {idx === 0 && v.vendido > 0 && <Trophy className="h-3.5 w-3.5 text-warning" />}
                   {v.nombre}
                 </span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {formatMonto(v.vendido)}{v.meta > 0 && <> / <span className="text-foreground">{formatMonto(v.meta)}</span></>}
-                </span>
+                {v.meta > 0 && (
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {formatMonto(v.vendido)} / <span className="text-foreground">{formatMonto(v.meta)}</span>
+                  </span>
+                )}
               </div>
               {v.meta > 0 ? (
                 <div className="flex items-center gap-2">
@@ -788,7 +799,7 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   <span className={`text-xs font-mono font-semibold w-10 text-right ${cumplido ? "text-success" : "text-foreground"}`}>{v.avance}%</span>
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground/50">Sin meta asignada · comisión {formatMonto(v.comision)}</p>
+                <p className="text-[11px] text-muted-foreground">Sin meta vigente</p>
               )}
             </div>
           );

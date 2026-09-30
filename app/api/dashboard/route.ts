@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo, cobrabilidadDeCuota } from "@/lib/domain";
 import { getCobranzaConfig } from "@/lib/config";
 import { hoyComercial } from "@/lib/utils";
@@ -64,16 +65,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // El desglose por vendedor (rendimiento + morosidad) es solo para admin.
   const esAdmin = role === "admin";
 
-  /**
-   * El MISMO `where` para los dos agregados de abajo, escrito una sola vez: si el filtro de
-   * vendedor o de zona quedara distinto entre ellos, la resta daría un número que no existe.
-   */
-  const whereCuotasVivas = {
-    ...withTenant(tenantId),
-    credito: { ...creditoRel, estado: { in: [...ESTADOS_VIVOS] } } as never,
-  };
-
-  const [clientes, creditos, pagosTotal, cuotasPeriodo, cuotasVivas, excedenteVivas, pagosHoy, personal, cobranzaCfg] = await Promise.all([
+  const [clientes, creditos, pagosTotal, cuotasPeriodo, deudaViva, pagosHoy, personal, cobranzaCfg] = await Promise.all([
     // Clientes activos (filtra por zona si corresponde)
     prisma.clientes.count({
       where: { ...withTenant(tenantId), estado: { in: [...ESTADOS_VIVOS] }, ...(zona ? { zona } : {}) },
@@ -130,30 +122,31 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * que nadie hubiera prestado ni cobrado nada.
      */
     /**
-     * 🔴 DOS AGREGADOS, NO LA TABLA ENTERA.
+     * 🔴 UNA SUMA EN LA BASE, NO LA TABLA ENTERA (a 5.000 créditos serían ~38.000 filas).
      *
-     * Antes traía TODAS las cuotas de TODOS los créditos vivos —a 5.000 créditos son ~38.000
-     * filas— para hacer una sola suma. Ahora la hace Postgres y vuelve una fila.
+     * Lo que falta de cada cuota es `cuota_total − (pagado_capital + pagado_interes +
+     * pagado_cargos) − condonado`, con piso en 0. NO `cuota_total − pagado`: `pagado` incluye
+     * los PUNITORIOS, y restarlos hacía que una cuota con mora pagada pareciera deber menos
+     * de lo que debe (30/09/2026: $51.951,53 de menos en la base de desarrollo).
      *
-     * La cuenta exacta es `Σ max(0, cuota_total − pagado)`, y eso NO es `Σcuota_total −
-     * Σpagado`: una cuota pagada tarde tiene `pagado` por encima de su total, porque `pagado`
-     * incluye los punitorios. Ese excedente se sumaría como deuda negativa y bajaría lo que
-     * falta cobrar. Por eso el segundo agregado: mide exactamente ese sobrante y lo devuelve.
+     * Y la cantidad son las cuotas que deben algo. Contaba todas las de los créditos vivos,
+     * pagadas incluidas: "144 cuotas por cobrar" donde había 125.
      *
-     *   Σ max(0, ct − p) = (Σct − Σp) + Σ_{p>ct}(p − ct)
-     *
-     * Medido el 23/09/2026 sobre la base de desarrollo: 123 filas leídas contra 2, mismo
-     * resultado ($23.894.765,50).
+     * Quedan afuera las cuotas cerradas sin pago (condonada / trasladada / anulada): ya no se
+     * le deben a nadie.
      */
-    prisma.cuotas.aggregate({
-      where: whereCuotasVivas,
-      _count: true,
-      _sum: { cuota_total: true, pagado: true },
-    }),
-    prisma.cuotas.aggregate({
-      where: { ...whereCuotasVivas, pagado: { gt: prisma.cuotas.fields.cuota_total } },
-      _sum: { cuota_total: true, pagado: true },
-    }),
+    prisma.$queryRaw<{ deuda: number; cuotas: number }[]>`
+      SELECT
+        COALESCE(SUM(GREATEST(0, cu.cuota_total - (cu.pagado_capital + cu.pagado_interes + cu.pagado_cargos) - cu.condonado)), 0)::float8 AS deuda,
+        COUNT(*) FILTER (WHERE cu.cuota_total - (cu.pagado_capital + cu.pagado_interes + cu.pagado_cargos) - cu.condonado > 0.005)::int AS cuotas
+      FROM cuotas cu
+      JOIN creditos c ON c.id = cu.credito_id
+      ${zona ? Prisma.sql`JOIN clientes cl ON cl.id = c.cliente_id AND cl.zona = ${zona}` : Prisma.empty}
+      WHERE cu.tenant_id = ${tenantId}::uuid
+        AND c.estado IN (${Prisma.join([...ESTADOS_VIVOS])})
+        AND cu.estado NOT IN ('condonada', 'trasladada', 'anulada')
+        ${vendedorId ? Prisma.sql`AND c.vendedor_id = ${vendedorId}::uuid` : Prisma.empty}
+    `,
 
     // Movimiento de HOY (día comercial argentino): lo que entró y lo que se colocó.
     // Es el pulso que Silvio mira en vivo; sale de los mismos libros que todo lo demás.
@@ -252,13 +245,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     );
   const { espera: cobranzaEsperado, cobro: cobranzaCobrado } = cobrabilidad(cuotasPeriodo);
 
-  /**
-   * Lo que falta cobrar de los créditos vivos. `Math.max(0, …)` porque un cobro con excedente
-   * deja `pagado` por encima de la cuota y, sin el corte, esa cuota restaría del total.
-   */
-  const aCobrarTotal =
-    (cuotasVivas._sum.cuota_total ?? 0) - (cuotasVivas._sum.pagado ?? 0) +
-    ((excedenteVivas._sum.pagado ?? 0) - (excedenteVivas._sum.cuota_total ?? 0));
+  const aCobrarTotal = deudaViva[0]?.deuda ?? 0;
 
   const montosMora = {
     // Misma cartera viva que el conteo: el importe y la cantidad tienen que hablar de los
@@ -355,7 +342,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       /** Lo que falta cobrar de los créditos vivos (capital + interés + cargos, sin mora). */
       a_cobrar_total: aCobrarTotal,
       /** En cuántas cuotas está repartida esa deuda: el dato que acompaña al importe. */
-      cuotas_por_cobrar: cuotasVivas._count,
+      cuotas_por_cobrar: deudaViva[0]?.cuotas ?? 0,
       mora_critica_count: moraCritica,
     },
     hoy: {
@@ -376,7 +363,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cobranza_mes: {
       esperado: cobranzaEsperado,
       cobrado: cobranzaCobrado,
-      cuotas_total: cuotasPeriodo.length,
+      // Las mismas cuotas que suman el importe (sin anuladas ni trasladadas).
+      cuotas_total: cuotasPeriodo.filter((q) => cobrabilidadDeCuota(q) !== null).length,
     },
     ...(porVendedor ? { por_vendedor: porVendedor } : {}),
   });

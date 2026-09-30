@@ -74,6 +74,8 @@ export function CobranzaDelDia() {
             <ResumenChip icon={HandshakeIcon} label="Promesas" n={totales.promesa} accent="warning" />
             {totales.acuerdo_roto > 0 && <ResumenChip icon={ShieldAlert} label="Acuerdos rotos" n={totales.acuerdo_roto} accent="warning" />}
             <ResumenChip icon={CalendarClock} label="Agendados" n={totales.agendado} accent="primary" />
+            {/* Estaba en la lista y no en los chips: "10 clientes" con chips que sumaban 9. */}
+            {totales.cuota_nueva > 0 && <ResumenChip icon={BellRing} label="Venció otra cuota" n={totales.cuota_nueva} accent="warning" />}
             <ResumenChip icon={Snowflake} label="Sin gestión" n={totales.enfriado} accent="muted" />
           </div>
 

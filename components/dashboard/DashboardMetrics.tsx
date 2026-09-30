@@ -10,10 +10,6 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMonto, pctDe } from "@/lib/utils";
 
-function n0(num: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
-}
-
 export function DashboardMetrics({ filtros }: { filtros?: DashboardFiltros }) {
   const { data, error, isLoading } = useDashboard(filtros);
 
@@ -424,15 +420,15 @@ function AvanceCobranzas({
       <div className="grid grid-cols-3 gap-3 mt-4">
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Cobrado</p>
-          <p className="text-sm font-bold text-success font-mono">${n0(cobrado)}</p>
+          <p className="text-sm font-bold text-success font-mono tabular-nums">{formatMonto(cobrado)}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Esperado</p>
-          <p className="text-sm font-bold text-foreground font-mono">${n0(esperado)}</p>
+          <p className="text-sm font-bold text-foreground font-mono tabular-nums">{formatMonto(esperado)}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Pendiente</p>
-          <p className="text-sm font-bold text-warning font-mono">${n0(pendiente)}</p>
+          <p className="text-sm font-bold text-warning font-mono tabular-nums">{formatMonto(pendiente)}</p>
         </div>
       </div>
 
