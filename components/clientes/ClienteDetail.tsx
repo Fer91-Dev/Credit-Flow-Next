@@ -119,6 +119,9 @@ export function ClienteDetail({
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
+  // El historial del sistema anterior se abre desde el chip "Migrado" (Fernando, 30/09/2026):
+  // es referencia, no algo que se mira todos los días, y ocupaba media ficha.
+  const [verHistorial, setVerHistorial] = useState(false);
   /**
    * Cuota que se está cobrando desde el plan (null = cerrado).
    *
@@ -315,14 +318,28 @@ export function ClienteDetail({
                       <BellOff className="h-3 w-3" /> No contactar
                     </span>
                   )}
-                  {cliente.migrado && (
+                  {cliente.migrado && (cliente.historial_migrado ? (
+                    <button
+                      type="button"
+                      onClick={() => setVerHistorial((v) => !v)}
+                      aria-expanded={verHistorial}
+                      aria-controls="historial-previo"
+                      title={verHistorial ? "Ocultar el historial del sistema anterior" : "Ver el historial del sistema anterior"}
+                      className={`group inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning transition-colors ${
+                        verHistorial ? "border-warning/60 bg-warning/20" : "border-warning/30 bg-warning/10 hover:border-warning/60 hover:bg-warning/20"
+                      }`}
+                    >
+                      Migrado
+                      <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${verHistorial ? "rotate-180" : "group-hover:translate-y-px"}`} />
+                    </button>
+                  ) : (
                     <span
                       className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
                       title="Cliente importado del sistema anterior — completá sus datos reales (nombre, DNI, sueldo) con Editar"
                     >
                       Migrado
                     </span>
-                  )}
+                  ))}
                   {/* Un crédito en LEGALES se dice acá arriba, con el nombre: es lo que
                       cambia la conversación entera, y estaba solo en la tarjeta del crédito
                       —abajo del todo y con el plan desplegado—. */}
@@ -579,7 +596,7 @@ export function ClienteDetail({
         )}
 
         {/* Historial previo (cliente migrado del sistema anterior) — solo referencia */}
-        {cliente.migrado && cliente.historial_migrado && (() => {
+        {cliente.migrado && cliente.historial_migrado && verHistorial && (() => {
           const h = cliente.historial_migrado!;
           const HB: Record<string, { l: string; v: BadgeVariant }> = {
             al_dia: { l: "Al día", v: "success" }, debe: { l: "Debe", v: "destructive" },
@@ -593,7 +610,7 @@ export function ClienteDetail({
             ["Ya pagados", String(h.resumen.terminados), "text-foreground"],
           ];
           return (
-            <div className="rounded-xl border border-warning/25 bg-warning/[0.04] p-5 space-y-4">
+            <div id="historial-previo" className="rounded-xl border border-warning/25 bg-warning/[0.04] p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-1 duration-200">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Emoji name="page-facing-up" className="h-4 w-4" />
@@ -645,7 +662,7 @@ export function ClienteDetail({
                           <td className="py-1.5 px-2 text-right font-mono text-foreground">{formatMonto(c.monto)}</td>
                           <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{formatMonto(c.cuota)}</td>
                           <td className="py-1.5 px-2 text-center font-mono text-muted-foreground" title="pagadas / total">
-                            <span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}
+                            <span><span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}</span>
                           </td>
                           <td className="py-1.5 px-2"><StatusBadge label={b.l} variant={b.v} /></td>
                           <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>{formatMonto(c.saldo)}</td>
