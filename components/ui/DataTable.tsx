@@ -28,6 +28,13 @@ export interface Column<T> {
   mono?: boolean;
   /** Clases extra para header + celda (ej. `"hidden md:table-cell"`, `"w-32"`). */
   className?: string;
+  /**
+   * Lugar de la columna en la TARJETA del celular (ver `TarjetaAuto`). Sin indicarlo:
+   * la primera columna va arriba a la izquierda, el último importe (`mono`) arriba a la
+   * derecha y destacado, las columnas sin encabezado (acciones) al pie, y el resto como
+   * pares "etiqueta: valor". `ocultar` la deja solo en la tabla de escritorio.
+   */
+  movil?: "arriba" | "titulo" | "destacado" | "dato" | "acciones" | "ocultar";
 }
 
 interface DataTableProps<T> {
@@ -54,8 +61,16 @@ interface DataTableProps<T> {
   stickyHeader?: boolean;
   /** Fila(s) de pie (totales). Pasá el `<tr>…</tr>` completo; se renderiza en `<tfoot>`. */
   footer?: ReactNode;
-  /** Render de cada fila como tarjeta en mobile (<md). La tabla se oculta en <md. */
+  /**
+   * Render de cada fila como tarjeta en mobile (<md). La tabla se oculta en <md.
+   * Sin esto, la tabla arma SOLA una tarjeta a partir de sus columnas (ver `TarjetaAuto`).
+   */
   renderMobileCard?: (row: T) => ReactNode;
+  /**
+   * `"tabla"`: en el celular sigue la tabla y se desliza de costado, sin tarjetas. Para las
+   * pocas tablas que se leen como grilla (comparar columnas), no fila por fila.
+   */
+  movil?: "tarjeta" | "tabla";
   /** Filas por página. Si se indica, activa la paginación (cliente) estilo TailGrids. */
   pageSize?: number;
   /**
@@ -163,8 +178,16 @@ const TD_BASE = "border-b border-border/50 align-middle";
 
 export function DataTable<T>({
   columns, rows, rowKey, onRowClick, rowClassName, loading, skeletonRows = 6, loadingRowKey,
-  error, empty, zebra, stickyHeader, footer, renderMobileCard, pageSize, paginacion, dense,
+  error, empty, zebra, stickyHeader, footer, renderMobileCard, pageSize, paginacion, dense, movil = "tarjeta",
 }: DataTableProps<T>) {
+  /*
+    🔴 TODA TABLA TIENE VERSIÓN CELULAR (Fernando, 29/09/2026: "Silvio preguntó si sería fácil
+    usar el sistema desde el celular"). Las que no traen su propia tarjeta usan la automática,
+    armada con sus columnas: antes se deslizaban de costado hasta 850 px (las actas de caja)
+    en una pantalla de 390.
+  */
+  const tarjeta: ((row: T) => ReactNode) | undefined =
+    renderMobileCard ?? (movil === "tarjeta" ? (row: T) => <TarjetaAuto row={row} columns={columns} onClick={onRowClick} /> : undefined);
   const shell = "rounded-xl border border-border bg-card overflow-hidden";
   const pad = dense ? "px-2.5 py-2" : "px-4 py-3";
   const TH = `${pad} ${TH_BASE}`;
@@ -209,7 +232,14 @@ export function DataTable<T>({
   // ── Loading (skeleton que imita la estructura) ─────────────────────────
   if (loading) {
     return (
-      <div className={shell}>
+      <>
+      {/* Celular: el esqueleto imita las tarjetas, no una tabla que hay que deslizar. */}
+      {tarjeta && (
+        <div className="space-y-3 md:hidden">
+          {Array.from({ length: Math.min(skeletonRows, 4) }).map((_, r) => <Skeleton key={r} className="h-28 rounded-xl" />)}
+        </div>
+      )}
+      <div className={`${tarjeta ? "hidden md:block" : ""} ${shell}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead>
@@ -233,6 +263,7 @@ export function DataTable<T>({
           </table>
         </div>
       </div>
+      </>
     );
   }
 
@@ -256,7 +287,7 @@ export function DataTable<T>({
   return (
     <>
       {/* Desktop / tablet */}
-      <div className={`${renderMobileCard ? "hidden md:block" : ""} ${shell}`}>
+      <div className={`${tarjeta ? "hidden md:block" : ""} ${shell}`}>
         <div className="overflow-x-auto" style={showPager && minBodyH ? { minHeight: minBodyH } : undefined}>
           <table ref={tableRef} className="w-full text-sm border-separate border-spacing-0">
             <thead>
@@ -303,11 +334,17 @@ export function DataTable<T>({
       </div>
 
       {/* Mobile (tarjetas) */}
-      {renderMobileCard && (
+      {tarjeta && (
         <div className="block md:hidden">
           <div className="space-y-3">
-            {pagedRows.map((row) => <div key={rowKey(row)}>{renderMobileCard(row)}</div>)}
+            {pagedRows.map((row) => <div key={rowKey(row)} className={rowClassName?.(row) ?? ""}>{tarjeta(row)}</div>)}
           </div>
+          {/* Los totales de la tabla, también en el celular: en su propia franja deslizable. */}
+          {footer && (
+            <div className="mt-3 overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-sm border-separate border-spacing-0"><tfoot>{footer}</tfoot></table>
+            </div>
+          )}
           {showPager && (
             <div className="mt-3 rounded-xl border border-border bg-card">
               <TablePagination page={page} totalPages={totalPages} onChange={cambiarPagina} />
@@ -316,5 +353,78 @@ export function DataTable<T>({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Tarjeta del celular armada con las columnas de la tabla. Cada columna cae en su lugar según
+ * `movil` o, si no lo dice, por su forma: la primera arriba a la izquierda, el último importe
+ * arriba a la derecha, lo que no tiene encabezado (botones) al pie y el resto en una grilla de
+ * pares "etiqueta: valor". Una fila clickeable es una tarjeta clickeable.
+ */
+function TarjetaAuto<T>({ row, columns, onClick }: { row: T; columns: Column<T>[]; onClick?: (row: T) => void }) {
+  const sinEncabezado = (c: Column<T>) =>
+    c.header == null || c.header === "" || c.header === false || (typeof c.header === "string" && /^acci[oó]n(es)?$/i.test(c.header.trim()));
+  const lugar = (c: Column<T>, i: number): NonNullable<Column<T>["movil"]> => {
+    if (c.movil) return c.movil;
+    if (sinEncabezado(c)) return "acciones";
+    if (i === 0) return "arriba";
+    return "dato";
+  };
+  const lugares = columns.map(lugar);
+  // Sin un destacado explícito, el ÚLTIMO importe es el que manda (el monto, el saldo).
+  if (!lugares.includes("destacado")) {
+    for (let i = columns.length - 1; i >= 0; i--) {
+      if (columns[i].mono && lugares[i] === "dato") { lugares[i] = "destacado"; break; }
+    }
+  }
+  const de = (l: string) => columns.map((c, i) => ({ c, i })).filter(({ i }) => lugares[i] === l);
+  const arriba = de("arriba"), titulo = de("titulo"), destacado = de("destacado"), datos = de("dato"), acciones = de("acciones");
+  const clic = onClick
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onClick: (e: React.MouseEvent) => { if (eventoPropio(e)) onClick(row); },
+        onKeyDown: (e: KeyboardEvent) => {
+          if (!teclaDelContenedor(e)) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(row); }
+        },
+      }
+    : {};
+  return (
+    <div {...clic} className={`space-y-3 rounded-xl border border-border bg-card p-4 ${onClick ? "cursor-pointer transition-colors active:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" : ""}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          {arriba.map(({ c, i }) => <div key={i} className="text-xs text-muted-foreground [&_*]:max-w-full">{c.cell(row)}</div>)}
+          {titulo.map(({ c, i }) => <div key={i} className="text-sm font-medium text-foreground">{c.cell(row)}</div>)}
+        </div>
+        {destacado.length > 0 && (
+          <div className="shrink-0 text-right">
+            {destacado.map(({ c, i }) => (
+              <div key={i}>
+                {/* Con su rótulo: un número suelto arriba a la derecha no dice qué es. */}
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{c.header}</div>
+                <div className={`text-sm font-semibold text-foreground ${c.mono ? "font-mono tabular-nums" : ""}`}>{c.cell(row)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {datos.length > 0 && (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+          {datos.map(({ c, i }) => (
+            <div key={i} className="min-w-0">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{c.header}</dt>
+              <dd className={`mt-0.5 min-w-0 break-words text-xs text-foreground ${c.mono ? "font-mono tabular-nums" : ""}`}>{c.cell(row)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {acciones.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-3">
+          {acciones.map(({ c, i }) => <div key={i}>{c.cell(row)}</div>)}
+        </div>
+      )}
+    </div>
   );
 }

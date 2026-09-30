@@ -388,7 +388,7 @@ export function CreditosTable({ role }: { role: Role }) {
                             <option value="all">Cualquier estado de mora</option>
                             <option value="al_dia">Al día</option>
                             <option value="en_mora">En mora (1+ días)</option>
-                            <option value="critica">Mora crítica (+30 días)</option>
+                            <option value="critica">{`Mora crítica (más de ${tramos.alta_hasta} días)`}</option>
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         </div>

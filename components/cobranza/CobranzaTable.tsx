@@ -776,7 +776,7 @@ export function CobranzaTable({ role }: { role: Role }) {
         {/* Es una SUMA, no un subconjunto: no hay "los créditos del saldo expuesto". */}
         <KpiCard icon="dollar-banknote" label="Saldo expuesto" value={`${formatMonto(kpis.saldo)}`} accent={kpis.saldo > 0 ? "warning" : "muted"} mono />
         <KpiCard
-          icon="shield" label="Mora crítica (+30d)" value={String(kpis.critica)}
+          icon="shield" label={`Mora crítica (+${tramos.alta_hasta}d)`} value={String(kpis.critica)}
           accent={kpis.critica > 0 ? "destructive" : "muted"}
           sub={kpis.critica > 0 ? `de ${kpis.total} en gestión` : "ninguno"}
           barra={kpis.critica > 0 ? { pct: pctDe(kpis.critica, kpis.total), label: `${Math.round(pctDe(kpis.critica, kpis.total))}%` } : undefined}
@@ -784,7 +784,7 @@ export function CobranzaTable({ role }: { role: Role }) {
           active={filterMora === "critica"}
         />
         <KpiCard
-          icon="alarm-clock" label="Mora alta (15–30d)" value={String(kpis.alta)}
+          icon="alarm-clock" label={`Mora alta (${tramos.media_hasta + 1}–${tramos.alta_hasta}d)`} value={String(kpis.alta)}
           accent={kpis.alta > 0 ? "warning" : "muted"}
           sub={kpis.alta > 0 ? `de ${kpis.total} en gestión` : "ninguno"}
           barra={kpis.alta > 0 ? { pct: pctDe(kpis.alta, kpis.total), label: `${Math.round(pctDe(kpis.alta, kpis.total))}%` } : undefined}

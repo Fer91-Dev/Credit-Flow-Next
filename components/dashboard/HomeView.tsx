@@ -368,7 +368,36 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
         </p>
       </div>
 
-      <div className="overflow-x-auto -mx-1">
+      {/* Celular: una tarjeta por vendedor, con los mismos seis números (la tabla pedía 640 px). */}
+      <div className="space-y-2.5 md:hidden">
+        {filas.map((v) => (
+          <div key={v.vendedor_id ?? "sin"} className="rounded-lg border border-border/60 bg-background/30 p-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="min-w-0 truncate text-sm font-medium text-foreground">{v.nombre}</p>
+              <span className={`inline-flex shrink-0 items-center gap-1 font-mono text-sm font-semibold ${moraColor(v.pct_morosidad)}`}>
+                {v.pct_morosidad >= 30 && <AlertTriangle className="h-3 w-3" />}
+                {v.pct_morosidad}% <span className="font-sans text-[10px] font-normal text-muted-foreground">morosidad</span>
+              </span>
+            </div>
+            <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              {([
+                ["Créditos", String(v.creditos_otorgados), "text-foreground"],
+                ["Otorgado", formatMonto(v.monto_otorgado), "text-foreground"],
+                ["Cartera", formatMonto(v.cartera), "text-foreground"],
+                ["En mora", formatMonto(v.en_mora_monto), "text-warning"],
+                ["Mora crítica", String(v.mora_critica_count), v.mora_critica_count > 0 ? "text-destructive font-semibold" : "text-muted-foreground"],
+              ] as const).map(([k, val, cls]) => (
+                <div key={k}>
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{k}</dt>
+                  <dd className={`mt-0.5 font-mono tabular-nums ${cls}`}>{val}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      <div className="-mx-1 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">

@@ -80,7 +80,7 @@ export function LiquidacionesLista({
                 )}
                 {l.detalle.length > 0 ? (
                   <div className="overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full text-sm">
+                    <table className="tabla-apilable w-full text-sm">
                       <thead>
                         <tr className="bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
                           <th className="px-3 py-2 text-left font-semibold">Crédito</th>

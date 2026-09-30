@@ -340,7 +340,7 @@ function UltimosPagos({ pagos, loading, onRow, filtro, onLimpiarFiltro, paginaci
           { header: "Crédito", className: "whitespace-nowrap",
             cell: (p) => <span className="font-mono text-xs text-muted-foreground">{formatCreditoNumero(p.credito.numero, p.credito.refinancia_a_numero)}</span> },
           { header: "Monto", mono: true, align: "right",
-            cell: (p) => <span className={`font-semibold ${p.anulado ? "text-muted-foreground" : "text-foreground"}`}>{formatMonto(p.monto, 0)}</span> },
+            cell: (p) => <span className={`font-semibold ${p.anulado ? "text-muted-foreground" : "text-foreground"}`}>{formatMonto(p.monto)}</span> },
           { header: "Método",
             cell: (p) => (
               <div className="flex flex-wrap items-center gap-1.5">

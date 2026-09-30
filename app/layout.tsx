@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipsNativos } from "@/components/ui/TooltipsNativos";
+import { EtiquetasTablas } from "@/components/ui/EtiquetasTablas";
 import "./globals.css";
 import { getMarcaPestana } from "@/lib/branding";
 
@@ -46,6 +47,8 @@ export default async function RootLayout({
               nativo del navegador. Va acá —una sola vez— y cubre todas las pantallas,
               incluidas las de login. Ver `TooltipsNativos`. */}
           <TooltipsNativos />
+          {/* Rótulos de las tablas apilables del celular (ver EtiquetasTablas). */}
+          <EtiquetasTablas />
         </ThemeProvider>
       </body>
     </html>

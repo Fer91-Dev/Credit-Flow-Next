@@ -670,7 +670,7 @@ function TabHistorico({ s }: { s?: ReporteSerie }) {
       {s.por_anio.map((a) => (
         <Section key={a.anio} title={`Año ${a.anio}`} icon="calendar">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="tabla-apilable w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground uppercase tracking-wide">
                   <th className="pb-2 font-semibold">Mes</th>

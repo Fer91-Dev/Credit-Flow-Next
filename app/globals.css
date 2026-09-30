@@ -282,6 +282,36 @@ button:not(:disabled),
    capas: la regla global `* { scrollbar-width: thin }` no tiene capa y le gana a cualquier
    utilidad de Tailwind (`[scrollbar-width:none]`), que sí la tiene — por eso la barra volvía. */
 .sin-scrollbar { scrollbar-width: none; }
+
+/* ─── Tabla APILABLE (celular) ────────────────────────────────────────────────
+   Fernando, 29/09/2026: las tablas hechas a mano con muchas columnas se deslizaban de
+   costado en el celular. Con `tabla-apilable`, debajo de 768px cada fila es una tarjeta:
+   la primera celda como título y el resto en renglones "etiqueta … valor". Las etiquetas
+   las pone <EtiquetasTablas> (data-label) a partir de los encabezados. */
+@media (max-width: 767.98px) {
+  table.tabla-apilable, table.tabla-apilable tbody, table.tabla-apilable tfoot,
+  table.tabla-apilable tr, table.tabla-apilable td { display: block; width: 100%; }
+  table.tabla-apilable { min-width: 0 !important; border-collapse: separate; }
+  table.tabla-apilable thead { display: none; }
+  table.tabla-apilable tr {
+    margin-bottom: 0.625rem; padding: 0.5rem 0.875rem;
+    border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card);
+  }
+  table.tabla-apilable td {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    padding: 0.3rem 0 !important; border: 0 !important; text-align: right; min-width: 0;
+  }
+  table.tabla-apilable td::before {
+    content: attr(data-label); flex-shrink: 0; text-align: left;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+  /* La primera celda es el título de la tarjeta, sin rótulo; las celdas sin encabezado
+     (botones) van al pie, a la derecha. */
+  table.tabla-apilable td:first-child { justify-content: flex-start; text-align: left; font-weight: 600; padding-bottom: 0.4rem !important; }
+  table.tabla-apilable td:first-child::before, table.tabla-apilable td[data-label=""]::before { content: none; }
+  table.tabla-apilable td[data-label=""] { justify-content: flex-end; }
+}
 .sin-scrollbar::-webkit-scrollbar { display: none; }
 
 /* ─── Foco accesible global (navegación por teclado) ─────────────────────────

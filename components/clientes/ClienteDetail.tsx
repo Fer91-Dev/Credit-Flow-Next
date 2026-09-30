@@ -624,7 +624,7 @@ export function ClienteDetail({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[30rem] text-xs">
+                <table className="tabla-apilable w-full min-w-[30rem] text-xs">
                   <thead>
                     <tr className="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground">
                       <th className="py-1.5 pr-2 font-semibold">Crédito (planilla)</th>

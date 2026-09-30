@@ -203,7 +203,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
           { header: "Crédito", cell: (a) => <CreditoLink id={a.credito_id} numero={a.credito_numero} numeroOrigen={a.credito_refinancia_a_numero} className="text-xs" /> },
           { header: "Cliente", cell: (a) => <span className="text-foreground">{a.cliente ?? "—"}</span> },
           { header: "Acordado", cell: (a) => <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatFecha(a.fecha)}</span> },
-          { header: "Monto", align: "right", mono: true, cell: (a) => <span className="text-foreground">{formatMonto(a.monto_acordado)}</span> },
+          { header: "Monto", align: "right", mono: true, movil: "destacado", cell: (a) => <span className="text-foreground">{formatMonto(a.monto_acordado)}</span> },
           {
             header: "Avance", align: "right", mono: true,
             cell: (a) => (
