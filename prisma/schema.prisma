@@ -1,6 +1,11 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
+  // Las lecturas con relaciones (el perfil con su financiera, los créditos con cliente y
+  // cuotas) salen en UNA consulta en vez de una por relación. Con la base lejos —en
+  // desarrollo, ~200 ms por ida y vuelta— era la mitad del tiempo de cada pantalla
+  // (Fernando, 30/09/2026: "mirá cómo demoran en mostrarse").
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

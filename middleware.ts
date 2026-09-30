@@ -112,10 +112,17 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getUser() valida el JWT contra Supabase — nunca usar getSession() en servidor.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  /*
+    🔴 LA FIRMA SE VERIFICA ACÁ, SIN IR A SUPABASE (Fernando, 30/09/2026: "en todo el SaaS
+    hay delay"). `getUser()` consultaba el servicio de autenticación en CADA pedido —y la
+    ruta lo volvía a hacer adentro—. Los dos proyectos firman con claves ES256, así que
+    `getClaims()` verifica la firma y el vencimiento del token con la clave pública (que se
+    guarda en memoria) y solo cae a `getUser()` si el token fuera del esquema viejo. También
+    renueva la sesión vencida, igual que antes. Sigue sin usarse `getSession()` a secas: eso
+    NO verifica la firma.
+  */
+  const { data: sesion } = await supabase.auth.getClaims();
+  const user = sesion?.claims?.sub ? sesion.claims : null;
 
   if (!user) {
     const loginUrl = request.nextUrl.clone();

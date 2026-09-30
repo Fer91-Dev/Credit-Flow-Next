@@ -6,7 +6,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { Prisma } from "@prisma/client";
 import type { Role } from "@/lib/auth/roles";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
-import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
+import { sincronizarAcuerdosSiHaceFalta, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { ordenarRecorrido, largoRecorridoMetros } from "@/lib/domain/recorrido";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
@@ -95,7 +95,7 @@ async function armarPlanilla(
   const config = await getConfiguracion(tenantId);
 
   // Igual que la agenda: los acuerdos se ponen al día ANTES de decidir a quién visitar.
-  await sincronizarAcuerdos({ tenantId });
+  await sincronizarAcuerdosSiHaceFalta(tenantId);
   /**
    * Los acuerdos vigentes se leen SIEMPRE, aunque la política no saque de la agenda a quien
    * está cumpliendo: el corte de "este crédito ya no se cobra" también los necesita, y un

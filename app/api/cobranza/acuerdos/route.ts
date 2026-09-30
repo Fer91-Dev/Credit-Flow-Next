@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { assertPuedeAcordar } from "@/lib/recupero-server";
 import { getCobranzaConfig } from "@/lib/config";
-import { crearAcuerdo, anularAcuerdo, evaluarAcuerdoPersistido, serializarAcuerdo, sincronizarAcuerdos } from "@/lib/acuerdos";
+import { crearAcuerdo, anularAcuerdo, evaluarAcuerdoPersistido, serializarAcuerdo, sincronizarAcuerdosSiHaceFalta } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { ESTADOS_ACUERDO, round2 } from "@/lib/domain";
 import { hoyComercial } from "@/lib/utils";
@@ -21,7 +21,7 @@ import type { NextRequest } from "next/server";
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
 
-  await sincronizarAcuerdos({ tenantId });
+  await sincronizarAcuerdosSiHaceFalta(tenantId);
 
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado");

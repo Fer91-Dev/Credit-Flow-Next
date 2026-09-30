@@ -122,17 +122,23 @@ export async function requireAuth(_request?: Request): Promise<AuthContext> {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  /*
+    🔴 VERIFICACIÓN LOCAL DE LA FIRMA (Fernando, 30/09/2026). `getClaims()` valida la firma
+    ES256 y el vencimiento del token con la clave pública del proyecto, sin el viaje a Supabase
+    que hacía `getUser()` en cada pedido (~200 ms en desarrollo). Lo que `getUser()` agregaba
+    —saber si la cuenta sigue habilitada— lo cubre `cargarContexto`, que lee el perfil en la
+    base en cada pedido: un usuario desactivado queda afuera al instante, igual que antes.
+  */
+  const { data: sesion, error } = await supabase.auth.getClaims();
+  const claims = sesion?.claims;
 
-  if (error || !user) {
+  if (error || !claims?.sub) {
     throw new ApiError("No autenticado", "UNAUTHORIZED", 401);
   }
+  const user = { id: claims.sub, user_metadata: (claims.user_metadata ?? {}) as Record<string, unknown> };
 
-  // Nivel de autenticación de la sesión. Se lee DESPUÉS de getUser() (que valida
-  // la firma del JWT contra Supabase), así que los claims ya son confiables.
+  // Nivel de autenticación de la sesión. Se lee DESPUÉS de getClaims() (que verificó la
+  // firma del token), así que los claims ya son confiables.
   const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
   return cargarContexto(user.id, (user.user_metadata?.avatar_url as string | undefined) ?? null, {

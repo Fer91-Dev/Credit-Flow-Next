@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig, getConfiguracion } from "@/lib/config";
-import { sincronizarAcuerdos, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
+import { sincronizarAcuerdosSiHaceFalta, creditosConAcuerdoVigente, cubiertoPorAcuerdo, congelamientoPorCredito } from "@/lib/acuerdos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { cobroBloqueadoPorCredito } from "@/lib/recupero-server";
 import {
@@ -63,12 +63,18 @@ interface AgendaItem {
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireAuth(req);
-  const { dias_sin_gestion, orden, acuerdos, fallecidos, recupero } = await getCobranzaConfig(tenantId);
-  const config = await getConfiguracion(tenantId);
+  // Todo lo que no depende de otra cosa se pide EN PARALELO (Fernando, 30/09/2026: la
+  // pestaña Hoy tardaba ~5 s en mostrarse; eran una docena de consultas en fila).
+  const [{ dias_sin_gestion, orden, acuerdos, fallecidos, recupero }, config] = await Promise.all([
+    getCobranzaConfig(tenantId),
+    getConfiguracion(tenantId),
+    // Los acuerdos se ponen al día ANTES de leerlos (ver abajo), a lo sumo cada 2 minutos.
+    sincronizarAcuerdosSiHaceFalta(tenantId),
+  ]);
 
   // Los acuerdos se ponen al día ANTES de armar la cola: uno que se rompió ayer tiene que
   // volver a la agenda hoy, no cuando corra el cron de la madrugada.
-  await sincronizarAcuerdos({ tenantId });
+  // (La puesta al día de los acuerdos ya corrió arriba, en paralelo con la configuración.)
   // Quien está cumpliendo un arreglo ya está gestionado. Llamarlo igual es la forma más
   // rápida de que deje de cumplirlo. Es parametrizable: hay financieras que igual llaman.
   /**
@@ -76,20 +82,24 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * está cumpliendo; el corte de "este crédito ya no se cobra" los necesita igual, porque un
    * acuerdo vigente lo mantiene cobrable por más días de atraso que arrastre.
    */
-  const acuerdosVigentes = await creditosConAcuerdoVigente(tenantId);
   // Hasta qué día devenga la mora de cada crédito (≠ estar cubierto por el acuerdo).
-  const congelan = await congelamientoPorCredito(tenantId);
-  const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
-
+  // Las dos lecturas de acuerdos y la de créditos van juntas: ninguna depende de la otra.
   const hoy = hoyComercial();
   const hoyMs = hoy.getTime();
   const finHoy = hoyMs + 86_400_000 - 1; // fin del día de hoy (AR)
   const DIA = 86_400_000;
 
+  const creditosPromesa = leerCreditosEnMora();
+  const [acuerdosVigentes, congelan] = await Promise.all([
+    creditosConAcuerdoVigente(tenantId),
+    congelamientoPorCredito(tenantId),
+  ]);
+  const conAcuerdo = acuerdos.saca_de_agenda ? acuerdosVigentes : new Map<string, Date>();
+
   // Créditos activos en mora, scopeados (vendedor solo los suyos; admin todo). En mora = con
   // `proximo_pago` vencido (filtro EN VIVO, independiente del cache `dias_mora` que no se avanza
   // día a día); así un moroso nunca cobrado aparece igual en la agenda.
-  const creditos = await prisma.creditos.findMany({
+  function leerCreditosEnMora() { return prisma.creditos.findMany({
     where: {
       ...withTenant(tenantId),
       ...scopeCreditosVendedor({ role, vendedorId }),
@@ -121,7 +131,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
        */
       cuotas: { orderBy: { nro: "asc" } },
     },
-  });
+  }); }
+  const creditos = await creditosPromesa;
 
   if (creditos.length === 0) {
     return successResponse({ items: [], totales: { acuerdo_vencido: 0, promesa: 0, acuerdo_roto: 0, agendado: 0, cuota_nueva: 0, enfriado: 0, total: 0, vencido: 0, con_acuerdo_al_dia: 0 }, dias_sin_gestion, orden });
@@ -131,34 +142,35 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * Las cuotas de acuerdo VENCIDAS de acuerdos que siguen vigentes (todavía no se rompió:
    * la financiera tolera N cuotas impagas antes de romper). Una por crédito, la más vieja.
    */
-  const cuotasAcuerdoVencidas = await prisma.acuerdo_cuota.findMany({
+  const ids = creditos.map((c) => c.id);
+  // Las cuatro lecturas que siguen dependen solo de la lista de créditos: van juntas.
+  const [cuotasAcuerdoVencidas, rotos, origenes, acciones] = await Promise.all([prisma.acuerdo_cuota.findMany({
     where: { ...withTenant(tenantId), acuerdo: { estado: "vigente", credito_id: { in: creditos.map((c) => c.id) } }, vencimiento: { lt: hoy }, estado: { not: "pagada" } },
     select: { numero: true, vencimiento: true, monto: true, pagado: true, acuerdo: { select: { credito_id: true } } },
     orderBy: { vencimiento: "asc" },
-  });
+  }),
+  prisma.acuerdos_pago.findMany({
+    where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: ids } },
+    select: { credito_id: true, cerrado_at: true, motivo_estado: true },
+    orderBy: { cerrado_at: "desc" },
+  }),
+  // Los que son refinanciación se muestran como REF-<origen>: una sola query para todo el lote.
+  numerosRefinanciados(tenantId, creditos),
+  prisma.acciones_cobranza.findMany({
+    where: { ...withTenant(tenantId), credito_id: { in: ids } },
+    select: { credito_id: true, created_at: true, proximo_contacto: true, promesa_estado: true, promesa_fecha: true, promesa_monto: true, automatico: true, nota: true },
+    orderBy: { created_at: "desc" },
+  }),
+  ]);
   const acuerdoVencidoDe = new Map<string, { numero: number; vencimiento: Date; falta: number }>();
   for (const q of cuotasAcuerdoVencidas) {
     if (!acuerdoVencidoDe.has(q.acuerdo.credito_id)) acuerdoVencidoDe.set(q.acuerdo.credito_id, { numero: q.numero, vencimiento: q.vencimiento, falta: round2(q.monto - q.pagado) });
   }
   // El último acuerdo ROTO de cada crédito (los rotos no impiden un acuerdo nuevo: si hay uno
   // vigente después, manda el vigente).
-  const rotos = await prisma.acuerdos_pago.findMany({
-    where: { ...withTenant(tenantId), estado: "roto", credito_id: { in: creditos.map((c) => c.id) } },
-    select: { credito_id: true, cerrado_at: true, motivo_estado: true },
-    orderBy: { cerrado_at: "desc" },
-  });
   const rotoDe = new Map<string, { cerrado_at: Date; motivo: string | null }>();
   for (const r of rotos) if (r.cerrado_at && !rotoDe.has(r.credito_id)) rotoDe.set(r.credito_id, { cerrado_at: r.cerrado_at, motivo: r.motivo_estado });
 
-  // Los que son refinanciación se muestran como REF-<origen>: una sola query para todo el lote.
-  const origenes = await numerosRefinanciados(tenantId, creditos);
-
-  const ids = creditos.map((c) => c.id);
-  const acciones = await prisma.acciones_cobranza.findMany({
-    where: { ...withTenant(tenantId), credito_id: { in: ids } },
-    select: { credito_id: true, created_at: true, proximo_contacto: true, promesa_estado: true, promesa_fecha: true, promesa_monto: true, automatico: true, nota: true },
-    orderBy: { created_at: "desc" },
-  });
 
   // Acciones por crédito (ya vienen desc por created_at → find() devuelve la más reciente).
   const porCredito = new Map<string, typeof acciones>();

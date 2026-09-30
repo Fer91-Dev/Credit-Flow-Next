@@ -597,11 +597,16 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
 
   let cumplidos = 0, rotos = 0;
 
-  for (const a of vigentes) {
+  /*
+    🔴 DE A VARIOS A LA VEZ, NO UNO POR UNO (Fernando, 30/09/2026: la pestaña Hoy tardaba en
+    mostrarse). Cada acuerdo se evalúa y se cierra por su cuenta —no comparten filas—, así que
+    no hay por qué esperar al anterior. En tandas de 4 para no agotar las conexiones a la base.
+  */
+  const procesar = async (a: (typeof vigentes)[number]) => {
     const ev = await evaluarAcuerdoPersistido(a.tenant_id, a, hoy);
     if (ev.estado === "vigente") {
       await actualizarCuotasCobradas(a, ev.cobrado);
-      continue;
+      return;
     }
 
     /* La transacción DEVUELVE el resultado del cierre en vez de escribirlo en una variable
@@ -653,7 +658,7 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
       rotos++;
       return { propio: true, cierre: null };
     });
-    if (!resultado.propio) continue;
+    if (!resultado.propio) return;
     const cierreOk = resultado.cierre;
 
     await actualizarCuotasCobradas(a, ev.cobrado);
@@ -680,9 +685,34 @@ export async function sincronizarAcuerdos(opts: { tenantId?: string; creditoId?:
         ...(cierreOk ? { quita_condonada: cierreOk.condonado, sin_condonar: cierreOk.sinCondonar, credito_cerrado: cierreOk.cerro } : {}),
       },
     });
+  };
+  for (let k = 0; k < vigentes.length; k += 4) {
+    await Promise.all(vigentes.slice(k, k + 4).map(procesar));
   }
 
   return { revisados: vigentes.length, cumplidos, rotos };
+}
+
+/**
+ * La misma puesta al día, pero a lo sumo UNA VEZ CADA 2 MINUTOS por financiera. La usan las
+ * pantallas de Cobranzas (Hoy, Acuerdos, Planilla): la corrían en cada apertura y cada
+ * refresco, y era la parte más lenta de la agenda. Un acuerdo que se rompe hoy sigue
+ * apareciendo hoy —como mucho dos minutos más tarde—; el cobro y el cron nocturno siguen
+ * llamando a `sincronizarAcuerdos` directo, sin esta espera.
+ */
+const ultimaSincronizacion = new Map<string, number>();
+export async function sincronizarAcuerdosSiHaceFalta(tenantId: string, cadaMs = 120_000) {
+  const ahora = Date.now();
+  const ultima = ultimaSincronizacion.get(tenantId) ?? 0;
+  if (ahora - ultima < cadaMs) return;
+  ultimaSincronizacion.set(tenantId, ahora);
+  try {
+    await sincronizarAcuerdos({ tenantId });
+  } catch (e) {
+    // Si falla, que la próxima apertura lo vuelva a intentar en vez de esperar dos minutos.
+    ultimaSincronizacion.delete(tenantId);
+    throw e;
+  }
 }
 
 /** Reparte lo cobrado sobre las cuotas del acuerdo (en orden) para poder mostrar el avance. */
