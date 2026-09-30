@@ -24,7 +24,7 @@ interface ClienteFormProps {
 }
 
 const EMPTY = {
-  nombre: "", apellido: "", documento: "", email: "", telefono: "", direccion: "", zona: "",
+  nombre: "", apellido: "", documento: "", email: "", telefono: "", direccion: "", zona: "", barrio: "",
   fecha_nacimiento: "", cuit_cuil: "", estado_civil: "", nacionalidad: "",
   provincia: "", localidad: "", codigo_postal: "", tipo_domicilio: "", piso: "", depto: "",
   situacion_laboral: "", ocupacion: "", empleador: "",
@@ -192,7 +192,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
         const d = json.data;
         setFormData({
           nombre: d.nombre ?? "", apellido: d.apellido ?? "", documento: d.documento ?? "", email: d.email ?? "",
-          telefono: d.telefono ?? "", direccion: d.direccion ?? "", zona: d.zona ?? "",
+          telefono: d.telefono ?? "", direccion: d.direccion ?? "", zona: d.zona ?? "", barrio: (d as { barrio?: string | null }).barrio ?? "",
           fecha_nacimiento: toDateInput(d.fecha_nacimiento), cuit_cuil: d.cuit_cuil ?? "",
           estado_civil: d.estado_civil ?? "", nacionalidad: d.nacionalidad ?? "",
           provincia: d.provincia ?? "", localidad: d.localidad ?? "", codigo_postal: d.codigo_postal ?? "",
@@ -615,6 +615,11 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
                   <option value="casa">Casa</option>
                   <option value="departamento">Departamento</option>
                 </Select>
+              </Field>
+              {/* Editable a mano (Fernando, 30/09/2026). Vacío, lo completa el mapa al ubicar el
+                  domicilio; escrito, manda sobre el del mapa. */}
+              <Field label="Barrio" hint="Vacío: lo completa el mapa">
+                <Input name="barrio" type="text" placeholder="Ej: Ciudadela" value={formData.barrio} onChange={set("barrio")} />
               </Field>
               {/* Vacía, el sistema la completa con el barrio del domicilio y recuerda lo que se
                   escriba acá para los próximos clientes del mismo barrio. */}

@@ -93,7 +93,13 @@ export async function ubicarCliente(tenantId: string, clienteId: string): Promis
     return { estado: r.motivo, detalle: r.detalle, zona: c.zona };
   }
 
-  const { lat, lon, barrio } = r.ubicacion;
+  /*
+    🔴 EL BARRIO ESCRITO EN LA FICHA MANDA (Fernando, 30/09/2026: "es necesario poder
+    editarlo"). El del mapa solo completa uno vacío. Si se cambia el domicilio sin tocar el
+    barrio, el PATCH lo vacía antes de volver al mapa, así se completa con el del lugar nuevo.
+  */
+  const { lat, lon } = r.ubicacion;
+  const barrio = c.barrio?.trim() || r.ubicacion.barrio;
   let zona = c.zona?.trim() || null;
   let completada = false;
   if (barrio) {

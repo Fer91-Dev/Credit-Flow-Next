@@ -205,6 +205,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       telefono: body.telefono?.trim() || null,
       direccion: body.direccion?.trim() || null,
       zona: body.zona?.trim() || null,
+      // Escrito a mano (opcional): si viene vacío, lo completa el mapa al ubicar.
+      barrio: body.barrio?.trim() || null,
       estado: body.estado || "activo",
       tipo_credito: body.tipo_credito || "personal",
       // Datos personales ampliados

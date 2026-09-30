@@ -706,7 +706,7 @@ export function ClienteDetail({
               { label: "Zona de cobranza", value: cliente.zona },
               // Lo que dijo el mapa. La zona se completa con esto (o con lo que la financiera
               // enseñó para este barrio); acá se ve de dónde salió.
-              { label: "Barrio (mapa)", value: cliente.barrio },
+              { label: "Barrio", value: cliente.barrio },
               {
                 label: "Ubicación",
                 value: cliente.latitud != null && cliente.longitud != null ? `${cliente.latitud.toFixed(5)}, ${cliente.longitud.toFixed(5)}${cliente.geo_estado === "manual" ? " (carga manual)" : ""}` : cliente.geo_estado === "sin_resultado" ? "El mapa no encontró el domicilio" : cliente.geo_estado === "error" ? "No se pudo consultar el mapa" : null,

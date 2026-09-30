@@ -475,6 +475,8 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     "telefono",
     "direccion",
     "zona",
+    // Editable a mano (Fernando, 30/09/2026); si viene vacío, lo completa el mapa.
+    "barrio",
     // 🔴 `estado` NO va acá. Estaba en la lista libre de strings, así que un vendedor podía
     // mandar cualquier valor —incluido "fallecido"— con un PATCH común y frenar la cobranza
     // de una cartera entera sin dejar motivo. Se maneja aparte, abajo, y solo lo mueve un admin.
@@ -737,10 +739,21 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
    * corrigió la ZONA de un cliente que ya tiene barrio, eso es la financiera diciendo "este
    * barrio es esta zona": se aprende para los próximos del mismo barrio.
    */
+  const barrioFinal = (typeof updateData.barrio === "string" ? updateData.barrio : existing.barrio)?.trim() || null;
   if (cambioDomicilio(existing, updateData) && existing.geo_estado !== "manual") {
+    // Domicilio nuevo y barrio sin tocar: el de antes ya no corresponde. Se vacía para que el
+    // mapa lo complete con el del lugar nuevo (el mapa solo llena un barrio vacío).
+    // (El formulario manda el barrio siempre: lo que cuenta es si CAMBIÓ.)
+    const barrioTocado = "barrio" in updateData && (updateData.barrio ?? null) !== (existing.barrio ?? null);
+    if (!barrioTocado) await prisma.clientes.update({ where: { id }, data: { barrio: null } });
     after(() => ubicarCliente(tenantId, id).catch(() => undefined));
-  } else if (typeof updateData.zona === "string" && updateData.zona !== existing.zona && existing.barrio) {
-    await aprenderZona(tenantId, existing.barrio, updateData.zona);
+  } else if (
+    barrioFinal &&
+    typeof (updateData.zona ?? existing.zona) === "string" &&
+    ((typeof updateData.zona === "string" && updateData.zona !== existing.zona) || (typeof updateData.barrio === "string" && updateData.barrio !== existing.barrio))
+  ) {
+    // Cambió la zona o el barrio: "este barrio es esta zona" se aprende para los próximos.
+    await aprenderZona(tenantId, barrioFinal, (updateData.zona ?? existing.zona) as string);
   }
 
   await registrarAuditoria({
