@@ -229,3 +229,29 @@ export function derivarEstadoCuotas(
       };
     });
 }
+
+/**
+ * COBRABILIDAD DE UNA CUOTA: cuánto había que cobrar y cuánto de eso entró.
+ *
+ * Es la ÚNICA definición de "de lo que vencía, cuánto se cobró" (Fernando, 30/09/2026: el Home
+ * mostraba un 34% en el Avance y un 39% en el gráfico para el mismo mes). La usan el Avance de
+ * cobranzas, el rendimiento por vendedor y el gráfico de cobrabilidad.
+ *
+ *  · `null` para las cuotas `anulada` (el crédito se anuló: nunca se debió) y `trasladada` (la
+ *    deuda se mudó a una refinanciación, cuyas cuotas cuentan en SUS vencimientos; contarla
+ *    acá también la duplicaría). La `condonada` SÍ cuenta: vencía y no entró.
+ *  · `cobrado` va SIN la mora, con tope en la cuota: la mora se devenga encima del plan, y
+ *    sumarla haría que un mes con atrasos pagados diera más de lo que vencía.
+ */
+export function cobrabilidadDeCuota(q: {
+  estado: string;
+  cuota_total: number;
+  pagado: number;
+  pagado_mora: number;
+}): { aCobrar: number; cobrado: number } | null {
+  if (q.estado === "anulada" || q.estado === "trasladada") return null;
+  return {
+    aCobrar: q.cuota_total,
+    cobrado: Math.min(q.cuota_total, Math.max(0, q.pagado - q.pagado_mora)),
+  };
+}

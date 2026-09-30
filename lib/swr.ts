@@ -2106,11 +2106,14 @@ export function useDashboard(filtros?: DashboardFiltros) {
   return { data, error, isLoading, mutate };
 }
 
-/** Serie mensual (12 meses) para el gráfico del Home: cobranzas, morosidad, circulación. */
+/**
+ * Serie mensual del gráfico del Home, desde el primer mes con movimiento (tope 12). El último
+ * elemento es el mes en curso. Ver `app/api/dashboard/series/route.ts`.
+ */
 export interface DashboardSeries {
   labels: string[];
   keys: string[];
-  series: { cobranzas: number[]; morosidad: number[]; circulacion: number[] };
+  series: { a_cobrar: number[]; cobrado_de_eso: number[]; prestado: number[]; cobrado: number[] };
 }
 export function useDashboardSeries(vendedorId?: string) {
   const key = vendedorId ? `/api/dashboard/series?vendedor_id=${vendedorId}` : "/api/dashboard/series";

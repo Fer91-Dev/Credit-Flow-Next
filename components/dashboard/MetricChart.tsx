@@ -1,135 +1,134 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { useDashboardSeries } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMonto } from "@/lib/utils";
 
-type MetricKey = "cobranzas" | "morosidad" | "circulacion";
+/**
+ * TENDENCIA MENSUAL DEL HOME (rehecho el 30/09/2026).
+ *
+ * Fernando: "creo que esta es la más inútil". Eran tres curvas sueltas (cobranzas, morosidad,
+ * circulación) sobre 12 meses fijos: diez en cero, una curva que bajaba de cero por el
+ * suavizado, y un número sin contra qué compararlo. Ahora son dos lecturas con contraparte:
+ *
+ *  · COBRABILIDAD — por mes, lo que vencía y cuánto de eso se cobró, con el porcentaje arriba.
+ *  · FLUJO — la plata que salió prestada contra la que volvió.
+ *
+ * Barras en HTML (no SVG escalado): así el texto se lee igual en el celular que en la PC.
+ * La ventana arranca en el primer mes con movimiento; el último mes es el EN CURSO (punteado)
+ * y va completo, igual que el "Avance de cobranzas": los dos dicen el mismo porcentaje.
+ */
+type Vista = "cobrabilidad" | "flujo";
 
-const METRICS: Record<MetricKey, { label: string; color: string; emoji: string; desc: string }> = {
-  cobranzas:   { label: "Cobranzas",   color: "var(--primary)",     emoji: "money-bag",         desc: "Cobrado por mes" },
-  morosidad:   { label: "Morosidad",   color: "var(--destructive)", emoji: "warning",           desc: "Mora generada por mes" },
-  circulacion: { label: "Circulación", color: "var(--success)",     emoji: "money-with-wings",  desc: "Capital en la calle (cierre de mes)" },
+const VISTAS: Record<Vista, { label: string; emoji: string }> = {
+  cobrabilidad: { label: "Cobrabilidad", emoji: "bullseye" },
+  flujo: { label: "Flujo", emoji: "money-with-wings" },
 };
-const ORDEN: MetricKey[] = ["cobranzas", "morosidad", "circulacion"];
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(x);
-}
-/** Compacto para los ejes: 1.2M, 15K, 350. */
-function fmtCompact(n: number) {
+/** Compacto para el eje: 1,2 M · 350 K · 900. */
+function fmtEje(n: number) {
   const a = Math.abs(n);
-  if (a >= 1e6) return `${(n / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(".0", "")}M`;
-  if (a >= 1e3) return `${(n / 1e3).toFixed(a >= 1e4 ? 0 : 1).replace(".0", "")}K`;
+  const f = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1).replace(".", ","));
+  if (a >= 1e6) return `${f(Math.round((n / 1e6) * 10) / 10)} M`;
+  if (a >= 1e3) return `${f(Math.round((n / 1e3) * 10) / 10)} K`;
   return String(Math.round(n));
 }
 
-/** Curva suave (Catmull-Rom → Bézier) que pasa por todos los puntos. */
-function smoothPath(pts: { x: number; y: number }[]): string {
-  if (pts.length < 2) return pts.length ? `M ${pts[0].x} ${pts[0].y}` : "";
-  let d = `M ${pts[0].x} ${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
+/** Tope y paso "redondos" para el eje (1 · 2 · 2,5 · 5 × 10^k), en 4 divisiones. */
+function escala(max: number) {
+  if (max <= 0) return { tope: 1, ticks: [0, 1] };
+  const bruto = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const paso = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((p) => p >= bruto) ?? 10 * pow;
+  const tope = paso * Math.ceil(max / paso);
+  const ticks: number[] = [];
+  for (let v = 0; v <= tope + paso / 2; v += paso) ticks.push(v);
+  return { tope, ticks };
 }
 
-// Geometría del viewBox (compacto).
-const W = 720, H = 188;
-const PAD = { l: 46, r: 14, t: 12, b: 24 };
-const plotW = W - PAD.l - PAD.r;
-const plotH = H - PAD.t - PAD.b;
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : null);
+const alto = (v: number, tope: number) => `${Math.max(0, Math.min(100, (v / tope) * 100))}%`;
 
 export function MetricChart({ vendedorId }: { vendedorId?: string }) {
   const { serie, isLoading } = useDashboardSeries(vendedorId);
-  const [metric, setMetric] = useState<MetricKey>("cobranzas");
+  const [vista, setVista] = useState<Vista>("cobrabilidad");
   const [hover, setHover] = useState<number | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
 
-  const cfg = METRICS[metric];
-  const valores = serie?.series[metric] ?? [];
   const labels = serie?.labels ?? [];
+  const n = labels.length;
+  const s = serie?.series;
+  const aCobrar = s?.a_cobrar ?? [];
+  const cobradoDeEso = s?.cobrado_de_eso ?? [];
+  const prestado = s?.prestado ?? [];
+  const cobrado = s?.cobrado ?? [];
+  const enCurso = n - 1;
 
-  const { puntos, maxNice, ticks } = useMemo(() => {
-    const max = Math.max(1, ...valores);
-    // Escala "linda": redondea el tope hacia arriba a 1/2/5 × 10^k.
-    const pow = Math.pow(10, Math.floor(Math.log10(max)));
-    const f = max / pow;
-    const niceF = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
-    const maxNice = niceF * pow;
-    const n = valores.length;
-    const puntos = valores.map((v, i) => ({
-      x: PAD.l + (n <= 1 ? 0 : (i / (n - 1)) * plotW),
-      y: PAD.t + (1 - v / maxNice) * plotH,
-      v,
-    }));
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map((p) => ({ y: PAD.t + (1 - p) * plotH, val: maxNice * p }));
-    return { puntos, maxNice, ticks };
-  }, [valores]);
+  // Mes que se lee arriba: el que está bajo el mouse; si no, en Cobrabilidad el último mes
+  // CERRADO con vencimientos (el en curso da un % a medio hacer), y en Flujo el en curso.
+  const cerrado = n >= 2 && aCobrar[n - 2] > 0 ? n - 2 : enCurso;
+  const foco = hover ?? (vista === "cobrabilidad" ? cerrado : enCurso);
 
-  const hayDatos = valores.some((v) => v > 0);
-  const linePath = useMemo(() => smoothPath(puntos), [puntos]);
-  const areaPath = puntos.length
-    ? `${linePath} L ${puntos[puntos.length - 1].x} ${PAD.t + plotH} L ${puntos[0].x} ${PAD.t + plotH} Z`
-    : "";
-  const ultimo = valores.length ? valores[valores.length - 1] : 0;
-  const previo = valores.length > 1 ? valores[valores.length - 2] : 0;
-  const variacion = previo > 0 ? Math.round(((ultimo - previo) / previo) * 100) : null;
+  const hayDatos = n > 0 && (vista === "cobrabilidad" ? aCobrar.some((v) => v > 0) : prestado.some((v) => v > 0) || cobrado.some((v) => v > 0));
+  // 12% de aire arriba: el porcentaje de la barra más alta va ENCIMA de ella.
+  const { tope, ticks } = escala(1.12 * Math.max(0, ...(vista === "cobrabilidad" ? aCobrar : [...prestado, ...cobrado])));
+  const nombreMes = (i: number) => (i === enCurso ? `${labels[i]} (en curso)` : labels[i]);
 
-  const onMove = (e: React.MouseEvent) => {
-    const svg = svgRef.current;
-    if (!svg || puntos.length < 2) return;
-    const rect = svg.getBoundingClientRect();
-    const relX = ((e.clientX - rect.left) / rect.width) * W;
-    const i = Math.round(((relX - PAD.l) / plotW) * (puntos.length - 1));
-    setHover(Math.max(0, Math.min(puntos.length - 1, i)));
-  };
-
-  const gradId = `mc-grad-${metric}`;
+  const cfg = VISTAS[vista];
 
   return (
-    <div className="rounded-xl bg-card border border-border p-4">
-      {/* Header: título + valor + toggle de métrica */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/40 border border-border shrink-0">
+    <div className="rounded-xl border border-border bg-card p-4">
+      {/* Encabezado: el dato del mes en foco + el selector de lectura */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40">
             <Emoji name={cfg.emoji} className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground leading-tight">{cfg.label}</h3>
+            <h3 className="text-sm font-semibold leading-tight text-foreground">{cfg.label}</h3>
             {isLoading ? (
-              <Skeleton className="h-5 w-24 mt-1" />
-            ) : (
-              <p className="flex items-baseline gap-2">
-                <span className="text-lg font-bold font-mono tabular-nums text-foreground leading-none">${n0(hover != null ? valores[hover] : ultimo)}</span>
-                {hover == null && variacion != null && (
-                  <span className={`text-xs font-semibold ${variacion >= 0 ? "text-success" : "text-destructive"}`}>
-                    {variacion >= 0 ? "▲" : "▼"} {Math.abs(variacion)}%
+              <Skeleton className="mt-1 h-5 w-40" />
+            ) : !hayDatos || foco < 0 ? null : vista === "cobrabilidad" ? (
+              <>
+                <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-mono text-xl font-bold tabular-nums leading-none text-foreground">
+                    {pct(cobradoDeEso[foco], aCobrar[foco]) ?? "—"}{aCobrar[foco] > 0 ? "%" : ""}
                   </span>
-                )}
-                <span className="text-[11px] text-muted-foreground">{hover != null ? labels[hover] : cfg.desc}</span>
-              </p>
+                  <span className="text-xs text-muted-foreground">cobrado de lo que {foco === enCurso ? "vence" : "vencía"} en {nombreMes(foco)}</span>
+                </p>
+                <p className="mt-1 flex flex-wrap gap-x-3 font-mono text-xs tabular-nums text-foreground/85">
+                  <span><span className="font-sans text-muted-foreground">{foco === enCurso ? "Vence" : "Vencía"} </span>{formatMonto(aCobrar[foco])}</span>
+                  <span><span className="font-sans text-muted-foreground">Cobrado </span><span className="text-success">{formatMonto(cobradoDeEso[foco])}</span></span>
+                  <span><span className="font-sans text-muted-foreground">Falta </span><span className={aCobrar[foco] - cobradoDeEso[foco] > 0.005 ? "text-warning" : ""}>{formatMonto(Math.max(0, aCobrar[foco] - cobradoDeEso[foco]))}</span></span>
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className={`font-mono text-xl font-bold tabular-nums leading-none ${cobrado[foco] - prestado[foco] >= 0 ? "text-success" : "text-warning"}`}>
+                    {cobrado[foco] - prestado[foco] >= 0 ? "+" : "−"}{formatMonto(Math.abs(cobrado[foco] - prestado[foco]))}
+                  </span>
+                  <span className="text-xs text-muted-foreground">saldo de {nombreMes(foco)}</span>
+                </p>
+                <p className="mt-1 flex flex-wrap gap-x-3 font-mono text-xs tabular-nums text-foreground/85">
+                  <span><span className="font-sans text-muted-foreground">Prestado </span>{formatMonto(prestado[foco])}</span>
+                  <span><span className="font-sans text-muted-foreground">Cobrado </span><span className="text-success">{formatMonto(cobrado[foco])}</span></span>
+                </p>
+              </>
             )}
           </div>
         </div>
-        {/* Toggle de métricas */}
         <div className="flex items-center rounded-lg border border-border p-0.5 text-sm">
-          {ORDEN.map((k) => (
+          {(Object.keys(VISTAS) as Vista[]).map((k) => (
             <button
               key={k}
-              onClick={() => { setMetric(k); setHover(null); }}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${metric === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              type="button"
+              onClick={() => { setVista(k); setHover(null); }}
+              aria-pressed={vista === k}
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${vista === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
-              {METRICS[k].label}
+              {VISTAS[k].label}
             </button>
           ))}
         </div>
@@ -137,68 +136,114 @@ export function MetricChart({ vendedorId }: { vendedorId?: string }) {
 
       {/* Gráfico */}
       {isLoading ? (
-        <Skeleton className="h-[170px] w-full rounded-lg" />
+        <Skeleton className="h-[200px] w-full rounded-lg" />
       ) : !hayDatos ? (
-        <div className="h-[170px] flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
+        <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <Emoji name="bar-chart" className="h-8 w-8 opacity-40" />
-          <p className="text-sm">Todavía no hay movimientos para graficar.</p>
+          <p className="text-sm">
+            {vista === "cobrabilidad" ? "Todavía no venció ninguna cuota." : "Todavía no hay préstamos ni cobros."}
+          </p>
         </div>
       ) : (
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full h-auto"
-          onMouseMove={onMove}
-          onMouseLeave={() => setHover(null)}
-        >
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={cfg.color} stopOpacity="0.28" />
-              <stop offset="100%" stopColor={cfg.color} stopOpacity="0" />
-            </linearGradient>
-          </defs>
+        <>
+          <div className="flex gap-2">
+            {/* Eje Y */}
+            <div className="relative h-[180px] w-9 shrink-0">
+              {ticks.map((t) => (
+                <span
+                  key={t}
+                  className="absolute right-0 translate-y-1/2 font-mono text-[10px] tabular-nums text-muted-foreground"
+                  style={{ bottom: alto(t, tope) }}
+                >
+                  {fmtEje(t)}
+                </span>
+              ))}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="relative h-[180px]" onMouseLeave={() => setHover(null)}>
+                {/* Grilla */}
+                {ticks.map((t) => (
+                  <div key={t} className="pointer-events-none absolute inset-x-0 border-t border-border/50" style={{ bottom: alto(t, tope) }} />
+                ))}
+                {/* Columnas */}
+                <div className="absolute inset-0 flex items-end">
+                  {labels.map((_, i) => {
+                    const activo = foco === i;
+                    const esCurso = i === enCurso;
+                    return (
+                      <div
+                        key={i}
+                        className={`group relative flex h-full flex-1 cursor-default items-end justify-center rounded-md transition-colors ${hover === i ? "bg-muted/30" : ""}`}
+                        onMouseEnter={() => setHover(i)}
+                        onClick={() => setHover(i)}
+                      >
+                        {vista === "cobrabilidad" ? (
+                          <div className="relative flex h-full w-[62%] max-w-12 items-end">
+                            {aCobrar[i] > 0 && (
+                              <>
+                                <span
+                                  className={`absolute left-1/2 -translate-x-1/2 -translate-y-full whitespace-nowrap pb-1 font-mono text-[10px] font-semibold tabular-nums ${activo ? "text-foreground" : "text-muted-foreground"}`}
+                                  style={{ bottom: alto(aCobrar[i], tope) }}
+                                >
+                                  {pct(cobradoDeEso[i], aCobrar[i])}%
+                                </span>
+                                {/* Lo que vencía: el "vaso"; lo cobrado lo llena desde abajo */}
+                                <div
+                                  className={`relative w-full overflow-hidden rounded-t-md border ${esCurso ? "border-dashed" : ""} ${activo ? "border-primary/60 bg-primary/10" : "border-border bg-muted/40"}`}
+                                  style={{ height: alto(aCobrar[i], tope) }}
+                                >
+                                  <div
+                                    className="absolute inset-x-0 bottom-0 bg-primary transition-[height] duration-500"
+                                    style={{ height: `${aCobrar[i] > 0 ? Math.min(100, (cobradoDeEso[i] / aCobrar[i]) * 100) : 0}%` }}
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex h-full w-[70%] max-w-16 items-end justify-center gap-[3px]">
+                            <div
+                              className={`w-1/2 rounded-t-md bg-primary/70 transition-[height] duration-500 ${esCurso ? "opacity-80" : ""} ${activo ? "bg-primary" : ""}`}
+                              style={{ height: alto(prestado[i], tope) }}
+                            />
+                            <div
+                              className={`w-1/2 rounded-t-md bg-success/70 transition-[height] duration-500 ${esCurso ? "opacity-80" : ""} ${activo ? "bg-success" : ""}`}
+                              style={{ height: alto(cobrado[i], tope) }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Meses */}
+              <div className="mt-1.5 flex">
+                {labels.map((l, i) => (
+                  <span key={i} className={`flex-1 text-center text-[11px] ${foco === i ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                    {l}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
 
-          {/* Grilla horizontal + labels Y */}
-          {ticks.map((t, i) => (
-            <g key={i}>
-              <line x1={PAD.l} y1={t.y} x2={W - PAD.r} y2={t.y} stroke="var(--border)" strokeWidth="1" strokeOpacity="0.5" />
-              <text x={PAD.l - 8} y={t.y + 3} textAnchor="end" className="fill-muted-foreground" style={{ fontSize: 11 }}>
-                {fmtCompact(t.val)}
-              </text>
-            </g>
-          ))}
-
-          {/* Labels X (meses) */}
-          {puntos.map((p, i) => (
-            <text key={i} x={p.x} y={H - 10} textAnchor="middle" className="fill-muted-foreground" style={{ fontSize: 11 }}>
-              {labels[i]}
-            </text>
-          ))}
-
-          {/* Área (sube al montar) — key por métrica para re-animar al cambiar */}
-          <path key={`area-${metric}`} d={areaPath} fill={`url(#${gradId})`} className="animate-rise-area" />
-          {/* Línea (se dibuja de izq a der) */}
-          <path
-            key={`line-${metric}`}
-            d={linePath}
-            fill="none"
-            stroke={cfg.color}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            pathLength={1}
-            className="animate-draw-line"
-            vectorEffect="non-scaling-stroke"
-          />
-
-          {/* Hover: guía + punto + valor */}
-          {hover != null && puntos[hover] && (
-            <g>
-              <line x1={puntos[hover].x} y1={PAD.t} x2={puntos[hover].x} y2={PAD.t + plotH} stroke={cfg.color} strokeWidth="1" strokeOpacity="0.4" strokeDasharray="3 3" />
-              <circle cx={puntos[hover].x} cy={puntos[hover].y} r="4.5" fill={cfg.color} stroke="var(--card)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-            </g>
-          )}
-        </svg>
+          {/* Referencias */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+            {vista === "cobrabilidad" ? (
+              <>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-primary" />Cobrado</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-border bg-muted/40" />A cobrar</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-muted-foreground/60" />Mes en curso</span>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-primary/70" />Prestado</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-success/70" />Cobrado (con mora)</span>
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

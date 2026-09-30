@@ -2,7 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo } from "@/lib/domain";
+import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo, cobrabilidadDeCuota } from "@/lib/domain";
 import { getCobranzaConfig } from "@/lib/config";
 import { hoyComercial } from "@/lib/utils";
 import { nombrePropioFinanciera } from "@/lib/branding";
@@ -45,7 +45,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const desde = desdeStr ? new Date(`${desdeStr}T00:00:00.000Z`) : new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1));
   const hasta = hastaStr
     ? new Date(`${hastaStr}T23:59:59.999Z`)
-    : new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 1));
+    // Último instante del último día del mes. Era el día 1 del mes SIGUIENTE y, con el `lte`
+    // de abajo, las cuotas que vencen ese 1° entraban al mes en curso (30/09/2026: dos cuotas
+    // del 1/10, $220.250,62 de más en "Esperado").
+    : new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
   // Filtro de créditos por vendedor y/o zona del cliente (se reutiliza en varias queries).
   const creditoFiltro: Record<string, unknown> = { ...withTenant(tenantId) };
@@ -114,7 +117,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         fecha_vencimiento: { gte: desde, lte: hasta },
         ...(tieneFiltroCredito ? { credito: creditoRel as never } : {}),
       },
-      select: { cuota_total: true, pagado: true, credito: { select: { vendedor_id: true, estado: true } } },
+      select: { estado: true, cuota_total: true, pagado: true, pagado_mora: true, credito: { select: { vendedor_id: true, estado: true } } },
     }),
 
     /**
@@ -236,11 +239,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     critica: moraCritica,
   };
 
-  const cobranzaEsperado = cuotasPeriodo.reduce((sum, c) => sum + c.cuota_total, 0);
-  const cobranzaCobrado = cuotasPeriodo.reduce(
-    (sum, c) => sum + Math.min(c.pagado, c.cuota_total),
-    0
-  );
+  // "De lo que vencía, cuánto entró": una sola definición para el Avance, el rendimiento por
+  // vendedor y el gráfico de cobrabilidad (`cobrabilidadDeCuota`).
+  const cobrabilidad = (lista: typeof cuotasPeriodo) =>
+    lista.reduce(
+      (acc, q) => {
+        const c = cobrabilidadDeCuota(q);
+        if (c) { acc.espera += c.aCobrar; acc.cobro += c.cobrado; }
+        return acc;
+      },
+      { espera: 0, cobro: 0 },
+    );
+  const { espera: cobranzaEsperado, cobro: cobranzaCobrado } = cobrabilidad(cuotasPeriodo);
 
   /**
    * Lo que falta cobrar de los créditos vivos. `Math.max(0, …)` porque un cobro con excedente
@@ -303,8 +313,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         const cuotasSuyas = cuotasPeriodo.filter(
           (q) => (q.credito?.vendedor_id ?? SIN_ASIGNAR) === key,
         );
-        const espera = cuotasSuyas.reduce((s, q) => s + q.cuota_total, 0);
-        const cobro = cuotasSuyas.reduce((s, q) => s + Math.min(q.pagado, q.cuota_total), 0);
+        const { espera, cobro } = cobrabilidad(cuotasSuyas);
         return {
           vendedor_id: key === SIN_ASIGNAR ? null : key,
           cobranza_esperado: espera,
