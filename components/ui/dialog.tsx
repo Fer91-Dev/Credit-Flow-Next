@@ -44,9 +44,12 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+      {/* 🔴 LA X SE TIENE QUE VER (Fernando, 30/09/2026: "casi imperceptible"). Era un ícono
+          suelto al 70% de opacidad. Ahora es un botón redondo con borde y fondo, arriba de
+          todo (z-30, por encima de encabezados y pies pegajosos), que se pone rojo al pasar. */}
+      <DialogPrimitive.Close className="absolute right-4 top-4 z-30 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-muted/60 text-foreground/80 shadow-sm transition-colors hover:border-destructive/40 hover:bg-destructive/15 hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
+        <X className="h-4 w-4" strokeWidth={2.25} />
+        <span className="sr-only">Cerrar</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>

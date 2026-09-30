@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, Circle } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { ModalHeader, FormActions, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Emoji } from "@/components/ui/Emoji";
+import { FormActions, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { Field, Input, Select } from "@/components/ui/field";
 import { maskMontoInput, parseMontoInput, numeroAInput, nombreCompleto, formatCuit } from "@/lib/utils";
 import { normalizarEstadoCliente } from "@/lib/domain";
@@ -64,13 +65,15 @@ function soloDigitos(v: string, max: number) {
 
 /** Bloque del formulario: el mismo encabezado (IconBadge + título) que los paneles del SaaS. */
 function SectionCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  // Franja de título propia y cuerpo compacto: el bloque se lee como una tarjeta con nombre,
+  // no como un recuadro vacío con campos adentro (Fernando, 30/09/2026: "muy plano").
   return (
-    <section className="group rounded-xl border border-border bg-card/60 p-5 shadow-sm">
-      <div className="mb-4 flex items-center gap-2.5">
+    <section className="group overflow-hidden rounded-xl border border-border bg-card/70 shadow-sm">
+      <div className="flex items-center gap-2.5 border-b border-border/70 bg-gradient-to-r from-muted/40 to-transparent px-4 py-2.5">
         <IconBadge emoji={icon} hoverable />
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
-      {children}
+      <div className="p-4">{children}</div>
     </section>
   );
 }
@@ -392,47 +395,69 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-      <div ref={errorRef} className="scroll-mt-4">
-        {error && (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-            {error}
+    <form onSubmit={handleSubmit} className="space-y-3.5">
+      {/*
+        ENCABEZADO DEL FORMULARIO (Fernando, 30/09/2026: "muy plano, muchos espacios vacíos").
+        El título y el avance de lo obligatorio en una sola banda con el color de la marca:
+        cuánto falta se ve con una barra, y cada dato que falta es un atajo a su campo.
+      */}
+      <div className="-mx-6 -mt-6 border-b border-border bg-gradient-to-br from-primary/[0.14] via-primary/[0.04] to-transparent px-6 pb-4 pt-6 sm:-mx-7 sm:-mt-7 sm:px-7">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pr-10">
+          <div className="flex min-w-0 flex-1 items-center gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 ring-1 ring-inset ring-primary/25">
+              <Emoji name="bust-in-silhouette" className="h-7 w-7" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle className="text-xl font-bold tracking-tight text-foreground">{clienteId ? "Editar cliente" : "Nuevo cliente"}</DialogTitle>
+              <p className="text-sm text-muted-foreground">{clienteId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}</p>
+            </div>
           </div>
-        )}
+          <div className="w-full space-y-2 lg:w-auto lg:min-w-[26rem]">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-semibold uppercase tracking-wider text-muted-foreground">
+                Obligatorios{migrado && <span className="ml-2 normal-case tracking-normal text-muted-foreground/80">· cliente migrado</span>}
+              </span>
+              <span className={`font-mono font-semibold tabular-nums ${completos === obligatorios.length ? "text-success" : "text-foreground"}`}>{completos} de {obligatorios.length}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted/60">
+              <div className={`h-full rounded-full transition-all duration-300 ${completos === obligatorios.length ? "bg-success" : "bg-primary"}`} style={{ width: `${(completos / obligatorios.length) * 100}%` }} />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {obligatorios.map((o) => (
+                <button
+                  key={o.campo}
+                  type="button"
+                  onClick={() => irAlCampo(o.campo)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    o.ok
+                      ? "bg-success/10 text-success ring-1 ring-inset ring-success/25"
+                      : errors[o.campo]
+                        ? "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/30 hover:bg-destructive/15"
+                        : "bg-card/80 text-muted-foreground ring-1 ring-inset ring-border hover:text-foreground"
+                  }`}
+                >
+                  {o.ok ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Tira de obligatorios */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/20 px-4 py-3">
-        <span className="mr-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Obligatorios <span className={`font-mono tabular-nums ${completos === obligatorios.length ? "text-success" : "text-foreground"}`}>{completos} de {obligatorios.length}</span>
-        </span>
-        {obligatorios.map((o) => (
-          <button
-            key={o.campo}
-            type="button"
-            onClick={() => irAlCampo(o.campo)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-              o.ok
-                ? "bg-success/10 text-success ring-1 ring-inset ring-success/25"
-                : errors[o.campo]
-                  ? "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/30 hover:bg-destructive/15"
-                  : "bg-card text-muted-foreground ring-1 ring-inset ring-border hover:text-foreground"
-            }`}
-          >
-            {o.ok ? <Check className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-            {o.label}
-          </button>
-        ))}
-        {migrado && <span className="ml-auto text-[11px] text-muted-foreground">Cliente migrado</span>}
-      </div>
+      {error && (
+        <div ref={errorRef} className="scroll-mt-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {/*
         Dos columnas en pantallas anchas (Fernando, 28/09/2026: "más tamaño"). A la izquierda
         la persona, sus ingresos y cómo contactarla; a la derecha, dónde vive y dónde trabaja.
         Son dos pilas independientes, así una sección alta no deja huecos en la otra columna.
       */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+        <div className="space-y-3.5">
           {/* Datos personales */}
           <SectionCard icon="bust-in-silhouette" title="Datos personales">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -562,7 +587,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
           </SectionCard>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {/* Domicilio (georef AR: provincia→localidad; CP manual) */}
           <SectionCard icon="house" title="Domicilio">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -682,11 +707,6 @@ export function ClienteFormDialog({
         className="w-[95vw] max-h-[92dvh] overflow-y-auto overscroll-contain sm:max-w-3xl sm:p-7 lg:max-w-[76rem]"
         {...SIN_CIERRE_ACCIDENTAL}
       >
-        <ModalHeader
-          icon="bust-in-silhouette"
-          title={clienteId ? "Editar cliente" : "Nuevo cliente"}
-          subtitle={clienteId ? "Actualizá la ficha del cliente." : "Cargá los datos del nuevo cliente."}
-        />
         {/* `key`: al pasar de un cliente a otro (o a uno nuevo) el formulario arranca limpio. */}
         {open && <ClienteForm key={clienteId ?? "nuevo"} clienteId={clienteId} initialDocumento={initialDocumento} onClose={onClose} />}
       </DialogContent>
