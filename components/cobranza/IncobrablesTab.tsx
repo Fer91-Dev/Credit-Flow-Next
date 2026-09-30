@@ -419,7 +419,7 @@ export function IncobrablesTab() {
                   title="Llamarlo, mandarle la propuesta y anotar qué contestó"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  <Phone className="h-3.5 w-3.5" /> Gestionar
+                  <Phone className="h-3.5 w-3.5" /> Registrar gestión
                 </button>
                 <button
                   type="button"
@@ -457,7 +457,7 @@ export function IncobrablesTab() {
                 onClick={() => setGestionando(c.id)}
                 className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-muted-foreground"
               >
-                <Phone className="h-3.5 w-3.5" /> Gestionar
+                <Phone className="h-3.5 w-3.5" /> Registrar gestión
               </button>
               <button
                 type="button"

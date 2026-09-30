@@ -1111,7 +1111,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                     onClick={(e) => { e.stopPropagation(); setGestion(c); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors border border-primary/20"
                   >
-                    <MessageSquarePlus className="h-3 w-3" /> Gestionar
+                    <MessageSquarePlus className="h-3 w-3" /> Registrar gestión
                   </button>
                   {/*
                     Con un acuerdo vigente el botón se APAGA: el backend ya rechaza el segundo
@@ -1230,7 +1230,7 @@ export function CobranzaTable({ role }: { role: Role }) {
                 })()}
                 <div className="flex gap-2">
                   <button onClick={(e) => { e.stopPropagation(); setGestion(c); }} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-colors border border-primary/20">
-                    <MessageSquarePlus className="h-4 w-4" /> Gestionar
+                    <MessageSquarePlus className="h-4 w-4" /> Registrar gestión
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); if (!c.acuerdo) irAAcordar(c.id); }} disabled={!!c.acuerdo} title={c.acuerdo ? "Ya tiene un acuerdo de pago vigente" : "Acuerdo de pago"} className="flex items-center justify-center h-10 w-10 rounded-lg border border-border text-muted-foreground transition-colors enabled:hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40">
                     <Handshake className="h-4 w-4" />
