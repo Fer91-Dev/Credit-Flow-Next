@@ -81,9 +81,11 @@ export function PlanDeCuotas({
 }: PlanDeCuotasProps) {
   if (cuotas.length === 0) return null;
 
-  const px = denso ? "px-2" : "px-3";
+  // En el celular, celdas más angostas: con el botón de cobro en la segunda columna, cada
+  // píxel de relleno era un pedazo de botón cortado contra el borde (Fernando, 29/09/2026).
+  const px = denso ? "px-1.5 sm:px-2" : "px-1.5 sm:px-3";
   const py = denso ? "py-2" : "py-2.5";
-  const pr = denso ? "pr-3" : "pr-4";
+  const pr = denso ? "pr-2 sm:pr-3" : "pr-2 sm:pr-4";
   const celda = `${px} ${py} border-b border-border/70`;
 
   /*
@@ -127,6 +129,25 @@ export function PlanDeCuotas({
   const pagadoTotal = cuotas.reduce((s, q) => s + pagadoDeCuota(q), 0);
   const aCobrarTotal =
     Math.round(cuotas.reduce((s, q) => s + (q.estado === "pagada" ? 0 : q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
+
+  // Total de "A cobrar" del pie: en el celular va debajo de la columna que queda segunda.
+  const totalCobrar = (
+    <>
+                <span className="block font-mono font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
+                {pagadoTotal > 0 && (
+                  <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
+                    cobrado ${n2(pagadoTotal)}
+                  </span>
+                )}
+                {/* Lo resignado, al lado de lo cobrado: son los dos modos en que una cuota deja
+                    de deberse, y el segundo no tenía dónde leerse. */}
+                {condonadoTotal > 0 && (
+                  <span className="block font-mono text-[10px] font-normal tabular-nums text-warning">
+                    condonado ${n2(condonadoTotal)}
+                  </span>
+                )}
+    </>
+  );
 
   return (
     <div className="space-y-2">
@@ -214,9 +235,15 @@ export function PlanDeCuotas({
                 abierta en dos. Sumarlos daría el doble.
               */}
               {[
-                { t: "#", a: "text-left", w: "w-9" },
+                // El "#" se oculta en el celular: la fecha ya dice qué cuota es.
+                { t: "#", a: "text-left", w: "hidden w-9 sm:table-cell" },
                 { t: "Vencimiento", a: "text-left" },
                 { t: "Cuota", a: "text-right" },
+                /* 🔴 EN EL CELULAR, "A COBRAR" VA ACÁ, pegada a la cuota (Fernando, 29/09/2026):
+                   al final, el botón de cobro quedaba fuera de la pantalla y había que deslizar
+                   la tabla para encontrarlo. Mora y comprobante pasan a su derecha. En la
+                   computadora sigue al final, que es donde cierra la cuenta del renglón. */
+                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: "text-right", w: "md:hidden" },
                 { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell" },
                 ...(hayCargos ? [{ t: rotuloCargos, op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
@@ -245,10 +272,10 @@ export function PlanDeCuotas({
                   le falta a esa cuota del plan viejo. Mismo arreglo que ya se hizo en el modal
                   de cobro del acuerdo.
                 */
-                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}` },
-              ].map((h) => (
+                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}`, w: "hidden md:table-cell" },
+              ].map((h, hi) => (
                 <th
-                  key={h.t}
+                  key={hi}
                   className={`${px} ${py} ${h.a} text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border ${h.w ?? ""}`}
                 >
                   {h.op && (
@@ -320,6 +347,71 @@ export function PlanDeCuotas({
                     (atraso !== dias ? ` · ${formatDias(atraso)} de atraso, ${formatDias(atraso - dias)} sin devengar` : "")
                   : `${formatDias(atraso)} de atraso`;
               })();
+              // "A cobrar": en el celular se dibuja después de la cuota; en la compu, al final.
+              const contenidoCobrar = (
+                <>
+                    {q.estado === "pagada" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+                        <Check className="h-3 w-3 shrink-0" />
+                        Pagada
+                        <span className="font-mono tabular-nums">${n2(pagadoDeCuota(q))}</span>
+                      </span>
+                    ) : (
+                      <div className="inline-flex flex-col items-end gap-1">
+                        {/*
+                          🔴 LAS CERRADAS SIN PAGO TAMBIÉN LLEVAN SU BURBUJA. La condición era
+                          solo vencida/parcial, así que una cuota `condonada` o `trasladada`
+                          apareció siempre como un renglón mudo con "$0,00" al final: nada decía
+                          por qué no se cobra. Es justo el dato que hay que poder explicarle al
+                          cliente.
+                        */}
+                        {/*
+                          🔴 LA VENCIDA YA NO LLEVA BURBUJA: la fila entera está en rojo.
+
+                          El badge sumaba un renglón encima del importe SOLO en esa fila, así
+                          que la tabla quedaba descuadrada — y decía algo que la fecha pasada,
+                          el fondo rojo y la mora al lado ya dicen tres veces.
+
+                          Las PARCIALES y las CERRADAS sí la conservan: ahí el estado no se
+                          deduce de ningún otro dato de la fila. Una "trasladada" con $0,00 al
+                          final, sin la burbuja, es un renglón mudo.
+                        */}
+                        {(q.estado === "parcial" || cuotaCerradaSinPago(q.estado)) && (
+                          <StatusBadge label={b.label} variant={b.variant} />
+                        )}
+                        {/* Y CUÁNTO se perdonó. Una cuota condonada sin el importe esconde la
+                            plata que la financiera resignó — $121.712,81 en CRD-000005. */}
+                        {(q.condonado ?? 0) > 0 && (
+                          <span className="font-mono text-[10px] tabular-nums text-warning">
+                            condonó ${n2(q.condonado ?? 0)}
+                          </span>
+                        )}
+                        {/* Lo que ya entró vive ahora en la columna PAGADO: repetirlo acá era el
+                            mismo número dos veces en el mismo renglón (Fernando, 15/09/2026). */}
+                        {onCobrar ? (
+                          <button
+                            onClick={() => onCobrar(q)}
+                            disabled={!!cobroBloqueado}
+                            title={cobroBloqueado ?? `Cobrar la ${unidadCuota} ${q.nro}`}
+                            className={
+                              cobroBloqueado
+                                // Sin el verde: el importe sigue siendo cierto (es lo que
+                                // debe la cuota), pero ya no es una invitación a apretarlo.
+                                ? "inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-muted-foreground"
+                                : "inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
+                            }
+                          >
+                            ${n2(q.total_cobrar ?? q.cuota_total)}
+                          </button>
+                        ) : (
+                          <span className={`font-mono font-semibold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
+                            ${n2(q.total_cobrar ?? q.cuota_total)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                </>
+              );
               return (
                 <tr
                   key={q.nro}
@@ -327,7 +419,7 @@ export function PlanDeCuotas({
                     esProxima ? "bg-primary/[0.07]" : esVencida ? "bg-destructive/[0.07] hover:bg-destructive/[0.11]" : "hover:bg-muted/20"
                   } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
                 >
-                  <td className={`${celda} relative font-mono tabular-nums ${esVencida ? "font-semibold text-destructive" : "text-muted-foreground/50"}`}>
+                  <td className={`${celda} relative hidden font-mono tabular-nums sm:table-cell ${esVencida ? "font-semibold text-destructive" : "text-muted-foreground/50"}`}>
                     {esVencida && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-destructive" />}
                     {q.nro}
                   </td>
@@ -335,6 +427,7 @@ export function PlanDeCuotas({
                     {formatFecha(q.fecha_vencimiento)}
                   </td>
                   <td className={`${celda} text-right font-mono font-medium tabular-nums text-foreground`}>${n2(q.cuota_total)}</td>
+                  <td className={`${celda} text-right md:hidden`}>{contenidoCobrar}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.interes)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.capital)}</td>
                   {hayCargos && (
@@ -521,67 +614,8 @@ export function PlanDeCuotas({
                       · pagada a medias → cuánto entró, y debajo el botón con lo que resta
                       · sin tocar       → solo el botón
                   */}
-                  <td className={`${celda} ${pr} text-right`}>
-                    {q.estado === "pagada" ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-                        <Check className="h-3 w-3 shrink-0" />
-                        Pagada
-                        <span className="font-mono tabular-nums">${n2(pagadoDeCuota(q))}</span>
-                      </span>
-                    ) : (
-                      <div className="inline-flex flex-col items-end gap-1">
-                        {/*
-                          🔴 LAS CERRADAS SIN PAGO TAMBIÉN LLEVAN SU BURBUJA. La condición era
-                          solo vencida/parcial, así que una cuota `condonada` o `trasladada`
-                          apareció siempre como un renglón mudo con "$0,00" al final: nada decía
-                          por qué no se cobra. Es justo el dato que hay que poder explicarle al
-                          cliente.
-                        */}
-                        {/*
-                          🔴 LA VENCIDA YA NO LLEVA BURBUJA: la fila entera está en rojo.
-
-                          El badge sumaba un renglón encima del importe SOLO en esa fila, así
-                          que la tabla quedaba descuadrada — y decía algo que la fecha pasada,
-                          el fondo rojo y la mora al lado ya dicen tres veces.
-
-                          Las PARCIALES y las CERRADAS sí la conservan: ahí el estado no se
-                          deduce de ningún otro dato de la fila. Una "trasladada" con $0,00 al
-                          final, sin la burbuja, es un renglón mudo.
-                        */}
-                        {(q.estado === "parcial" || cuotaCerradaSinPago(q.estado)) && (
-                          <StatusBadge label={b.label} variant={b.variant} />
-                        )}
-                        {/* Y CUÁNTO se perdonó. Una cuota condonada sin el importe esconde la
-                            plata que la financiera resignó — $121.712,81 en CRD-000005. */}
-                        {(q.condonado ?? 0) > 0 && (
-                          <span className="font-mono text-[10px] tabular-nums text-warning">
-                            condonó ${n2(q.condonado ?? 0)}
-                          </span>
-                        )}
-                        {/* Lo que ya entró vive ahora en la columna PAGADO: repetirlo acá era el
-                            mismo número dos veces en el mismo renglón (Fernando, 15/09/2026). */}
-                        {onCobrar ? (
-                          <button
-                            onClick={() => onCobrar(q)}
-                            disabled={!!cobroBloqueado}
-                            title={cobroBloqueado ?? `Cobrar la ${unidadCuota} ${q.nro}`}
-                            className={
-                              cobroBloqueado
-                                // Sin el verde: el importe sigue siendo cierto (es lo que
-                                // debe la cuota), pero ya no es una invitación a apretarlo.
-                                ? "inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-border bg-muted/40 px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-muted-foreground"
-                                : "inline-flex items-center justify-center rounded-lg bg-success px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-success-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
-                            }
-                          >
-                            ${n2(q.total_cobrar ?? q.cuota_total)}
-                          </button>
-                        ) : (
-                          <span className={`font-mono font-semibold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
-                            ${n2(q.total_cobrar ?? q.cuota_total)}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                  <td className={`${celda} ${pr} hidden text-right md:table-cell`}>
+                    {contenidoCobrar}
                   </td>
                 </tr>
               );
@@ -590,12 +624,18 @@ export function PlanDeCuotas({
 
           <tfoot className={sinAlto ? "" : "sticky bottom-0 z-10"}>
             <tr className="bg-muted">
-              <td colSpan={2} className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground`}>
+              <td colSpan={2} className={`${px} ${py} hidden border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:table-cell`}>
+                Totales
+              </td>
+              {/* Sin la columna "#" (celular), el rótulo ocupa una sola. */}
+              <td className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:hidden`}>
                 Totales
               </td>
               <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-foreground`}>
                 ${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}
               </td>
+              {/* Celular: el total de "A cobrar" debajo de su columna, que ahí va segunda. */}
+              <td className={`${px} ${py} border-t border-border text-right md:hidden`}>{totalCobrar}</td>
               <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.interes, 0))}
               </td>
@@ -668,20 +708,8 @@ export function PlanDeCuotas({
               <td className="hidden border-t border-border md:table-cell" />
               {/* Lo que el cliente debe hoy —coincide con la tarjeta "Deuda total" porque sale
                   de las mismas cuotas— y debajo lo que ya entró, que perdió su columna. */}
-              <td className={`${px} ${py} ${pr} border-t border-border text-right`}>
-                <span className="block font-mono font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
-                {pagadoTotal > 0 && (
-                  <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
-                    cobrado ${n2(pagadoTotal)}
-                  </span>
-                )}
-                {/* Lo resignado, al lado de lo cobrado: son los dos modos en que una cuota deja
-                    de deberse, y el segundo no tenía dónde leerse. */}
-                {condonadoTotal > 0 && (
-                  <span className="block font-mono text-[10px] font-normal tabular-nums text-warning">
-                    condonado ${n2(condonadoTotal)}
-                  </span>
-                )}
+              <td className={`${px} ${py} ${pr} hidden border-t border-border text-right md:table-cell`}>
+                {totalCobrar}
               </td>
             </tr>
           </tfoot>
