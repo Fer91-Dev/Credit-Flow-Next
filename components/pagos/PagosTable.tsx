@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useDebounce } from "@/lib/use-debounce";
-import { Wallet, Search, User, Phone, IdCard, ArrowLeft, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { Wallet, Search, User, Phone, IdCard, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { useClientes, usePagos, KEYS, type Cliente, type Pago, type ResumenPagos } from "@/lib/swr";
 import { ClienteDetail } from "@/components/clientes/ClienteDetail";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
@@ -129,17 +129,6 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
      * sigue existiendo en el "Registrar pago" de la vista de búsqueda, que busca el crédito
      * por N° o DNI dentro del formulario.
      */
-    const acciones = (
-      /* Fantasma: la flecha se corre al pasar el mouse, que ya dice "vas hacia atrás" sin
-         robarle peso visual a los botones de cobro de las cuotas. */
-      <button
-        onClick={() => setClienteId(null)}
-        className="group inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-      >
-        <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-        Buscar otro cliente
-      </button>
-    );
 
     return (
       <div className="space-y-6">
@@ -149,10 +138,13 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
           title="Pagos"
           subtitle="Ficha del cliente · registrar cobro"
           accent="primary"
+          // "Buscar otro cliente" vive en el encabezado (Fernando, 30/09/2026).
+          onBack={() => setClienteId(null)}
+          backLabel="Buscar otro cliente"
         />
         {/* Ficha principal del cliente, con las acciones en su encabezado */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail clienteId={clienteId} variant="pagos" accionesPantalla={acciones} />
+          <ClienteDetail clienteId={clienteId} variant="pagos" />
         </div>
       </div>
     );

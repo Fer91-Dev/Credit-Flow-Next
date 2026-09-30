@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useSWRConfig } from "swr";
-import { Search, User, Phone, Mail, ArrowLeft, Plus, ChevronRight, Clock, X } from "lucide-react";
+import { Search, User, Phone, Mail, Plus, ChevronRight, Clock, X } from "lucide-react";
 import { ClienteFormDialog } from "./ClienteForm";
 import { ClienteDetail } from "./ClienteDetail";
 import { useClientes, useKpisClientes, KEYS, type Cliente, useDiasLegales } from "@/lib/swr";
@@ -163,16 +163,6 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
 
   // ── Vista de ficha (cliente seleccionado) ──
   if (selected) {
-    // "Volver al listado": arriba a la izquierda, alineado al contenedor de la ficha.
-    const volver = (
-      <button
-        onClick={() => setSelected(null)}
-        className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Volver al listado
-      </button>
-    );
-
     return (
       <div className="space-y-6">
         {/* Header contextual de la página + acción secundaria */}
@@ -181,6 +171,9 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           title="Clientes"
           subtitle="Ficha del cliente"
           accent="primary"
+          // "Volver al listado" vive en el encabezado (Fernando, 30/09/2026).
+          onBack={() => setSelected(null)}
+          backLabel="Volver al listado"
         />
 
         {/*
@@ -191,7 +184,6 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           decora. El `AppShell` ya no centra el contenido, así que alcanza con soltar el tope.
         */}
         <div className="w-full space-y-3">
-          {volver}
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <ClienteDetail
               clienteId={selected.id}
