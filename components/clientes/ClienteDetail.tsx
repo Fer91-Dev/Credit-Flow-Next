@@ -2050,8 +2050,9 @@ function BotonUbicar({ clienteId, onHecho, ubicado }: { clienteId: string; onHec
       const res = await fetch(`/api/clientes/${clienteId}/ubicar`, { method: "POST" });
       const json = await res.json();
       if (!json.ok) { toast.error(json.error || "No se pudo ubicar"); return; }
-      const r = json.data as { estado: string; barrio?: string | null; zona?: string | null; zona_completada?: boolean };
-      if (r.estado === "ok") toast.success(`Ubicado${r.barrio ? ` en ${r.barrio}` : ""}${r.zona_completada && r.zona ? ` · zona: ${r.zona}` : ""}`);
+      const r = json.data as { estado: string; barrio?: string | null; zona?: string | null; zona_completada?: boolean; manual?: boolean };
+      if (r.estado === "ok" && r.manual) toast.success("Se mantiene la ubicación que cargaste a mano");
+      else if (r.estado === "ok") toast.success(`Ubicado${r.barrio ? ` en ${r.barrio}` : ""}${r.zona_completada && r.zona ? ` · zona: ${r.zona}` : ""}`);
       else if (r.estado === "sin_resultado") toast.error("El mapa no encontró ese domicilio. Revisá calle, número y localidad.");
       else if (r.estado === "sin_direccion") toast.error("El cliente no tiene dirección cargada.");
       onHecho();

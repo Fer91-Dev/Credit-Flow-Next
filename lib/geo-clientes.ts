@@ -23,6 +23,8 @@ export interface ResultadoUbicar {
   barrio?: string | null;
   /** La zona que quedó en la ficha después de ubicar. */
   zona?: string | null;
+  /** true si la ubicación es la cargada A MANO y se respetó (no se volvió al mapa). */
+  manual?: boolean;
   /** true si la zona la completó el sistema en esta corrida. */
   zona_completada?: boolean;
 }
@@ -33,7 +35,9 @@ export const normalizarBarrio = (b: string) => b.trim().toLowerCase();
  * UBICACIÓN A MANO: coordenadas pegadas desde Google Maps. Existe porque el mapa de origen
  * puede estar mal (18/09/2026: OpenStreetMap ubica "Mate de Luna 4500" donde va el 3500, y
  * le pone un barrio que no es). Queda `geo_estado = "manual"`, y la re-geocodificación
- * automática (al cambiar el domicilio) NO la pisa: solo «Reubicar» vuelve al mapa.
+ * automática (al cambiar el domicilio) NO la pisa, y «Reubicar» TAMPOCO (Fernando, 30/09/2026:
+ * "al reubicar me vuelve a cargar la que el sistema asignó mal"): con una ubicación manual,
+ * reubicar la toma a ella. Para cambiarla, se carga otra con «Corregir».
  */
 export async function ubicarManual(tenantId: string, clienteId: string, lat: number, lon: number): Promise<ResultadoUbicar> {
   const c = await prisma.clientes.findFirst({ where: { ...withTenant(tenantId), id: clienteId }, select: { zona: true, barrio: true } });
@@ -54,9 +58,18 @@ export function parsearCoordenadas(texto: string): { lat: number; lon: number } 
 export async function ubicarCliente(tenantId: string, clienteId: string): Promise<ResultadoUbicar> {
   const c = await prisma.clientes.findFirst({
     where: { ...withTenant(tenantId), id: clienteId },
-    select: { direccion: true, localidad: true, provincia: true, zona: true },
+    select: { direccion: true, localidad: true, provincia: true, zona: true, geo_estado: true, latitud: true, longitud: true, barrio: true },
   });
   if (!c) return { estado: "error", detalle: "El cliente no existe." };
+
+  /*
+    🔴 LA UBICACIÓN CARGADA A MANO MANDA. Si alguien la corrigió pegando las coordenadas de
+    Google Maps, es porque el mapa la ubicaba mal: volver a preguntarle al mapa traería de
+    nuevo el error. «Reubicar» devuelve la manual tal cual, sin tocar la ficha.
+  */
+  if (c.geo_estado === "manual" && c.latitud != null && c.longitud != null) {
+    return { estado: "ok", latitud: c.latitud, longitud: c.longitud, barrio: c.barrio, zona: c.zona, zona_completada: false, manual: true };
+  }
 
   /**
    * 🔴 SIN LOCALIDAD, EL MAPA SE VA A CUALQUIER LADO. "Chacabuco 1502" a secas cayó en San
