@@ -1,6 +1,7 @@
 "use client";
 
 import { Emoji } from "@/components/ui/Emoji";
+import { Plus } from "lucide-react";
 
 /**
  * La acción primaria de una sección ("Nuevo crédito", "Nuevo cliente", "Registrar pago").
@@ -39,6 +40,7 @@ export function AccionPrimaria({
   type = "button",
   disabled,
   size = "md",
+  circular = false,
 }: {
   /** Fluent Emoji de `public/emoji/`. Usar el MISMO que el modal que abre. */
   emoji: string;
@@ -53,8 +55,38 @@ export function AccionPrimaria({
    * se lee como algo secundario, y es al revés: es la acción principal de la pantalla.
    */
   size?: "md" | "lg";
+  /**
+   * Botón REDONDO con un "+" (Fernando, 30/09/2026: "circular, con menos tamaño, con un +").
+   * El texto no se ve, pero sigue siendo su nombre: va de `aria-label` y de `title`, así que
+   * al pasar el mouse dice "Nuevo crédito" y el lector de pantalla también.
+   */
+  circular?: boolean;
 }) {
   const lg = size === "lg";
+  const nombre = typeof children === "string" ? children : undefined;
+  if (circular) {
+    return (
+      <button
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={nombre}
+        title={nombre}
+        className={`group relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full
+          bg-primary text-primary-foreground
+          shadow-[0_1px_2px_rgba(0,0,0,0.28),0_10px_24px_-12px_rgba(0,0,0,0.65)]
+          transition-all duration-200 ease-out
+          hover:-translate-y-0.5 hover:scale-105 hover:bg-primary/95
+          hover:shadow-[0_1px_2px_rgba(0,0,0,0.28),0_14px_30px_-12px_color-mix(in_oklab,var(--primary)_70%,transparent)]
+          active:translate-y-0 active:scale-100 active:duration-75
+          disabled:pointer-events-none disabled:opacity-50
+          motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 ${className}`}
+      >
+        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/[0.18] via-white/[0.03] to-transparent" />
+        <Plus className="relative h-5 w-5 transition-transform duration-300 group-hover:rotate-90 motion-reduce:transition-none" strokeWidth={2.5} />
+      </button>
+    );
+  }
   return (
     <button
       type={type}

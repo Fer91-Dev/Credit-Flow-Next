@@ -252,7 +252,8 @@ export function CreditosTable({ role }: { role: Role }) {
     préstamo que se pacta. El MISMO emoji lo usa el modal que abre este botón.
   */
   // `size="lg"` para que quede a la misma altura que el buscador con el que comparte renglón.
-  const cta = <AccionPrimaria size="lg" emoji="handshake" onClick={openNew}>Nuevo crédito</AccionPrimaria>;
+  // Redondo con un "+" (Fernando, 30/09/2026); al pasar el mouse dice "Nuevo crédito".
+  const cta = <AccionPrimaria circular emoji="handshake" onClick={openNew}>Nuevo crédito</AccionPrimaria>;
 
   return (
     <>
@@ -344,7 +345,8 @@ export function CreditosTable({ role }: { role: Role }) {
                   onF3={() => { setSearch(""); setEstado("all"); setTipo("all"); setMora("all"); }}
                   // Ancho fijo en desktop: `w-full` empujaría el CTA al renglón siguiente.
                   // La caja carga adentro el botón de filtros, así que necesita aire.
-                  className="w-full sm:w-[34rem]"
+                  // En el celular comparte renglón con el botón redondo de "Nuevo crédito".
+                  className="min-w-0 flex-1 sm:w-[34rem] sm:flex-none"
                   accionDerecha={
                     <FiltrosPanel embebido
                       // "Filtrar" y no "Filtros": el renglón es una fila de acciones
