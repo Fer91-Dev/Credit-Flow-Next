@@ -518,8 +518,6 @@ export function NuevoAcuerdoView({ creditoId }: { creditoId: string | null }) {
                 <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)}>
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="otro">Otro</option>
                 </IconSelect>
               </div>
               <p className={`text-xs ${excedeEntrega ? "text-destructive" : "text-muted-foreground"}`}>

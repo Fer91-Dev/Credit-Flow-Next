@@ -86,6 +86,19 @@ export function etiquetaCaja(esVendedor: boolean, cuenta: string): string {
 }
 
 /**
+ * 🔴 CON QUÉ SE LE PUEDE COBRAR A UN CLIENTE: efectivo y transferencia (Fernando, 29/09/2026).
+ * No se aceptan cheques: el sistema los daba por cobrados en el acto —la cuota pagada y la
+ * plata en Banco— aunque no se hubieran acreditado, y si rebotaban no había forma limpia de
+ * deshacerlo. "Otro" tampoco: un cobro tiene que decir por dónde entró la plata.
+ * Los pagos viejos con cheque u otro siguen mostrándose tal cual; solo no se cargan nuevos.
+ */
+export const METODOS_COBRO = ["efectivo", "transferencia"] as const;
+export type MetodoCobro = (typeof METODOS_COBRO)[number];
+export function esMetodoCobro(m: unknown): m is MetodoCobro {
+  return typeof m === "string" && (METODOS_COBRO as readonly string[]).includes(m.trim().toLowerCase());
+}
+
+/**
  * Cuenta de caja donde impacta un cobro según su método de pago:
  *  - efectivo            → efectivo
  *  - transferencia/cheque → banco

@@ -896,8 +896,6 @@ export function RefinanciarView({ creditoId }: { creditoId: string }) {
                       <IconSelect icon="dollar-banknote" value={entregaMetodo} onChange={(e) => setEntregaMetodo(e.target.value)} disabled={usarPropuesta}>
                         <option value="efectivo">Efectivo</option>
                         <option value="transferencia">Transferencia</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="otro">Otro</option>
                       </IconSelect>
                     </div>
                     {/*

@@ -8,7 +8,7 @@ import { sincronizarAcuerdos } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import * as Sentry from "@sentry/nextjs";
 import { nombreCompleto, formatCreditoNumero, hoyComercial, ventanaDias, ventanaAR } from "@/lib/utils";
-import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota, formatPesos } from "@/lib/domain";
+import { imputarPagoEnCuotas, diasAtraso, round2, etiquetaCaja, cuentaDeMetodo, esCuentaValida, esMetodoCobro, type CuotaParaImputar, moraDelCredito, moraDesdeCronograma, esCreditoCobrable, estadoTrasMoverLedger, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, cargosDeCuota, baseMoraDeCuota, formatPesos } from "@/lib/domain";
 import { lockCreditoTx, assertCuotasSinCambios, TX_PLATA } from "@/lib/locks";
 import { lockCuentaTx } from "@/lib/caja-fondos";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
@@ -248,6 +248,11 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       "INVALID_INPUT",
       400
     );
+  }
+  // Solo efectivo o transferencia (ver `METODOS_COBRO`): también las entregas de acuerdos y
+  // refinanciaciones, que entran por acá.
+  if (!esMetodoCobro(body.metodo)) {
+    return errorResponse("El cobro solo se puede registrar en efectivo o por transferencia.", "INVALID_INPUT", 400);
   }
 
   // Coerción explícita ANTES de comparar: `"abc" <= 0` es false, así que un monto no numérico

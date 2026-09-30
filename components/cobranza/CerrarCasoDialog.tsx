@@ -181,8 +181,6 @@ export function CerrarCasoDialog({
                 <Select value={metodo} onChange={(e) => setMetodo(e.target.value)} disabled={montoEfectivo <= 0}>
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="otro">Otro</option>
                 </Select>
               </Field>
             </div>

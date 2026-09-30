@@ -26,6 +26,7 @@
  * Es el mismo criterio con el que se declara incobrable: dar por perdida plata prestada es una
  * decisión contable, no de mostrador. Un vendedor puede cobrar; cerrar el caso no.
  */
+import { METODOS_COBRO } from "@/lib/domain/caja";
 import { requireRole, scopeCreditosVendedor, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
@@ -57,8 +58,8 @@ interface RouteParams {
 const pesos = (n: number) =>
   `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/** Métodos con los que puede entrar el pago de un cierre. Los mismos que un cobro común. */
-const METODOS = ["efectivo", "transferencia", "cheque", "otro"];
+/** Métodos con los que puede entrar el pago de un cierre: los mismos que un cobro común. */
+const METODOS: readonly string[] = METODOS_COBRO;
 
 /**
  * Carga el caso y arma TODAS sus cuentas: la deuda que se extingue, la plata de la cadena y
@@ -220,7 +221,7 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
   }
   const metodo = typeof body.metodo === "string" ? body.metodo.trim().toLowerCase() : "";
   if (monto > 0 && !METODOS.includes(metodo)) {
-    return errorResponse(`El método de pago debe ser uno de: ${METODOS.join(", ")}.`, "INVALID_INPUT", 400);
+    return errorResponse("El cobro solo se puede registrar en efectivo o por transferencia.", "INVALID_INPUT", 400);
   }
   /**
    * La NOTA es obligatoria, igual que el motivo al declarar incobrable. Con quién se habló y

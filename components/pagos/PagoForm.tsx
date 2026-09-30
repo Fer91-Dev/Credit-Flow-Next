@@ -1544,8 +1544,6 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
             <Select name="metodo" value={metodo} onChange={e => setMetodo(e.target.value)}>
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
-              <option value="cheque">Cheque</option>
-              <option value="otro">Otro</option>
             </Select>
           </Field>
         )}
