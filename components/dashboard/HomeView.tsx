@@ -13,7 +13,7 @@ import { BarraAvance } from "@/components/ui/NumeroAnimado";
 import { formatMonto } from "@/lib/utils";
 import { MetricChart } from "./MetricChart";
 import { CobranzaDelDia } from "./CobranzaDelDia";
-import { CotizacionDolar } from "./CotizacionDolar";
+import { TickerDolar } from "./CotizacionDolar";
 import { MedallaBadge, RangoBadge, InsigniaChip } from "@/components/ui/Medalla";
 import { Emoji } from "@/components/ui/Emoji";
 import { Nota } from "@/components/ui/Nota";
@@ -86,6 +86,9 @@ export function HomeView({ role }: { role: Role }) {
 
   return (
     <div className="space-y-6">
+      {/* El dólar como cinta que pasa, arriba de la banda (Fernando, 01/10/2026). Antes era una
+          tarjeta en la columna derecha; es contexto, no un número de la financiera. */}
+      <div className="relative z-10"><TickerDolar /></div>
       {/* ── 1 · LA PLATA, arriba de todo ──
           Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
           contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
@@ -153,8 +156,6 @@ export function HomeView({ role }: { role: Role }) {
           {/* Lo accionable de hoy: agenda de cobranza (scopeada al vendedor; admin ve todo) */}
           <CobranzaDelDia />
           {data && <DashboardMoraGrid data={data} apilado />}
-          {/* Cotización del dólar: contexto, no protagonista. */}
-          <CotizacionDolar angosto />
         </div>
       </div>
     </div>

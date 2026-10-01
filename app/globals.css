@@ -288,6 +288,12 @@ button:not(:disabled),
 @keyframes empuje-lateral { 0%, 100% { transform: translateX(0); opacity: .55; } 50% { transform: translateX(3px); opacity: 1; } }
 .animate-empuje-lateral { animation: empuje-lateral 1.4s ease-in-out infinite; }
 
+/* Cinta del dólar en el Home (TickerDolar): la tira va duplicada y se corre la mitad, así el
+   bucle no salta. Con "reducir movimiento" queda quieta (ver abajo). */
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-ticker { animation: ticker 45s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .animate-ticker { animation: none; } }
+
 /* ─── Tabla APILABLE (celular) ────────────────────────────────────────────────
    Fernando, 29/09/2026: las tablas hechas a mano con muchas columnas se deslizaban de
    costado en el celular. Con `tabla-apilable`, debajo de 768px cada fila es una tarjeta:

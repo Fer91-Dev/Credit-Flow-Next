@@ -204,3 +204,65 @@ function SecundariaTile({ c }: { c: Cotizacion }) {
     </div>
   );
 }
+
+/**
+ * EL DÓLAR COMO CINTA (Fernando, 01/10/2026: "no tiene mucha importancia, pero que aparezca de
+ * esa manera me parece suficiente"). Una franja angosta arriba de la banda del Home con todas las
+ * cotizaciones pasando de costado, como el ticker de un noticiero. Reemplaza la tarjeta de la
+ * columna derecha (`CotizacionDolar`, que queda en este archivo por si se vuelve atrás).
+ *
+ * La tira se dibuja DOS veces seguidas y se corre la mitad de su ancho: cuando la primera copia
+ * sale por la izquierda, la segunda está exactamente donde arrancó, así que el bucle no salta.
+ * Se frena al pasar el mouse (para poder leer un número) y, con "reducir movimiento", queda
+ * quieta y se desliza a mano. Si el servicio falla, no se dibuja nada.
+ */
+export function TickerDolar() {
+  const { cotizaciones, isLoading, error } = useCotizacion();
+  if (isLoading) return <Skeleton className="h-8 rounded-full" />;
+  if (error || cotizaciones.length === 0) return null;
+
+  const byCasa = new Map(cotizaciones.map((c) => [c.casa, c]));
+  const orden = [...PRINCIPALES, ...SECUNDARIAS].map((k) => byCasa.get(k)).filter(Boolean) as Cotizacion[];
+  const ultima = cotizaciones.reduce((a, c) => (c.fecha > a ? c.fecha : a), cotizaciones[0].fecha);
+
+  const tira = (copia: number) => (
+    <div className="flex shrink-0 items-center" aria-hidden={copia > 0}>
+      {orden.map((c) => {
+        const meta = META[c.casa] ?? { label: c.nombre, icon: "dollar-banknote" };
+        return (
+          <span key={`${copia}-${c.casa}`} className="flex items-center gap-2 whitespace-nowrap px-5 text-xs">
+            <Emoji name={meta.icon} className="h-3.5 w-3.5" />
+            <span className="font-semibold text-foreground">Dólar {meta.label}</span>
+            <span className="text-muted-foreground">compra</span>
+            <span className="font-mono tabular-nums text-foreground/90">{fmtTicker(c.compra)}</span>
+            <span className="text-muted-foreground">venta</span>
+            <span className="font-mono font-semibold tabular-nums text-success">{fmtTicker(c.venta)}</span>
+            <span className="pl-3 text-border">•</span>
+          </span>
+        );
+      })}
+      <span className="whitespace-nowrap px-5 text-[11px] text-muted-foreground/70">
+        dolarapi.com · act. {fmtHora(ultima)}
+        <span className="pl-8 text-border">•</span>
+      </span>
+    </div>
+  );
+
+  return (
+    <div
+      className="group relative overflow-hidden rounded-full border border-border/50 bg-card/50 py-1.5 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)] motion-reduce:overflow-x-auto"
+      aria-label="Cotización del dólar"
+    >
+      <div className="flex w-max animate-ticker group-hover:[animation-play-state:paused]">
+        {tira(0)}
+        {tira(1)}
+      </div>
+    </div>
+  );
+}
+
+/** Con centavos, como todo importe del sistema. */
+function fmtTicker(n: number | null): string {
+  if (n == null) return "—";
+  return `$${new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
+}
