@@ -18,7 +18,7 @@ type RoleStr = (typeof ROLES)[number];
  * vendedor vinculado si corresponde. Solo admin.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const { tenantId } = await requireRole(["admin"], req);
+  const { tenantId, userId } = await requireRole(["admin"], req);
 
   const profiles = await prisma.profiles.findMany({
     // Nunca listar al dueño de la plataforma como usuario de la financiera.
@@ -64,6 +64,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     vendedor_nombre: p.vendedor?.nombre ?? null,
     created_at: p.created_at,
     mfa_activo: conMfa.has(p.id),
+    // Quien mira la lista: su propio 2FA se maneja desde Perfil, no desde acá.
+    es_yo: p.id === userId,
   }));
 
   return successResponse({ usuarios });

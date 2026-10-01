@@ -288,8 +288,9 @@ export function EquipoView() {
             <IconBtn title="Cambiar contraseña" onClick={() => setPasswordDe(u)}>
               <KeyRound className="h-3.5 w-3.5" />
             </IconBtn>
-            {/* Solo si la tiene activada: un botón que siempre responde "no tiene" no sirve. */}
-            {u.mfa_activo && (
+            {/* Solo si la tiene activada (un botón que siempre responde "no tiene" no sirve) y
+                nunca en la fila propia: la tuya se quita desde Mi perfil, que exige el código. */}
+            {u.mfa_activo && !u.es_yo && (
               <IconBtn title="Restablecer verificación en dos pasos (perdió o cambió el celular)" onClick={() => restablecerMfa(m)} danger>
                 <Smartphone className="h-3.5 w-3.5" />
               </IconBtn>

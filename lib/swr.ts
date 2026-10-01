@@ -485,6 +485,8 @@ export interface Usuario {
   created_at: string;
   /** Tiene la verificación en dos pasos activada (para ofrecer "Restablecer"). */
   mfa_activo?: boolean;
+  /** Es el usuario que está mirando la lista. */
+  es_yo?: boolean;
 }
 
 /**
