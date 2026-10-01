@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, LayoutGrid, List, Trash2, X, History, Smartphone } from "lucide-react";
+import { ShieldOff, ShieldCheck, Pencil, KeyRound, UserX, UserCheck, LayoutGrid, List, Trash2, X, History, Smartphone } from "lucide-react";
 import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -336,14 +336,10 @@ export function EquipoView() {
           title="Equipo"
           subtitle={m?.nombre ? `Ficha de ${m.nombre}` : "Ficha del integrante"}
           accent="primary"
+          // Volver va en el encabezado, como en la ficha del cliente (Fernando, 01/10/2026).
+          onBack={() => setAbierto(null)}
+          backLabel="Volver al equipo"
         />
-        <button
-          type="button"
-          onClick={() => setAbierto(null)}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/20 hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Volver al equipo
-        </button>
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <VendedorDetail vendedorId={abierto} onChanged={() => mutate()} />
         </div>

@@ -5,8 +5,7 @@ import { estadoBadgeCredito } from "@/components/creditos/estado-badge";
 import { useState, useMemo, useEffect } from "react";
 import { mutate as globalMutate } from "swr";
 import {
-  UserCog, Trash2, TrendingUp, Target, Percent,
-  MapPin, Layers, Plus, X, Award, Wallet, Send, ArrowDownToLine, CalendarRange, Download,
+  Trash2, Percent, MapPin, Plus, X, Send, ArrowDownToLine, CalendarRange, Download,
 } from "lucide-react";
 import { exportarMovimientosCSV, hoyAR } from "@/components/caja/exportar-movimientos";
 import { refrescarNotificaciones, useVendedorDetalle, useMetasVendedor, useLogrosVendedor, useConfiguracion, useVendedorCaja, useLiquidacionesDe, KEYS, type VendedorDetalle, type ComisionConfig, type MetaVendedor, type PeriodoGamificacion, type CuentaCaja, type MovimientoCaja } from "@/lib/swr";
@@ -17,6 +16,8 @@ import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { Emoji } from "@/components/ui/Emoji";
+import { KpiCard } from "@/components/ui/KpiCard";
+import { Deslizable } from "@/components/ui/Deslizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea, DigitInput } from "@/components/ui/field";
@@ -28,17 +29,15 @@ import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { ROLE_LABEL } from "@/lib/auth/roles";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
-}
 
+// Mismo lenguaje que las pestañas de Créditos: emoji de presencia, pozo y anillo en la activa.
 const TABS = [
-  { key: "rendimiento", label: "Rendimiento", icon: TrendingUp },
-  { key: "comisiones",  label: "Comisiones",  icon: Percent },
-  { key: "metas",       label: "Metas",       icon: Target },
-  { key: "logros",      label: "Logros",      icon: Award },
-  { key: "caja",        label: "Caja / Operación", icon: Wallet },
-  { key: "datos",       label: "Datos",       icon: UserCog },
+  { key: "rendimiento", label: "Rendimiento",      emoji: "chart-increasing" },
+  { key: "comisiones",  label: "Comisiones",       emoji: "bar-chart" },
+  { key: "metas",       label: "Metas",            emoji: "bullseye" },
+  { key: "logros",      label: "Logros",           emoji: "trophy" },
+  { key: "caja",        label: "Caja / Operación", emoji: "money-bag" },
+  { key: "datos",       label: "Datos",            emoji: "clipboard" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -143,39 +142,67 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
         )}
       </div>
 
-      {/* KPIs propios del empleado */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-5 border-b border-border">
-        <MiniStat icon="credit-card" label="Créditos otorgados" value={String(r?.creditos_otorgados ?? 0)} />
-        <MiniStat icon="dollar-banknote" label="Vendido" value={`$${n0(r?.monto_vendido ?? 0)}`} accent="success" />
+      {/* KPIs propios del empleado: la misma tarjeta que el resto del sistema (Fernando,
+          01/10/2026: "solo son recuadros, sin animación ni color"). Importes con centavos. */}
+      <div className="grid grid-cols-2 gap-3 border-b border-border p-5 lg:grid-cols-4">
+        <KpiCard icon="credit-card" label="Créditos otorgados" value={String(r?.creditos_otorgados ?? 0)} accent="primary" sub="en toda su historia" />
+        <KpiCard icon="dollar-banknote" label="Vendido" value={formatMonto(r?.monto_vendido ?? 0)} accent="success" mono sub="acumulado" />
         {/* El rótulo dice de qué período habla la plata: sin meta vigente no hay
             período que recortar y el número es el acumulado histórico. */}
-        <MiniStat
+        <KpiCard
           icon="bar-chart"
           label={r && !r.comision_es_acumulada ? "Comisión del período" : "Comisión acumulada"}
           value={formatMonto(r?.comision_total ?? 0)}
           accent="warning"
-          sub={r && r.comision_recupero > 0 ? `${formatMonto(r.comision_recupero)} de recupero` : undefined}
+          mono
+          sub={r && r.comision_recupero > 0 ? `${formatMonto(r.comision_recupero)} de recupero` : r && !r.comision_es_acumulada ? "a liquidar" : "sin meta vigente"}
         />
-        <MiniStat icon="bullseye" label="Avance meta" value={`${r?.avance_meta ?? 0}%`} accent="primary" />
+        {(() => {
+          // Hay meta EN CURSO solo si tiene período vigente y monto: si no, un 0% sugeriría un
+          // objetivo que no existe (mismo criterio que el Home y la lista de Equipo).
+          const vigente = !!r && !r.comision_es_acumulada && (vendedor.meta_venta ?? 0) > 0;
+          return (
+            <KpiCard
+              icon="bullseye"
+              label="Avance de meta"
+              value={vigente ? `${r!.avance_meta}%` : "—"}
+              accent={vigente && r!.avance_meta >= 100 ? "success" : "primary"}
+              sub={vigente ? `${formatMonto(r!.monto_meta)} de ${formatMonto(vendedor.meta_venta)}` : "sin meta vigente"}
+              barra={vigente ? { pct: Math.min(100, r!.avance_meta) } : undefined}
+            />
+          );
+        })()}
       </div>
 
-      {/* ── Navegación de pestañas ── */}
-      <div className="flex gap-1 bg-muted/20 px-5 py-2 border-b border-border overflow-x-auto">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const activo = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                activo ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" /> {t.label}
-            </button>
-          );
-        })}
+      {/* ── Navegación de pestañas ──
+          Antes eran texto gris chico sobre gris: "imperceptibles" (Fernando, 01/10/2026). Ahora
+          es el pozo de pestañas de Créditos; en el celular se desliza con su pista. */}
+      <div className="border-b border-border px-5 py-3">
+        <Deslizable className="overflow-x-auto" fondo="from-card">
+          <div className="inline-flex items-center gap-1 rounded-xl bg-muted/40 p-1 shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.20)]">
+            {TABS.map((t) => {
+              const activo = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  aria-pressed={activo}
+                  className={`group flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200 ${
+                    activo
+                      ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.28),0_6px_14px_-8px_rgba(0,0,0,0.6)] ring-1 ring-inset ring-primary/30"
+                      : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
+                  }`}
+                >
+                  <Emoji
+                    name={t.emoji}
+                    className={`h-4 w-4 transition-all duration-200 ${activo ? "" : "opacity-60 group-hover:scale-110 group-hover:opacity-100"}`}
+                  />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </Deslizable>
       </div>
 
       {/* ── Contenido de la pestaña ── */}
@@ -198,21 +225,6 @@ export function VendedorDetail({ vendedorId, onChanged, onEliminar }: VendedorDe
   );
 }
 
-/* ── Mini-stat de cabecera ── */
-function MiniStat({ icon, label, value, accent, sub }: { icon: typeof Layers | string; label: string; value: string; accent?: "success" | "warning" | "primary"; sub?: string }) {
-  const isEmoji = typeof icon === "string";
-  const Icon = isEmoji ? null : icon;
-  const color = accent === "success" ? "text-success" : accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "text-foreground";
-  return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-        {isEmoji ? <Emoji name={icon} className="h-3.5 w-3.5" /> : Icon && <Icon className="h-3 w-3" />} {label}
-      </div>
-      <p className={`mt-1 font-mono font-bold text-lg ${color}`}>{value}</p>
-      {sub && <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">{sub}</p>}
-    </div>
-  );
-}
 
 /* ── Pestaña Rendimiento (solo lectura) ── */
 function mesLabel(mes: string) {
@@ -266,8 +278,8 @@ function RendimientoTab({ vendedor }: { vendedor: VendedorDetalle }) {
                   <tr key={m.mes} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
                     <td className="px-4 py-2.5 text-foreground capitalize border-b border-border/60">{mesLabel(m.mes)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground border-b border-border/60">{m.cantidad}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-foreground border-b border-border/60">${n0(m.monto)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono font-semibold text-warning border-b border-border/60 pr-5">${n0(m.comision)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-foreground border-b border-border/60">{formatMonto(m.monto)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono font-semibold text-warning border-b border-border/60 pr-5">{formatMonto(m.comision)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -298,7 +310,7 @@ function RendimientoTab({ vendedor }: { vendedor: VendedorDetalle }) {
                 <tr key={c.id} className={idx % 2 === 1 ? "bg-muted/5" : ""}>
                   <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground border-b border-border/60">{formatCreditoNumero(c.numero)}</td>
                   <td className="px-4 py-2.5 text-foreground border-b border-border/60">{nombreCompleto(c.cliente)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-foreground border-b border-border/60">${n0(c.monto_original)}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-foreground border-b border-border/60">{formatMonto(c.monto_original)}</td>
                   <td className="px-4 py-2.5 border-b border-border/60">{(() => { const b = estadoBadgeCredito(c.estado); return <StatusBadge label={b.label} variant={b.variant} />; })()}</td>
                   <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums border-b border-border/60 pr-5">{formatFecha(c.created_at)}</td>
                 </tr>
@@ -483,7 +495,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
         <div>
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Comisión estimada (créditos actuales)</p>
           <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-            Sobre ${n0(montoVendido)} vendido{metaCumplida ? " · meta cumplida (incluye bonus)" : ""}
+            Sobre {formatMonto(montoVendido)} vendido{metaCumplida ? " · meta cumplida (incluye bonus)" : ""}
           </p>
         </div>
         <p className="text-2xl font-bold font-mono text-primary">{formatMonto(comisionPreview)}</p>
@@ -502,7 +514,7 @@ function ComisionesTab({ vendedor, guardar }: { vendedor: VendedorDetalle; guard
 
 /** Barra de avance de una dimensión de la meta. */
 function MetaBarra({ label, actual, meta, avance, money }: { label: string; actual: number; meta: number; avance: number; money?: boolean }) {
-  const fmt = (v: number) => (money ? `$${n0(v)}` : String(v));
+  const fmt = (v: number) => (money ? formatMonto(v) : String(v));
   const pct = Math.min(100, avance);
   const color = avance >= 100 ? "bg-success" : avance >= 60 ? "bg-warning" : "bg-primary";
   return (
@@ -942,9 +954,9 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
           <>
             {/* Saldos */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <MiniStat icon="balance-scale" label="Saldo de su caja" value={`$${n0(caja.saldo_total)}`} accent={caja.saldo_total >= 0 ? "success" : undefined} />
+              <KpiCard icon="balance-scale" label="Saldo de su caja" value={formatMonto(caja.saldo_total)} accent={caja.saldo_total >= 0 ? "success" : "destructive"} mono />
               {(["efectivo", "banco", "dolares"] as CuentaCaja[]).map((c) => (
-                <MiniStat key={c} icon="money-bag" label={CAJA_CUENTA_LABEL[c]} value={`$${n0(caja.saldos_por_cuenta[c] ?? 0)}`} />
+                <KpiCard key={c} icon="money-bag" label={CAJA_CUENTA_LABEL[c]} value={formatMonto(caja.saldos_por_cuenta[c] ?? 0)} mono />
               ))}
             </div>
 
@@ -978,7 +990,7 @@ function CajaOperacionTab({ vendedor, guardar }: { vendedor: VendedorDetalle; gu
                           <td className="px-4 py-2.5 text-muted-foreground border-b border-border/60">{m.origen ?? "—"}</td>
                           <td className="px-4 py-2.5 text-foreground border-b border-border/60">{m.destino ?? "—"}</td>
                           <td className={`px-4 py-2.5 pr-5 text-right font-mono font-semibold border-b border-border/60 ${ingreso ? "text-success" : "text-destructive"}`}>
-                            {ingreso ? "+" : "−"}${n0(Math.abs(m.monto))}
+                            {ingreso ? "+" : "−"}{formatMonto(Math.abs(m.monto))}
                           </td>
                         </tr>
                       );
