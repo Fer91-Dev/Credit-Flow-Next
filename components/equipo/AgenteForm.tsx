@@ -17,7 +17,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, PasswordFields } from "@/components/ui/field";
 import { UsernameField } from "@/components/ui/UsernameField";
-import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT } from "@/components/ui/form-kit";
+import { ModalHeader, MoneyInput, FormActions, MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
 import { parseMontoInput, numeroAInput, soloDigitos, esEmailValido, esUsernameValido, normalizarUsername } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
@@ -186,7 +186,16 @@ export function PersonalForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className={MODAL_CONTENT}>
+      {/*
+        En el ALTA (Fernando, 01/10/2026): más ancho y en dos columnas —datos a la izquierda,
+        cuenta de acceso a la derecha— para que todo se vea sin scrollear. Y se cierra solo
+        a propósito: ni clic afuera ni Escape (se perdía la contraseña recién tipeada).
+      */}
+      <DialogContent
+        className={editing ? MODAL_CONTENT : "w-[95vw] sm:max-w-5xl sm:p-7 max-h-[92dvh] overflow-y-auto overscroll-contain"}
+        {...SIN_CIERRE_ACCIDENTAL}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <ModalHeader
           icon={soloCuenta ? "locked-with-key" : "office-worker"}
           title={editing ? "Editar agente" : soloCuenta ? "Nuevo administrador" : "Nuevo agente"}
@@ -200,6 +209,8 @@ export function PersonalForm({
           {error && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>
           )}
+          <div className={editing ? "space-y-4" : "grid grid-cols-1 gap-6 lg:grid-cols-2"}>
+          <div className="space-y-4">
           {/* Nombre y apellido SEPARADOS, igual que en Clientes y en Mi perfil. En un
               solo input, el agente despues veia todo junto en el campo "Nombre" de su
               perfil, con "Apellido" vacio. */}
@@ -231,11 +242,11 @@ export function PersonalForm({
                 <Field label="Comisión (%)" hint="sobre el monto otorgado">
                   <Input type="number" min="0" max="100" step="any" value={comision} onChange={(e) => setComision(e.target.value)} className="font-mono tabular-nums" />
                 </Field>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Meta de venta" hint="vacío = sin meta">
                   <MoneyInput value={meta} onChange={setMeta} />
                 </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Estado">
                   <Select value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
                     <option value="activo">Activo</option>
@@ -245,6 +256,7 @@ export function PersonalForm({
               </div>
             </>
           )}
+          </div>
           {/* Cuenta de acceso — OBLIGATORIA en alta (el agente necesita loguearse para trabajar) */}
           {!editing && (
             <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
@@ -275,8 +287,10 @@ export function PersonalForm({
               </div>
             </div>
           )}
+          </div>
 
           <FormActions
+            compacto={!editing}
             onCancel={() => onClose(false)}
             loading={loading}
             disabled={!nombre.trim() || (!editing && (!email.trim() || !cuentaUsernameOk || cuentaPassword.length < 8 || cuentaPassword !== cuentaPasswordConfirm))}
