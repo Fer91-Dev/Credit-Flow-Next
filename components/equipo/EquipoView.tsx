@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2, X, History } from "lucide-react";
+import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2, X, History, Smartphone } from "lucide-react";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -121,6 +121,28 @@ export function EquipoView() {
     }
     refrescar();
     toast.success(u.activo ? `Acceso de ${m.nombre} desactivado` : `Acceso de ${m.nombre} reactivado`);
+  };
+
+  /**
+   * Restablecer la verificación en dos pasos de alguien que perdió o cambió el celular
+   * (Fernando, 01/10/2026). Le cierra todas las sesiones; vuelve a entrar con su contraseña y
+   * la activa de nuevo desde su Perfil si quiere.
+   */
+  const restablecerMfa = async (m: MiembroEquipo) => {
+    const u = usuarioDe(m);
+    if (!u) return;
+    const ok = await confirm({
+      title: "¿Restablecer la verificación en dos pasos?",
+      description: `${m.nombre} va a poder entrar solo con su contraseña y se le cierran las sesiones abiertas. Hacelo si perdió o cambió el celular; después la puede volver a activar desde su Perfil.`,
+      confirmLabel: "Restablecer",
+      tone: "danger",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/usuarios/${u.id}/mfa`, { method: "DELETE" });
+    const j = await res.json().catch(() => null);
+    if (!res.ok) { toast.error(j?.error || "No se pudo restablecer la verificación"); return; }
+    refrescar();
+    toast.success(`Verificación en dos pasos de ${m.nombre} restablecida`);
   };
 
   /**
@@ -266,6 +288,12 @@ export function EquipoView() {
             <IconBtn title="Cambiar contraseña" onClick={() => setPasswordDe(u)}>
               <KeyRound className="h-3.5 w-3.5" />
             </IconBtn>
+            {/* Solo si la tiene activada: un botón que siempre responde "no tiene" no sirve. */}
+            {u.mfa_activo && (
+              <IconBtn title="Restablecer verificación en dos pasos (perdió o cambió el celular)" onClick={() => restablecerMfa(m)} danger>
+                <Smartphone className="h-3.5 w-3.5" />
+              </IconBtn>
+            )}
             <IconBtn
               title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
               onClick={() => toggleAcceso(m)}

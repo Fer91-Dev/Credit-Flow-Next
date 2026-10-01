@@ -37,6 +37,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     orderBy: { created_at: "asc" },
   });
 
+  /*
+    Quién tiene la verificación en dos pasos ACTIVADA (factor verificado), para ofrecer
+    "Restablecer" solo ahí. Sale de `auth.mfa_factors` en UNA consulta para toda la lista:
+    preguntarle a la API de Supabase usuario por usuario serían N viajes. `profiles.id` es el
+    mismo id de `auth.users`.
+  */
+  const ids = profiles.map((p) => p.id);
+  const conMfa = new Set(
+    ids.length === 0
+      ? []
+      : (await prisma.$queryRaw<{ user_id: string }[]>`
+          SELECT DISTINCT user_id::text AS user_id FROM auth.mfa_factors
+          WHERE status = 'verified' AND user_id = ANY(${ids}::uuid[])
+        `).map((r) => r.user_id),
+  );
+
   const usuarios = profiles.map((p) => ({
     id: p.id,
     email: p.email,
@@ -47,6 +63,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     vendedor_id: p.vendedor_id,
     vendedor_nombre: p.vendedor?.nombre ?? null,
     created_at: p.created_at,
+    mfa_activo: conMfa.has(p.id),
   }));
 
   return successResponse({ usuarios });

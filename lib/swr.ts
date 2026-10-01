@@ -483,6 +483,8 @@ export interface Usuario {
   vendedor_id: string | null;
   vendedor_nombre: string | null;
   created_at: string;
+  /** Tiene la verificación en dos pasos activada (para ofrecer "Restablecer"). */
+  mfa_activo?: boolean;
 }
 
 /**

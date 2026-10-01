@@ -57,9 +57,19 @@ export type Aal = "aal1" | "aal2";
 async function cargarContexto(
   userId: string,
   avatarUrl: string | null = null,
-  mfa: { aal: Aal; mfaEnrolado: boolean } = { aal: "aal1", mfaEnrolado: false }
+  mfa: { aal: Aal; mfaEnrolado: boolean } = { aal: "aal1", mfaEnrolado: false },
+  sessionId: string | null = null,
 ): Promise<AuthContext> {
-  const profile = await prisma.profiles.findUnique({
+  /*
+    🔴 ¿LA SESIÓN SIGUE VIVA? (01/10/2026). `getClaims()` valida el token localmente y no se
+    entera de que Supabase CERRÓ la sesión (restablecer el 2FA de alguien, un "cerrar sesión en
+    todos lados"): el token viejo seguía sirviendo hasta vencer, hasta una hora. Medido: después
+    de restablecerle el 2FA a un vendedor, su sesión anterior seguía respondiendo 200. Se busca
+    la sesión por su id (clave primaria de `auth.sessions`) EN PARALELO con el perfil, así que
+    no suma un viaje más a la base.
+  */
+  const [profile, sesionViva] = await Promise.all([
+    prisma.profiles.findUnique({
     where: { id: userId },
     select: {
       tenant_id: true, role: true, activo: true, vendedor_id: true, full_name: true, email: true, es_owner: true,
@@ -70,7 +80,15 @@ async function cargarContexto(
         },
       },
     },
-  });
+    }),
+    sessionId
+      ? prisma.$queryRaw<{ ok: number }[]>`SELECT 1 AS ok FROM auth.sessions WHERE id = ${sessionId}::uuid`.then((r) => r.length > 0)
+      : Promise.resolve(true),
+  ]);
+
+  if (!sesionViva) {
+    throw new ApiError("Tu sesión se cerró. Volvé a ingresar.", "SESION_CERRADA", 401);
+  }
 
   // Deny-by-default: sin profile / inactivo / sin tenant o rol → 403. Además, si la
   // financiera (tenant) está suspendida, ningún usuario suyo puede acceder.
@@ -172,7 +190,7 @@ async function requireAuthSinFactor(): Promise<AuthContext> {
     aal: nivel?.currentLevel === "aal2" ? "aal2" : "aal1",
     // nextLevel llega en "aal2" únicamente si hay un factor TOTP VERIFICADO.
     mfaEnrolado: nivel?.nextLevel === "aal2",
-  });
+  }, typeof claims.session_id === "string" ? claims.session_id : null);
 }
 
 /**
