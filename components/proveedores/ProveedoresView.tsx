@@ -10,7 +10,7 @@ import {
   useProveedores, useProveedor, KEYS,
   type Proveedor, type MovimientoProveedor,
 } from "@/lib/swr";
-import { formatFecha, parseMontoInput, eventoPropio, teclaDelContenedor, pctDe } from "@/lib/utils";
+import { formatFecha, parseMontoInput, eventoPropio, teclaDelContenedor, pctDe, formatMonto } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -20,12 +20,14 @@ import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/field";
-import { ModalHeader, MoneyInput, IconInput, IconSelect, IconTextarea, FormActions, Segmented, FieldLabel, MODAL_CONTENT } from "@/components/ui/form-kit";
+import { ModalHeader, MoneyInput, IconInput, IconSelect, IconTextarea, FormActions, Segmented, FieldLabel, MODAL_CONTENT, SIN_CIERRE_ACCIDENTAL } from "@/components/ui/form-kit";
+import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 
-function n0(x: number) {
-  return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(x);
+/** El signo va ANTES del peso ("-$80.000,00"), igual que en la lista de movimientos. */
+function montoConSigno(x: number) {
+  return x < 0 ? `-${formatMonto(-x)}` : formatMonto(x);
 }
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -105,15 +107,9 @@ export function ProveedoresView() {
   const hayFiltros = !!(q || recientes);
   const limpiarTodo = () => { setQ(""); setRecientes(null); };
 
-  // `h-14` para quedar a la misma altura que el buscador con el que comparte renglón.
-  const cta = (
-    <button
-      onClick={openNew}
-      className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-    >
-      <Plus className="h-5 w-5" /> Nuevo proveedor
-    </button>
-  );
+  // Circular y pegado al buscador, como en Créditos y Equipo (Fernando, 01/10/2026). Mismo
+  // emoji que el modal que abre.
+  const cta = <AccionPrimaria circular emoji="delivery-truck" onClick={openNew}>Nuevo proveedor</AccionPrimaria>;
 
   return (
     <div className="space-y-6">
@@ -131,7 +127,8 @@ export function ProveedoresView() {
           onChange={setQ}
           placeholder="Buscar por nombre, CUIT, email o rubro…"
           onF3={limpiarTodo}
-          className="w-full sm:w-[32rem]"
+          // En el celular se achica para que el botón circular entre a su lado.
+          className="min-w-0 flex-1 sm:w-[32rem] sm:flex-none"
           accionDerecha={
             <FiltrosPanel embebido
               label="Filtrar"
@@ -162,7 +159,7 @@ export function ProveedoresView() {
             </FiltrosPanel>
           }
         />
-        <div className="ml-auto">{cta}</div>
+        {cta}
       </div>
 
       {isLoading ? (
@@ -176,7 +173,7 @@ export function ProveedoresView() {
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard icon="office-building" label="Proveedores" value={String(totales.total)} sub={`${totales.activos} activos`} accent="primary" />
-            <KpiCard icon="money-bag" label="Deuda total" value={`$${n0(deudaTotal)}`} accent={deudaTotal > 0 ? "warning" : "success"} mono sub="saldo a pagar" />
+            <KpiCard icon="money-bag" label="Deuda total" value={montoConSigno(deudaTotal)} accent={deudaTotal > 0 ? "warning" : "success"} mono sub="saldo a pagar" />
             <KpiCard
               icon="outbox-tray" label="Con saldo pendiente" value={String(totales.conDeuda)} accent={totales.conDeuda > 0 ? "warning" : "muted"}
               sub={totales.conDeuda > 0 ? `de ${totales.total} proveedor${totales.total === 1 ? "" : "es"}` : undefined}
@@ -248,7 +245,7 @@ export function ProveedoresView() {
                 header: "Saldo", mono: true,
                 cell: (p) => {
                   const saldo = p.saldo ?? 0;
-                  return <span className={`font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(saldo)}</span>;
+                  return <span className={`font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>{montoConSigno(saldo)}</span>;
                 },
               },
               {
@@ -274,7 +271,7 @@ export function ProveedoresView() {
                       <p className="font-medium text-foreground truncate">{p.nombre}</p>
                       {p.rubro && <p className="text-[11px] text-muted-foreground">{p.rubro}</p>}
                     </div>
-                    <span className={`font-mono font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(saldo)}</span>
+                    <span className={`font-mono font-bold ${saldo > 0 ? "text-warning" : saldo < 0 ? "text-success" : "text-muted-foreground"}`}>{montoConSigno(saldo)}</span>
                   </div>
                   <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => openEdit(p)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-border text-xs text-muted-foreground"><Pencil className="h-3.5 w-3.5" /> Editar</button>
@@ -328,15 +325,15 @@ function FichaDialog({ id, onClose, onChanged }: { id: string | null; onClose: (
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-card border border-border p-3 text-center">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center justify-center gap-1"><ArrowUpRight className="h-3 w-3" /> Cargos</p>
-                  <p className="text-base font-bold font-mono text-foreground mt-1">${n0(proveedor.totales.cargos)}</p>
+                  <p className="text-base font-bold font-mono text-foreground mt-1">{formatMonto(proveedor.totales.cargos)}</p>
                 </div>
                 <div className="rounded-xl bg-card border border-border p-3 text-center">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center justify-center gap-1"><ArrowDownLeft className="h-3 w-3" /> Pagos</p>
-                  <p className="text-base font-bold font-mono text-success mt-1">${n0(proveedor.totales.pagos)}</p>
+                  <p className="text-base font-bold font-mono text-success mt-1">{formatMonto(proveedor.totales.pagos)}</p>
                 </div>
                 <div className="rounded-xl bg-card border border-border p-3 text-center">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Saldo</p>
-                  <p className={`text-base font-bold font-mono mt-1 ${proveedor.totales.saldo > 0 ? "text-warning" : proveedor.totales.saldo < 0 ? "text-success" : "text-muted-foreground"}`}>${n0(proveedor.totales.saldo)}</p>
+                  <p className={`text-base font-bold font-mono mt-1 ${proveedor.totales.saldo > 0 ? "text-warning" : proveedor.totales.saldo < 0 ? "text-success" : "text-muted-foreground"}`}>{montoConSigno(proveedor.totales.saldo)}</p>
                 </div>
               </div>
 
@@ -441,7 +438,8 @@ function MovimientoDialog({ open, proveedorId, onClose }: { open: boolean; prove
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(false); } }}>
-      <DialogContent className={MODAL_CONTENT}>
+      {/* Formulario con importes: no se cierra con clic afuera ni Escape (la X y Cancelar sí). */}
+      <DialogContent className={MODAL_CONTENT} {...SIN_CIERRE_ACCIDENTAL} onEscapeKeyDown={(e) => e.preventDefault()}>
         <ModalHeader
           icon="money-bag"
           title="Nuevo movimiento"
@@ -599,7 +597,13 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(false); }}>
-      <DialogContent className="w-[95vw] sm:max-w-lg sm:p-7 max-h-[90dvh] flex flex-col overflow-hidden">
+      {/* Más ancho y en dos columnas para verse entero sin scroll; se cierra solo con la X o
+          Cancelar (Fernando, 01/10/2026: lo mismo que el alta de integrante de Equipo). */}
+      <DialogContent
+        className="w-[95vw] sm:max-w-4xl sm:p-7 max-h-[92dvh] overflow-y-auto overscroll-contain"
+        {...SIN_CIERRE_ACCIDENTAL}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <div className="shrink-0">
           <ModalHeader
             icon="delivery-truck"
@@ -607,9 +611,13 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
             subtitle={editing ? "Actualizá los datos del proveedor." : "Registrá un proveedor para su cuenta corriente."}
           />
         </div>
-        <form onSubmit={submit} className="space-y-4 overflow-y-auto pt-1" noValidate>
+        {/* Sin scroll propio: con un `overflow` acá adentro, la barra de botones (que se estira
+            de borde a borde con márgenes negativos) generaba barras de scroll y se cortaba. */}
+        <form onSubmit={submit} className="space-y-4 pt-1" noValidate>
           {error && <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">{error}</div>}
 
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="space-y-4">
           {/* Identidad */}
           <Field label="Nombre / Razón social" required error={errs.nombre}>
             <IconInput icon="office-building" value={nombre} onChange={(e) => { setNombre(e.target.value); clearErr("nombre"); }} placeholder="Nombre del proveedor" />
@@ -632,11 +640,13 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
               <IconInput icon="mobile-phone" inputMode="tel" value={telefono} onChange={(e) => { setTelefono(maskTel(e.target.value)); clearErr("telefono"); }} placeholder="1145678900" />
             </Field>
           </div>
+          </div>
+          <div className="space-y-4">
           <Field label="Dirección">
             <IconInput icon="round-pushpin" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle, número, localidad" />
           </Field>
           <Field label="Notas">
-            <IconTextarea icon="receipt" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Observaciones…" />
+            <IconTextarea icon="receipt" value={notas} onChange={(e) => setNotas(e.target.value)} rows={3} placeholder="Observaciones…" />
           </Field>
           <Field label="Estado">
             <IconSelect icon="check-mark-button" value={activo ? "activo" : "inactivo"} onChange={(e) => setActivo(e.target.value === "activo")}>
@@ -644,8 +654,11 @@ function ProveedorForm({ open, proveedor, onClose }: { open: boolean; proveedor:
               <option value="inactivo">Inactivo</option>
             </IconSelect>
           </Field>
+          </div>
+          </div>
 
           <FormActions
+            compacto
             onCancel={() => onClose(false)}
             loading={loading}
             disabled={!nombre.trim()}
