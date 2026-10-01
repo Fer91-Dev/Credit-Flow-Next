@@ -759,6 +759,9 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
           vendido: vigente ? v.resumen?.monto_meta ?? 0 : 0,
           meta: vigente ? v.meta_venta : 0,
           avance: vigente ? v.resumen?.avance_meta ?? 0 : 0,
+          // Sin meta vigente la comisión se liquida sobre el acumulado (regla de Fernando,
+          // 31/07): es lo que se le debe, así que se muestra.
+          comision: v.resumen?.comision_total ?? 0,
         };
       })
       .sort((a, b) => b.avance - a.avance || b.vendido - a.vendido);
@@ -799,7 +802,9 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   <span className={`text-xs font-mono font-semibold w-10 text-right ${cumplido ? "text-success" : "text-foreground"}`}>{v.avance}%</span>
                 </div>
               ) : (
-                <p className="text-[11px] text-muted-foreground">Sin meta vigente</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Sin meta vigente · comisión <span className="font-mono tabular-nums text-foreground/80">{formatMonto(v.comision)}</span>
+                </p>
               )}
             </div>
           );
