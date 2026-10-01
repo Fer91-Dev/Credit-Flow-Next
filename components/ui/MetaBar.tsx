@@ -23,13 +23,19 @@ export function MetaBar({ meta, avance, periodo }: { meta: number; avance: numbe
   if (!meta || meta <= 0) {
     return <span className="text-[11px] text-muted-foreground/50">Sin meta</span>;
   }
+  // `periodo === null`: tiene un monto de meta cargado pero ninguna meta VIGENTE. Mostrar
+  // "Meta $X · 0%" lo hacía parecer un objetivo en curso que no existe (30/09/2026).
+  if (periodo === null) {
+    return <span className="text-[11px] text-muted-foreground/50">Sin meta vigente</span>;
+  }
   // La barra se corta en 100% (no se desborda), pero el número sí muestra el exceso.
   const pct = Math.min(100, avance);
   const color = avance >= 100 ? "bg-success" : avance >= 60 ? "bg-warning" : "bg-primary";
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="truncate text-muted-foreground">
+        {/* Sin `truncate`: en la tarjeta del celular cortaba el importe ("Meta $600.0…"). */}
+        <span className="min-w-0 text-muted-foreground">
           {periodo && <span className="font-mono text-muted-foreground/70">{periodo} · </span>}
           Meta ${formatNumero(meta, 0)}
         </span>
