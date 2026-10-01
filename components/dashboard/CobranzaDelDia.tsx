@@ -70,13 +70,13 @@ export function CobranzaDelDia() {
         <>
           {/* Chips de resumen por bucket */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {totales.acuerdo_vencido > 0 && <ResumenChip icon={CalendarX} label="Acuerdos vencidos" n={totales.acuerdo_vencido} accent="destructive" />}
-            <ResumenChip icon={HandshakeIcon} label="Promesas" n={totales.promesa} accent="warning" />
-            {totales.acuerdo_roto > 0 && <ResumenChip icon={ShieldAlert} label="Acuerdos rotos" n={totales.acuerdo_roto} accent="warning" />}
-            <ResumenChip icon={CalendarClock} label="Agendados" n={totales.agendado} accent="primary" />
+            {totales.acuerdo_vencido > 0 && <ResumenChip icon={CalendarX} grupo="acuerdo_vencido" label="Acuerdos vencidos" n={totales.acuerdo_vencido} accent="destructive" />}
+            <ResumenChip icon={HandshakeIcon} grupo="promesa" label="Promesas" n={totales.promesa} accent="warning" />
+            {totales.acuerdo_roto > 0 && <ResumenChip icon={ShieldAlert} grupo="acuerdo_roto" label="Acuerdos rotos" n={totales.acuerdo_roto} accent="warning" />}
+            <ResumenChip icon={CalendarClock} grupo="agendado" label="Agendados" n={totales.agendado} accent="primary" />
             {/* Estaba en la lista y no en los chips: "10 clientes" con chips que sumaban 9. */}
-            {totales.cuota_nueva > 0 && <ResumenChip icon={BellRing} label="Venció otra cuota" n={totales.cuota_nueva} accent="warning" />}
-            <ResumenChip icon={Snowflake} label="Sin gestión" n={totales.enfriado} accent="muted" />
+            {totales.cuota_nueva > 0 && <ResumenChip icon={BellRing} grupo="cuota_nueva" label="Venció otra cuota" n={totales.cuota_nueva} accent="warning" />}
+            <ResumenChip icon={Snowflake} grupo="enfriado" label="Sin gestión" n={totales.enfriado} accent="muted" />
           </div>
 
           {/* Top de la cola */}
@@ -121,13 +121,19 @@ export function CobranzaDelDia() {
   );
 }
 
+/**
+ * Cada chip es un FILTRO (Fernando, 01/10/2026: "no sé si son botones o estados"): lleva a la
+ * agenda de Cobranzas con ese grupo ya elegido (`?grupo=`). En 0 no hay nada que mostrar, así
+ * que queda como etiqueta y no se toca.
+ */
 function ResumenChip({
-  icon: Icon, label, n, accent,
+  icon: Icon, label, n, accent, grupo,
 }: {
   icon: typeof HandshakeIcon;
   label: string;
   n: number;
   accent: "destructive" | "warning" | "primary" | "muted";
+  grupo: AgendaItem["bucket"];
 }) {
   const cls = n > 0
     ? {
@@ -137,11 +143,23 @@ function ResumenChip({
         muted:   "text-muted-foreground bg-muted/40 border-border",
       }[accent]
     : "text-muted-foreground/40 bg-muted/10 border-border";
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${cls}`}>
+  const contenido = (
+    <>
       <Icon className="h-3 w-3" />
       <span className="font-mono font-bold">{n}</span>
       {label}
-    </span>
+    </>
+  );
+  if (n === 0) {
+    return <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${cls}`}>{contenido}</span>;
+  }
+  return (
+    <Link
+      href={`/cobranza?tab=hoy&grupo=${grupo}`}
+      title={`Ver ${label.toLowerCase()} en la agenda`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all duration-150 hover:-translate-y-px hover:shadow-sm hover:brightness-125 ${cls}`}
+    >
+      {contenido}
+    </Link>
   );
 }

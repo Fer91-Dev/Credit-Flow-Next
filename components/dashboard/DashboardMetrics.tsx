@@ -166,14 +166,14 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
   const hubo = hoy.cobros > 0;
   const R = 42, C = 2 * Math.PI * R;
   return (
-    <div className="animate-entrada relative overflow-hidden rounded-[1.75rem] px-5 py-6 sm:px-8 sm:py-7
+    <div className="animate-entrada relative overflow-hidden rounded-[1.75rem] px-4 py-4 sm:px-8 sm:py-7
       bg-gradient-to-br from-primary/[0.14] via-card to-success/[0.08]
       shadow-[0_18px_45px_-25px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-border/40" style={{ animationDelay: "35ms" }}>
       <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-success/10 blur-3xl" />
 
       {/* Arriba: el pulso del día a la izquierda, los filtros a la derecha. */}
-      <div className="relative flex flex-wrap items-center gap-3">
+      <div className="relative flex flex-wrap items-center gap-2 sm:gap-3">
         <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1 ring-inset ${
           hubo ? "bg-success/10 text-success ring-success/25" : "bg-background/40 text-muted-foreground ring-border/60"
         }`}>
@@ -190,22 +190,24 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
           </span>
         </span>
         {actualizado && (
-          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+          <span className="hidden text-[11px] tabular-nums text-muted-foreground/70 sm:inline">
             actualizado {actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
         {acciones && <div className="ml-auto">{acciones}</div>}
       </div>
 
-      <div className="relative mt-6 grid items-center gap-6 sm:grid-cols-[1fr_1fr_auto] sm:gap-10">
+      {/* En el celular, Prestado y Deuda van lado a lado y la dona abajo (Fernando, 01/10/2026:
+          "se ve muy grande y medio desordenado"). Desde sm, las tres en una fila. */}
+      <div className="relative mt-4 grid grid-cols-2 items-center gap-x-4 gap-y-4 sm:mt-6 sm:grid-cols-[1fr_1fr_auto] sm:gap-10">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground sm:gap-2 sm:text-[11px]">
             <span className="h-2 w-2 rounded-full bg-success" /> Prestado
           </p>
-          <p className="mt-2 font-mono text-3xl font-bold tracking-tight tabular-nums text-foreground sm:text-4xl">
+          <p className="mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums text-foreground sm:mt-2 sm:text-4xl">
             <NumeroAnimado valor={prestado} decimales={2} prefijo="$" />
           </p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground sm:mt-1.5 sm:text-xs">
             <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCreditos, "crédito", "créditos")}</span>
             <span className="px-1 text-muted-foreground/70">·</span>
             <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nClientes, "cliente", "clientes")}</span>
@@ -213,21 +215,21 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
         </div>
 
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground sm:gap-2 sm:text-[11px]">
             <span className="h-2 w-2 rounded-full bg-destructive" /> Deuda total
           </p>
-          <p className="mt-2 font-mono text-3xl font-bold tracking-tight tabular-nums text-foreground sm:text-4xl">
+          <p className="mt-1.5 font-mono text-lg font-bold tracking-tight tabular-nums text-foreground sm:mt-2 sm:text-4xl">
             <NumeroAnimado valor={deuda} decimales={2} prefijo="$" />
           </p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground sm:mt-1.5 sm:text-xs">
             <span className="font-mono font-semibold tabular-nums text-foreground">{plural(nCuotas, "cuota", "cuotas")}</span>
             {" por cobrar"}
           </p>
         </div>
 
         {/* La deuda, partida: cuánto es capital (vuelve) y cuánto interés y cargos (se gana). */}
-        <div className="flex items-center gap-4">
-          <div className="relative h-24 w-24 shrink-0">
+        <div className="col-span-2 flex items-center gap-4 border-t border-border/40 pt-4 sm:col-span-1 sm:border-0 sm:pt-0">
+          <div className="relative h-16 w-16 shrink-0 sm:h-24 sm:w-24">
             <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
               <circle cx="50" cy="50" r={R} fill="none" strokeWidth="10" className="stroke-destructive/85" />
               <circle cx="50" cy="50" r={R} fill="none" strokeWidth="10" strokeLinecap="round"
@@ -235,11 +237,11 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
                 strokeDasharray={`${(anchoCapital / 100) * C} ${C}`} />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-mono text-lg font-bold tabular-nums text-foreground">{pctCapital}%</span>
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">capital</span>
+              <span className="font-mono text-sm font-bold tabular-nums text-foreground sm:text-lg">{pctCapital}%</span>
+              <span className="text-[8px] uppercase tracking-wider text-muted-foreground sm:text-[9px]">capital</span>
             </div>
           </div>
-          <div className="space-y-2 text-[11px] text-muted-foreground">
+          <div className="grid flex-1 grid-cols-2 gap-3 text-[11px] text-muted-foreground sm:flex-none sm:grid-cols-1 sm:gap-2">
             <p>
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /> Capital</span>
               <span className="font-mono font-semibold tabular-nums text-foreground">{formatMonto(prestado)}</span>

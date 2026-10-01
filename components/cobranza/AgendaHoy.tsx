@@ -2,7 +2,7 @@
 
 import { severidadMora } from "@/lib/domain";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   HandshakeIcon, CalendarClock, Siren, MessageSquarePlus,
   Phone, CheckCheck, AlertCircle, UserCheck, Printer, Download, MessageSquareText, CalendarX, ShieldAlert, BellRing,
@@ -102,6 +102,12 @@ export function AgendaHoy({
    * a apretarlo muestra todo de nuevo.
    */
   const [filtro, setFiltro] = useState<AgendaItem["bucket"] | null>(null);
+  // El grupo puede venir elegido desde los chips del Home (`/cobranza?tab=hoy&grupo=promesa`).
+  // Se lee del `location` (como el `?tab=` de CobranzaTable) para no pedir un Suspense.
+  useEffect(() => {
+    const g = new URLSearchParams(window.location.search).get("grupo");
+    if (g && BUCKETS.some((b) => b.key === g)) setFiltro(g as AgendaItem["bucket"]);
+  }, []);
   /** Mirando lo HECHO hoy en vez de lo que falta (el KPI "Contactados hoy"). */
   const [verContactados, setVerContactados] = useState(false);
   const { contactados } = useContactadosHoy();

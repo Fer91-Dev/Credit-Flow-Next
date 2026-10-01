@@ -288,7 +288,7 @@ export function ClienteDetail({
           {/* Avatar TailGrids (cuadrado, con dot de estado) */}
           <Avatar name={nombreCompleto(cliente)} seed={cliente.id} size="lg" square status={cliente.estado === "activo" ? "online" : "offline"} />
 
-          <div className="min-w-0 flex-1">
+          <div className="w-full min-w-0 flex-1 sm:w-auto">
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0">
                 <h2 className="truncate text-2xl font-bold leading-tight tracking-tight text-foreground">{nombreCompleto(cliente)}</h2>
@@ -356,7 +356,10 @@ export function ClienteDetail({
               </div>
 
               {(onEditar || onEliminar || showCreditos) && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                /* En el celular: UNA fila, botones del mismo ancho con el ícono arriba y el texto
+                   chico abajo (Fernando, 01/10/2026: "no quiero que ningún botón quede apilado").
+                   Con cinco botones, ícono + texto al costado no entra en 360 px. */
+                <div className="flex w-full shrink-0 items-stretch gap-1.5 sm:w-auto sm:flex-wrap sm:items-center sm:gap-2">
                   {/* Contactar va PRIMERO y en color: es la acción que se usa todos los días
                       desde esta pantalla, a diferencia de editar y eliminar. */}
                   {/* A un fallecido no se le escribe: el mensaje le llegaría a la familia con
@@ -366,9 +369,9 @@ export function ClienteDetail({
                     <button
                       type="button"
                       onClick={() => setContactar(true)}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-primary text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] hover:bg-primary/90"
+                      className="inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm bg-primary text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)] hover:bg-primary/90"
                     >
-                      <MessageCircle className="h-4 w-4" /> Contactar
+                      <MessageCircle className="h-4 w-4 shrink-0" /> Contactar
                     </button>
                   )}
                   {/* El pedido del titular se registra desde acá, en el mismo lugar donde
@@ -379,13 +382,13 @@ export function ClienteDetail({
                       type="button"
                       onClick={() => setNoContactar(true)}
                       title={sinContacto ? "Volver a habilitar el contacto (solo admin)" : "El cliente pidió que no lo contacten"}
-                      className={`inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors ring-1 ring-inset ${
+                      className={`inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm ring-1 ring-inset ${
                         sinContacto
                           ? "bg-warning/10 text-warning ring-warning/30 hover:bg-warning/20"
                           : "bg-muted/40 text-foreground ring-border hover:bg-muted hover:ring-primary/40"
                       }`}
                     >
-                      <BellOff className="h-4 w-4" /> {sinContacto ? "Rehabilitar" : "No contactar"}
+                      <BellOff className="h-4 w-4 shrink-0" /> {sinContacto ? "Rehabilitar" : "No contactar"}
                     </button>
                   )}
                   {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
@@ -397,25 +400,25 @@ export function ClienteDetail({
                   {showCreditos && !puedeCobrarAca && (activos.length > 0 || incobrables.length > 0) && (
                     <Link
                       href={`/pagos?cliente=${cliente.id}`}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-success/10 text-success ring-1 ring-inset ring-success/30 hover:bg-success/20"
+                      className="inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm bg-success/10 text-success ring-1 ring-inset ring-success/30 hover:bg-success/20"
                     >
-                      <Wallet className="h-4 w-4" /> Cobrar
+                      <Wallet className="h-4 w-4 shrink-0" /> Cobrar
                     </Link>
                   )}
                   {onEditar && puedeEditar && (
                     <button
                       onClick={onEditar}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-muted/40 text-foreground ring-1 ring-inset ring-border hover:bg-muted hover:ring-primary/40"
+                      className="inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm bg-muted/40 text-foreground ring-1 ring-inset ring-border hover:bg-muted hover:ring-primary/40"
                     >
-                      <Pencil className="h-4 w-4" /> Editar
+                      <Pencil className="h-4 w-4 shrink-0" /> Editar
                     </button>
                   )}
                   {onEliminar && puedeEditar && (
                     <button
                       onClick={onEliminar}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-colors bg-destructive/[0.06] text-destructive ring-1 ring-inset ring-destructive/25 hover:bg-destructive/15"
+                      className="inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm bg-destructive/[0.06] text-destructive ring-1 ring-inset ring-destructive/25 hover:bg-destructive/15"
                     >
-                      <Trash2 className="h-4 w-4" /> Eliminar
+                      <Trash2 className="h-4 w-4 shrink-0" /> Eliminar
                     </button>
                   )}
                 </div>
@@ -2003,7 +2006,10 @@ function InfoBlock({
     <section className={`group relative overflow-hidden rounded-2xl border border-border/70 bg-card px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_12px_30px_-16px_rgba(0,0,0,0.7)] sm:px-5 ${estirar ? "flex h-full flex-col" : ""}`}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] via-transparent to-transparent" />
-      <div className="relative mb-4 flex items-center gap-2.5">
+      {/* `flex-wrap`: si título y botones no entran en una línea (Domicilio en el celular, con
+          Reubicar + Corregir + Editar), los botones bajan JUNTOS a la línea de abajo en vez de
+          cortarse contra el borde (Fernando, 01/10/2026). */}
+      <div className="relative mb-4 flex flex-wrap items-center gap-x-2.5 gap-y-2">
         {isEmoji ? <IconBadge emoji={icon} accent={accent} hoverable /> : Icon && <Icon className="h-4 w-4 text-muted-foreground/70" />}
         <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
         <div className="ml-auto flex items-center gap-1.5">
