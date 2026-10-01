@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, Plus, LayoutGrid, List, Trash2, X, History, Smartphone } from "lucide-react";
+import { ShieldOff, ShieldCheck, ArrowLeft, Pencil, KeyRound, UserX, UserCheck, LayoutGrid, List, Trash2, X, History, Smartphone } from "lucide-react";
+import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { useEquipo, useUsuarios, useVendedores, type MiembroEquipo, type Usuario, type Vendedor } from "@/lib/swr";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -522,7 +523,8 @@ export function EquipoView() {
           // la lista completa y no queda como que "no hace nada".
           onF3={limpiarTodo}
           placeholder="Buscar por nombre, email, usuario o zona…"
-          className="w-full sm:w-[32rem]"
+          // En el celular se achica para que el botón circular entre a su lado.
+          className="min-w-0 flex-1 sm:w-[32rem] sm:flex-none"
           accionDerecha={
             <FiltrosPanel embebido
               label="Filtrar"
@@ -561,6 +563,11 @@ export function EquipoView() {
             </FiltrosPanel>
           }
         />
+        {/* UNA sola puerta para dar de alta a cualquiera, circular y pegada al buscador como en
+            Créditos (Fernando, 01/10/2026). El formulario decide qué crear según el "Rol de
+            acceso": Vendedor → ficha de agente + cuenta; Administrador → solo la cuenta. Mismo
+            emoji que el modal que abre. */}
+        <AccionPrimaria circular emoji="office-worker" onClick={() => setFormIntegrante(true)}>Nuevo integrante</AccionPrimaria>
         <div className="ml-auto flex h-10 items-center rounded-lg border border-border p-0.5">
           <button
             type="button"
@@ -581,18 +588,6 @@ export function EquipoView() {
             <List className="h-4 w-4" />
           </button>
         </div>
-        {/* UNA sola puerta para dar de alta a cualquiera. El formulario decide qué crear
-            según el "Rol de acceso" que se elija: Vendedor → ficha de agente + cuenta;
-            Administrador → solo la cuenta, porque sin vender no tiene sentido una ficha
-            (y creársela igual la dejaba de relleno en Comisiones, en el filtro de
-            empleados del Home y en el selector de a quién entregarle plata). */}
-        <button
-          type="button"
-          onClick={() => setFormIntegrante(true)}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" /> Nuevo integrante
-        </button>
       </div>
 
       {/* Encabezado de la lista: título + conteo pegado + limpiar con el atajo escrito. */}
