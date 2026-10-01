@@ -18,7 +18,7 @@ import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { HelpPanel } from "@/components/ui/HelpPanel";
 import { getHelpDoc } from "@/lib/help/content";
-import { useAlertaCobranza, type Financiera } from "@/lib/swr";
+import { type Financiera } from "@/lib/swr";
 
 /** Marca de la financiera: logo + nombre (sin "powered by", que quedó solo en el login). Fallback
  *  a la marca CreditFlow si la financiera no cargó nombre/logo. */
@@ -120,39 +120,10 @@ const NAV_GROUPS: NavGroup[] = [
 /** Lo que el sidebar contraído le avisa al shell para dibujar el rótulo flotante. */
 type AvisoRotulo = (label: string, el: HTMLElement | null) => void;
 
-/**
- * EL AVISO DE COBRANZAS. El menú es lo único que está en todas las pantallas, así que ahí
- * va. Rojo = TRABAJO PENDIENTE: cuántos hay para contactar hoy (la cola de la pestaña Hoy).
- * Se apaga cuando se los contactó y vuelve a encenderse con cada hecho nuevo —otra cuota
- * vencida, una promesa rota, un acuerdo caído, o los días sin gestión—. Ámbar = no hay nada
- * pendiente pero vencen cuotas en los próximos días. Fernando (19/09/2026): «la alerta sirve
- * para organizar el trabajo del operador, para saber que ya se apagó porque los contactó».
- * Cuántos DEBEN es otra cosa y vive en los KPI de la sección; acá va en el rótulo flotante.
+/*
+ * Sin aviso de cobranzas en el menú (Fernando, 01/10/2026): los conteos viven en las pestañas
+ * de Cobranzas y Recupero y en la campanita. Hasta acá había un número rojo junto al ítem.
  */
-function AlertaCobranzaBadge({ colapsado }: { colapsado?: boolean }) {
-  const { alerta } = useAlertaCobranza();
-  if (!alerta || (alerta.pendientes === 0 && alerta.por_vencer === 0)) return null;
-  const rojo = alerta.pendientes > 0;
-  const n = rojo ? alerta.pendientes : alerta.por_vencer;
-  const texto = rojo
-    ? `${alerta.pendientes} para contactar hoy${alerta.vencidas > 0 ? ` · ${alerta.vencidas} con cuota vencida` : ""}${alerta.por_vencer > 0 ? ` · ${alerta.por_vencer} por vencer` : ""}`
-    : `${alerta.por_vencer} vence${alerta.por_vencer === 1 ? "" : "n"} en los próximos ${alerta.horizonte_dias} días`;
-  const color = rojo ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground";
-  if (colapsado) {
-    return <span aria-label={texto} className={`absolute right-1.5 top-1 h-2.5 w-2.5 rounded-full ring-2 ring-sidebar ${color} ${rojo ? "animate-pulse" : ""}`} />;
-  }
-  return (
-    <span
-      title={texto}
-      aria-label={texto}
-      // El número y el color, sin el «!» (Fernando, 18/09/2026). Compacto para que
-      // "Cobranzas y Recupero" no se corte.
-      className={`ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums ${color} ${rojo ? "animate-pulse" : ""}`}
-    >
-      {n > 99 ? "99+" : n}
-    </span>
-  );
-}
 
 function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRotulo }: NavItem & {
   isActive: boolean; onClick?: () => void; colapsado?: boolean; onRotulo?: AvisoRotulo;
@@ -195,7 +166,6 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
         strokeWidth={1.75}
       />
       {!colapsado && <span className="truncate">{label}</span>}
-      {to === "/cobranza" && <AlertaCobranzaBadge colapsado={colapsado} />}
     </Link>
   );
 }
