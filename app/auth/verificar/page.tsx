@@ -11,8 +11,9 @@ import { createClient } from "@/lib/supabase/client";
  * Paso 2 del ingreso: código de la app de autenticación (TOTP).
  *
  * Se llega acá cuando la sesión ya pasó la contraseña (aal1) pero la cuenta tiene un
- * segundo factor y necesita elevarse a **aal2** — hoy, el dueño del SaaS, al que el
- * guard del layout redirige si intenta entrar a la plataforma sin haberlo hecho.
+ * segundo factor y necesita elevarse a **aal2**: cualquier usuario que activó la verificación
+ * en dos pasos (desde el 01/10/2026 se le exige a todos, no solo al dueño del SaaS). Después
+ * va a "/", y el layout manda a cada uno a lo suyo (el dueño, a /plataforma).
  *
  * Vive bajo /auth (ruta pública en el middleware) a propósito: si estuviera dentro
  * del grupo autenticado, el propio guard que manda acá generaría un bucle.
@@ -32,7 +33,7 @@ export default function VerificarPage() {
       .then((j) => {
         if (!vivo) return;
         if (!j.ok) return router.replace("/auth");
-        if (j.data.aal === "aal2") return router.replace("/plataforma");
+        if (j.data.aal === "aal2") return router.replace("/");
         if (!j.data.enrolado) return router.replace("/perfil"); // todavía no lo configuró
         setVerificando(false);
       })
@@ -59,7 +60,7 @@ export default function VerificarPage() {
         return;
       }
       // La sesión quedó en aal2 (Supabase reescribió las cookies) → ya puede entrar.
-      router.replace("/plataforma");
+      router.replace("/");
     } catch {
       setError("No se pudo conectar. Revisá tu conexión e intentá de nuevo.");
       setLoading(false);

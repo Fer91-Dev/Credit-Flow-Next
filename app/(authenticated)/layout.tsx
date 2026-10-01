@@ -31,7 +31,8 @@ export default async function AuthenticatedLayout({
 }) {
   let ctx: AuthContext | null = null;
   try {
-    ctx = await requireAuth();
+    // El 2FA se decide abajo (a dónde mandar depende de si es el dueño de la plataforma).
+    ctx = await requireAuth(undefined, { sinSegundoFactor: true });
   } catch (err) {
     // 403 = autenticado pero sin profile válido (deny-by-default) → pendiente.
     // Cualquier otra cosa (401 sin sesión) → login. (redirect fuera del try.)
@@ -42,6 +43,10 @@ export default async function AuthenticatedLayout({
   }
 
   const pathname = (await headers()).get("x-pathname") ?? "/";
+
+  // Cualquier usuario con la verificación activada y sin el código en esta sesión: a ponerlo.
+  // Es la misma regla que aplica `requireAuth` en las APIs (ver ahí el porqué).
+  if (ctx!.mfaEnrolado && ctx!.aal !== "aal2") redirect("/auth/verificar");
 
   if (ctx!.esOwner) {
     // 2FA OBLIGATORIO para el dueño del SaaS (administra todas las financieras).

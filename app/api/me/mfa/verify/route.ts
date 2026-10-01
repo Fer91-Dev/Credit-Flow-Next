@@ -18,7 +18,8 @@ import type { NextRequest } from "next/server";
  */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   assertSameOrigin(req);
-  const ctx = await requireAuth(req);
+  // Sin el segundo factor todavía: este endpoint es justamente el que lo verifica.
+  const ctx = await requireAuth(req, { sinSegundoFactor: true });
 
   // Un TOTP son 6 dígitos: sin freno, es fuerza bruta viable. Supabase tiene sus
   // propios límites, pero se corta antes y por IP (mismo criterio que el login).

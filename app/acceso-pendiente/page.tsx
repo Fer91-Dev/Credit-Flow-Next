@@ -18,7 +18,7 @@ export default async function AccesoPendientePage() {
   let pendiente = false;
 
   try {
-    ctx = await requireAuth();
+    ctx = await requireAuth(undefined, { sinSegundoFactor: true }); // el 2FA lo resuelve el layout al ir al home
   } catch (err) {
     if (err instanceof ApiError && err.statusCode === 403) {
       pendiente = true; // logueado, sin profile válido

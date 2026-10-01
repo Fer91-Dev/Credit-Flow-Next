@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { setAuditActor } from "@/lib/audit-context";
 import type { Role } from "@prisma/client";
@@ -114,7 +115,33 @@ function planVencido(sus?: { plan: string; estado: string; periodo_hasta: Date |
  * El parámetro `request` se conserva por compatibilidad de firma; ya no se usa
  * (la sesión viaja por cookie, no por header Authorization).
  */
-export async function requireAuth(_request?: Request): Promise<AuthContext> {
+/**
+ * 🔴 EL SEGUNDO FACTOR SE EXIGE ACÁ, PARA TODOS (Fernando, 01/10/2026: "sobre todo la de Silvio,
+ * que es administrador"). Antes solo se le exigía al dueño de la plataforma: un admin o vendedor
+ * con la verificación ACTIVADA que entraba con la contraseña sola quedaba con sesión `aal1`, la
+ * pantalla de login lo mandaba a poner el código… pero yendo directo a cualquier página o API
+ * entraba igual (medido: /api/dashboard, /api/clientes y /api/caja respondían 200). O sea, la
+ * contraseña sola alcanzaba.
+ *
+ * Ahora: factor verificado + sesión sin el código → en una página, a /auth/verificar; en una API,
+ * 401 MFA_REQUERIDO. Solo `sinSegundoFactor` lo saltea, y es para lo que se necesita PARA poner
+ * el código (estado del 2FA y verificación) y para que el layout decida a dónde mandar.
+ */
+export interface OpcionesAuth {
+  sinSegundoFactor?: boolean;
+}
+
+export async function requireAuth(_request?: Request, opciones: OpcionesAuth = {}): Promise<AuthContext> {
+  const ctx = await requireAuthSinFactor();
+  if (!opciones.sinSegundoFactor && ctx.mfaEnrolado && ctx.aal !== "aal2") {
+    // Sin `request` es un Server Component (una página): se lo manda a poner el código.
+    if (!_request) redirect("/auth/verificar");
+    throw new ApiError("Ingresá el código de verificación para continuar", "MFA_REQUERIDO", 401);
+  }
+  return ctx;
+}
+
+async function requireAuthSinFactor(): Promise<AuthContext> {
   if (process.env.DEV_BYPASS_AUTH === "true") {
     // Sin sesión real no hay AAL que leer; se da por satisfecho el 2FA para no
     // bloquear el bypass de desarrollo (hoy está en false de forma permanente).

@@ -16,8 +16,11 @@ export default async function AuthLayout({
   // inicio en esa pantalla o el usuario nunca llega a setear su clave nueva.
   const pathname = (await headers()).get("x-pathname") ?? "";
   const esReset = pathname.startsWith("/auth/reset-password");
+  // El paso 2 del ingreso (código de la app) también se hace CON sesión (aal1): rebotarlo al
+  // inicio armaba un bucle con el layout autenticado, que manda acá a quien le falta el código.
+  const esVerificar = pathname.startsWith("/auth/verificar");
 
-  if (user && !esReset) redirect("/");
+  if (user && !esReset && !esVerificar) redirect("/");
 
   // Branding resuelto en el SERVIDOR → el logo viene en el HTML inicial (sin parpadeo).
   const branding = await getBrandingPublico();

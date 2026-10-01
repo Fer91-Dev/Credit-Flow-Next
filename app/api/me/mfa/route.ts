@@ -22,7 +22,8 @@ import type { NextRequest } from "next/server";
 
 /** GET /api/me/mfa — ¿tiene 2FA?, ¿esta sesión ya lo pasó?, ¿le es obligatorio? */
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  const ctx = await requireAuth(req);
+  // Lo consulta /auth/verificar ANTES de que se ponga el código: no puede exigirlo.
+  const ctx = await requireAuth(req, { sinSegundoFactor: true });
   return successResponse({
     enrolado: ctx.mfaEnrolado,
     aal: ctx.aal,
