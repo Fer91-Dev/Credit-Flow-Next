@@ -14,7 +14,8 @@
     "lint": "eslint app components lib --quiet",
     "probar:motor": "node scripts/probar-motor.mjs",
     "seed:cartera": "node --env-file=.env.local scripts/seed-cartera-prueba.mjs",
-    "seed:demo": "node --env-file=.env.local scripts/sembrar-demo.mjs"
+    "seed:demo": "node --env-file=.env.local scripts/sembrar-demo.mjs",
+    "respaldo:docs": "node scripts/respaldo-docs.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
