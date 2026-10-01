@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { registrarAuditoria } from "@/lib/audit";
+import { nombrePropioFinanciera } from "@/lib/branding";
 import type { NextRequest } from "next/server";
 
 /**
@@ -61,9 +62,18 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     }
   }
 
+  /*
+    Cómo se ve la cuenta en Google Authenticator: "<issuer>: <email>". Sin `issuer`, Supabase pone
+    el dominio del sitio y quedaba "localhost:3000: 3000:andreavgut@…" (Fernando, 01/10/2026).
+    Va el nombre de la FINANCIERA (cada una ve la suya; el dueño del SaaS, la plataforma). Solo
+    afecta a los que se activen de acá en adelante: el que ya lo tenía tiene que quitarlo y
+    volver a activarlo para que cambie el nombre en la app.
+  */
+  const issuer = ctx.esOwner ? "CreditFlow" : await nombrePropioFinanciera(ctx.tenantId);
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
     friendlyName: "CreditFlow",
+    issuer,
   });
 
   if (error || !data) {
