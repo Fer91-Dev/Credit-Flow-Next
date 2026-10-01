@@ -260,7 +260,7 @@ export function TickerDolar() {
     return () => cancelAnimationFrame(raf);
   }, [hayDatos]);
 
-  if (isLoading) return <Skeleton className="h-8 rounded-full" />;
+  if (isLoading) return <Skeleton className="h-10 rounded-full" />;
   if (!hayDatos) return null;
 
   const byCasa = new Map(cotizaciones.map((c) => [c.casa, c]));
@@ -276,8 +276,8 @@ export function TickerDolar() {
       {orden.map((c) => {
         const meta = META[c.casa] ?? { label: c.nombre, icon: "dollar-banknote" };
         return (
-          <span key={`${copia}-${c.casa}`} className="flex items-center gap-2 whitespace-nowrap px-5 text-xs">
-            <Emoji name={meta.icon} className="h-3.5 w-3.5" />
+          <span key={`${copia}-${c.casa}`} className="flex items-center gap-2 whitespace-nowrap px-6 text-sm">
+            <Emoji name={meta.icon} className="h-4 w-4" />
             <span className="font-semibold text-foreground">Dólar {meta.label}</span>
             <span className="text-muted-foreground">compra</span>
             <span className="font-mono tabular-nums text-foreground/90">{fmtTicker(c.compra)}</span>
@@ -287,14 +287,15 @@ export function TickerDolar() {
           </span>
         );
       })}
-      <span className="whitespace-nowrap px-5 text-[11px] text-muted-foreground/70">
+      <span className="whitespace-nowrap px-6 text-xs text-muted-foreground/70">
         dolarapi.com · act. {fmtHora(ultima)}
         <span className="pl-8 text-muted-foreground/40">•</span>
       </span>
     </div>
   );
 
-  const flecha = "absolute top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-card/90 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100";
+  // En el celular no van: se desliza con el dedo, y en pantallas táctiles el "hover" queda pegado.
+  const flecha = "absolute top-1/2 z-10 hidden h-6 w-6 sm:flex -translate-y-1/2 items-center justify-center rounded-full bg-card/90 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100";
 
   return (
     <div
@@ -304,7 +305,7 @@ export function TickerDolar() {
       onMouseLeave={() => { encima.current = false; }}
     >
       <div
-        className="cursor-grab touch-pan-y select-none overflow-hidden rounded-full bg-card/40 py-1.5 active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
+        className="cursor-grab touch-pan-y select-none overflow-hidden rounded-full bg-card/40 py-2.5 active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
         onPointerDown={(e) => {
           salto.current = null;
           arrastre.current = { x: e.clientX, desde: offset.current };

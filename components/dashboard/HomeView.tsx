@@ -88,7 +88,7 @@ export function HomeView({ role }: { role: Role }) {
     <div className="space-y-6">
       {/* El dólar como cinta que pasa, arriba de la banda (Fernando, 01/10/2026). Antes era una
           tarjeta en la columna derecha; es contexto, no un número de la financiera. */}
-      <div className="relative z-10"><TickerDolar /></div>
+      <div className="relative z-10 -mt-2 !mb-3"><TickerDolar /></div>
       {/* ── 1 · LA PLATA, arriba de todo ──
           Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
           contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
