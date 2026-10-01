@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCotizacion, type Cotizacion } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -211,19 +211,65 @@ function SecundariaTile({ c }: { c: Cotizacion }) {
  * cotizaciones pasando de costado, como el ticker de un noticiero. Reemplaza la tarjeta de la
  * columna derecha (`CotizacionDolar`, que queda en este archivo por si se vuelve atrás).
  *
- * La tira se dibuja DOS veces seguidas y se corre la mitad de su ancho: cuando la primera copia
- * sale por la izquierda, la segunda está exactamente donde arrancó, así que el bucle no salta.
- * Se frena al pasar el mouse (para poder leer un número) y, con "reducir movimiento", queda
- * quieta y se desliza a mano. Si el servicio falla, no se dibuja nada.
+ * La tira se dibuja DOS veces seguidas: cuando el corrimiento llega al ancho de una copia vuelve
+ * a 0, y como la segunda copia está exactamente ahí, el bucle no salta (en los dos sentidos).
+ *
+ * Se mueve con JS y no con una animación CSS porque se puede MANEJAR (Fernando: "dame la opción
+ * de volver o avanzar tipo deslizar"): se arrastra con el mouse o el dedo hacia cualquier lado,
+ * y en la PC aparecen flechas al pasar el mouse. Al soltar, sigue sola. Con "reducir movimiento"
+ * no avanza sola, pero se puede deslizar igual. Sin borde: era una línea de más sobre la banda.
  */
+const VELOCIDAD = 54; // px por segundo
+const SALTO = 320; // px por clic en una flecha
+
 export function TickerDolar() {
   const { cotizaciones, isLoading, error } = useCotizacion();
+  const pista = useRef<HTMLDivElement>(null);
+  const offset = useRef(0);
+  const arrastre = useRef<{ x: number; desde: number } | null>(null);
+  const encima = useRef(false);
+  const salto = useRef<{ desde: number; hasta: number; t0: number } | null>(null);
+  const hayDatos = !isLoading && !error && cotizaciones.length > 0;
+
+  useEffect(() => {
+    if (!hayDatos) return;
+    const quieto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    let prev = performance.now();
+    const paso = (ahora: number) => {
+      const dt = Math.min(0.1, (ahora - prev) / 1000);
+      prev = ahora;
+      const el = pista.current;
+      if (el) {
+        const ancho = el.scrollWidth / 2;
+        if (salto.current) {
+          // Clic en una flecha: un deslizamiento suave de 400 ms, no un salto seco.
+          const k = Math.min(1, (ahora - salto.current.t0) / 400);
+          const e = 1 - Math.pow(1 - k, 3);
+          offset.current = salto.current.desde + (salto.current.hasta - salto.current.desde) * e;
+          if (k >= 1) salto.current = null;
+        } else if (!arrastre.current && !encima.current && !quieto) {
+          offset.current += VELOCIDAD * dt;
+        }
+        if (ancho > 0) offset.current = ((offset.current % ancho) + ancho) % ancho;
+        el.style.transform = `translate3d(${-offset.current}px,0,0)`;
+      }
+      raf = requestAnimationFrame(paso);
+    };
+    raf = requestAnimationFrame(paso);
+    return () => cancelAnimationFrame(raf);
+  }, [hayDatos]);
+
   if (isLoading) return <Skeleton className="h-8 rounded-full" />;
-  if (error || cotizaciones.length === 0) return null;
+  if (!hayDatos) return null;
 
   const byCasa = new Map(cotizaciones.map((c) => [c.casa, c]));
   const orden = [...PRINCIPALES, ...SECUNDARIAS].map((k) => byCasa.get(k)).filter(Boolean) as Cotizacion[];
   const ultima = cotizaciones.reduce((a, c) => (c.fecha > a ? c.fecha : a), cotizaciones[0].fecha);
+
+  const mover = (delta: number) => {
+    salto.current = { desde: offset.current, hasta: offset.current + delta, t0: performance.now() };
+  };
 
   const tira = (copia: number) => (
     <div className="flex shrink-0 items-center" aria-hidden={copia > 0}>
@@ -237,26 +283,50 @@ export function TickerDolar() {
             <span className="font-mono tabular-nums text-foreground/90">{fmtTicker(c.compra)}</span>
             <span className="text-muted-foreground">venta</span>
             <span className="font-mono font-semibold tabular-nums text-success">{fmtTicker(c.venta)}</span>
-            <span className="pl-3 text-border">•</span>
+            <span className="pl-3 text-muted-foreground/40">•</span>
           </span>
         );
       })}
       <span className="whitespace-nowrap px-5 text-[11px] text-muted-foreground/70">
         dolarapi.com · act. {fmtHora(ultima)}
-        <span className="pl-8 text-border">•</span>
+        <span className="pl-8 text-muted-foreground/40">•</span>
       </span>
     </div>
   );
 
+  const flecha = "absolute top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-card/90 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100";
+
   return (
     <div
-      className="group relative overflow-hidden rounded-full border border-border/50 bg-card/50 py-1.5 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)] motion-reduce:overflow-x-auto"
+      className="group relative"
       aria-label="Cotización del dólar"
+      onMouseEnter={() => { encima.current = true; }}
+      onMouseLeave={() => { encima.current = false; }}
     >
-      <div className="flex w-max animate-ticker group-hover:[animation-play-state:paused]">
-        {tira(0)}
-        {tira(1)}
+      <div
+        className="cursor-grab touch-pan-y select-none overflow-hidden rounded-full bg-card/40 py-1.5 active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
+        onPointerDown={(e) => {
+          salto.current = null;
+          arrastre.current = { x: e.clientX, desde: offset.current };
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* puntero que ya no existe */ }
+        }}
+        onPointerMove={(e) => {
+          if (arrastre.current) offset.current = arrastre.current.desde - (e.clientX - arrastre.current.x);
+        }}
+        onPointerUp={() => { arrastre.current = null; }}
+        onPointerCancel={() => { arrastre.current = null; }}
+      >
+        <div ref={pista} className="flex w-max will-change-transform">
+          {tira(0)}
+          {tira(1)}
+        </div>
       </div>
+      <button type="button" aria-label="Ver las cotizaciones anteriores" onClick={() => mover(-SALTO)} className={`${flecha} left-1`}>
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <button type="button" aria-label="Ver las cotizaciones siguientes" onClick={() => mover(SALTO)} className={`${flecha} right-1`}>
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
