@@ -150,7 +150,7 @@ export function PlanDeCuotas({
   // Total de "A cobrar" del pie: en el celular va debajo de la columna que queda segunda.
   const totalCobrar = (
     <>
-                <span className="block font-mono text-[15px] font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
+                <span className={`block font-mono font-bold tabular-nums ${aCobrarTotal > 0.004 ? "text-[15px] text-foreground" : "text-sm text-muted-foreground"}`}>${n2(aCobrarTotal)}</span>
                 {pagadoTotal > 0 && (
                   <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
                     cobrado ${n2(pagadoTotal)}
@@ -379,7 +379,10 @@ export function PlanDeCuotas({
                         <span className="font-mono tabular-nums">${n2(pagadoDeCuota(q))}</span>
                       </span>
                     ) : (
-                      <div className="inline-flex flex-col items-end gap-1">
+                      /* 🔴 CERRADA = UNA LÍNEA (Fernando, 02/10/2026: "acá se ve muy grande todo"). En un
+                         crédito refinanciado las tres cuotas decían "Trasladada" y debajo "$0,00" en
+                         grande: cada fila el doble de alta para decir que no hay nada que cobrar. */
+                      <div className={`inline-flex items-end gap-1 ${cuotaCerradaSinPago(q.estado) ? "flex-row items-center gap-2" : "flex-col"}`}>
                         {/*
                           🔴 LAS CERRADAS SIN PAGO TAMBIÉN LLEVAN SU BURBUJA. La condición era
                           solo vencida/parcial, así que una cuota `condonada` o `trasladada`
@@ -426,7 +429,11 @@ export function PlanDeCuotas({
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </button>
                         ) : (
-                          <span className={`font-mono text-[15px] font-bold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
+                          <span className={`font-mono tabular-nums ${
+                            (q.total_cobrar ?? q.cuota_total) > 0.004 && !cuotaCerradaSinPago(q.estado)
+                              ? `text-[15px] font-bold ${esVencida ? "text-destructive" : "text-foreground"}`
+                              : "text-sm font-medium text-muted-foreground"
+                          }`}>
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </span>
                         )}
