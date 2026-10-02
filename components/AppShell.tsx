@@ -141,7 +141,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onMouseLeave={() => avisar(null)}
       onFocus={(e) => avisar(e.currentTarget)}
       onBlur={() => avisar(null)}
-      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-sm transition-all duration-150 ease-out ${
+      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1.5 text-sm transition-all duration-150 ease-out ${
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
@@ -184,7 +184,7 @@ function NavSection({
 }) {
   // En pantallas bajas (notebook, ~650px útiles) el menú se compacta para entrar entero sin
   // scroll (Fernando, 02/10/2026: Silvio lo usa en notebook y celular). En un monitor alto no
-  // cambia nada. Ver también el `py-1` de SideNavLink.
+  // cambia nada. Ver también el `py-1.5` de SideNavLink.
   return (
     <div className="mt-5 first:mt-0 [@media(min-width:1024px)_and_(max-height:820px)]:mt-3">
       {/* Contraído, la etiqueta del grupo se reemplaza por una línea: el agrupamiento se
@@ -339,22 +339,14 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           primero
         />
       ) : (
-        <>
+        /* Sin "Principal · Home" (Fernando, 02/10/2026): al inicio lleva el logo, arriba del
+           menú en escritorio, en la barra del celular y en el cajón. Home sigue en Ctrl+K. */
+        groups.map((g, i) => (
           <NavSection
-            group={{ label: "Principal", items: [HOME_ITEM] }}
-            isActive={isActive}
-            onNavigate={onNavigate}
-            colapsado={compacto}
-            onRotulo={mostrarRotulo}
-            primero
+            key={g.label} group={g} isActive={isActive} onNavigate={onNavigate}
+            colapsado={compacto} onRotulo={mostrarRotulo} primero={i === 0}
           />
-          {groups.map((g) => (
-            <NavSection
-              key={g.label} group={g} isActive={isActive} onNavigate={onNavigate}
-              colapsado={compacto} onRotulo={mostrarRotulo}
-            />
-          ))}
-        </>
+        ))
       )}
     </>
   );
