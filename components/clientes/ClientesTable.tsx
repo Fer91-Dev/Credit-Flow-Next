@@ -12,6 +12,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { ScoreBadge } from "@/components/ui/ScoreBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { BuscadorF3 } from "@/components/ui/BuscadorF3";
+import { AccionPrimaria } from "@/components/ui/AccionPrimaria";
 import { nombreCompleto, formatDias, pctDe } from "@/lib/utils";
 import { useDebounce } from "@/lib/use-debounce";
 import type { Role } from "@/lib/auth/roles";
@@ -283,6 +284,9 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         />
       </div>
 
+      {/* "Nuevo cliente" circular y pegado al buscador, como en Créditos (Fernando, 02/10/2026).
+          Es la ÚNICA puerta: el botón grande del vacío y el de la lista vacía se fueron. */}
+      <div className="flex items-start gap-3">
       <BuscadorF3
         size="lg"
         value={query}
@@ -293,7 +297,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         onEnter={() => { if (resultados.length === 1) elegir(resultados[0]); }}
         onEscape={() => { if (verTodos) setVerTodos(false); else setQuery(""); }}
         autoFocus
-        className="w-full sm:max-w-2xl"
+        className="min-w-0 flex-1 sm:max-w-2xl"
         accionDerecha={
           <button
             type="button"
@@ -305,6 +309,10 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           </button>
         }
       />
+        <div className="pt-1.5">
+          <AccionPrimaria circular emoji="bust-in-silhouette" onClick={openNew}>Nuevo cliente</AccionPrimaria>
+        </div>
+      </div>
 
 
       {/*
@@ -359,9 +367,6 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
               <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
                 <User className="h-8 w-8 text-muted-foreground/20" />
                 <p className="text-sm font-semibold text-muted-foreground">No hay clientes cargados todavía</p>
-                <button onClick={openNew} className="mt-1 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity">
-                  <Plus className="h-4 w-4" /> Dar de alta un cliente
-                </button>
               </div>
             ) : (
               <>
@@ -377,7 +382,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
             )}
           </div>
         ) : (
-          <HeroVacio onNew={openNew} />
+          <HeroVacio />
         )
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Buscando…</p>
@@ -470,7 +475,7 @@ function ClienteRow({
   );
 }
 
-function HeroVacio({ onNew }: { onNew: () => void }) {
+function HeroVacio() {
   return (
     <div className="rounded-xl border border-dashed border-border/60 p-12 flex flex-col items-center gap-4 text-center">
       <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
@@ -479,12 +484,9 @@ function HeroVacio({ onNew }: { onNew: () => void }) {
       <div className="space-y-1.5">
         <p className="text-sm font-semibold text-foreground">Buscá un cliente para empezar</p>
         <p className="text-xs text-muted-foreground/60 max-w-sm leading-relaxed">
-          Ingresá el DNI o el nombre para ver su ficha completa, o creá un cliente nuevo.
+          Ingresá el DNI o el nombre para ver su ficha completa.
         </p>
       </div>
-      <button onClick={onNew} className="flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/40 active:scale-95">
-        <Plus className="h-5 w-5" /> Nuevo cliente
-      </button>
     </div>
   );
 }
