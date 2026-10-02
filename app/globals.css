@@ -109,28 +109,34 @@ body {
 }
 
 /* ─── DARK MODE ─────────────────────────────────────────────────────────── */
+/*
+  🎨 PALETA OSCURA EN LA FAMILIA DEL ÍNDIGO (Fernando, 02/10/2026). Con el menú en degradado
+  índigo, los neutros azul pizarra de antes (#060A12 / #111A2E / #1E2A44) no combinaban: eran
+  dos azules distintos uno al lado del otro. Se corrieron todos hacia el tono del riel
+  (~235°) sin cambiar su luminosidad, así el contraste y la jerarquía quedan iguales.
+*/
 .dark {
   color-scheme: dark;
 
-  --background:         #060A12;
-  --foreground:         #F1F5F9;
-  --card:               #111A2E;
-  --card-foreground:    #F1F5F9;
-  --popover:            #111A2E;
-  --popover-foreground: #F1F5F9;
-  --surface:            #111A2E;
+  --background:         #080A17;
+  --foreground:         #F1F3FA;
+  --card:               #131735;
+  --card-foreground:    #F1F3FA;
+  --popover:            #131735;
+  --popover-foreground: #F1F3FA;
+  --surface:            #131735;
 
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
 
-  --secondary:            #151F30;
-  --secondary-foreground: #F1F5F9;
+  --secondary:            #181C3D;
+  --secondary-foreground: #F1F3FA;
 
-  --muted:            #0F1825;
-  --muted-foreground: #7B8DA6;
+  --muted:            #0F1229;
+  --muted-foreground: #8790B5;
 
-  --accent:            #151F30;
-  --accent-foreground: #F1F5F9;
+  --accent:            #181C3D;
+  --accent-foreground: #F1F3FA;
 
   --success:     #10B981;
   --warning:     #F59E0B;
@@ -141,13 +147,13 @@ body {
   --warning-foreground:     #1A1205;
   --destructive-foreground: #FFFFFF;
 
-  --border: #1E2A44;
-  --input:  #0F1825;
+  --border: #252B52;
+  --input:  #0F1229;
   --ring:   #6366F1;
 
-  /* Chrome: capa CLARAMENTE distinta del canvas (#060A12) → separa por luz, no por línea.
-     El sidebar/header quedan como un riel elevado y el contenido como lienzo más oscuro. */
-  --sidebar: #0D1728;
+  /* Chrome: capa CLARAMENTE distinta del canvas → separa por luz, no por línea. En
+     escritorio el menú es el riel de color (`.riel`); esto queda para la barra del celular. */
+  --sidebar: #161A3C;
   --edge:    rgba(255, 255, 255, 0.06);
 }
 
@@ -181,8 +187,8 @@ body {
     linear-gradient(180deg, var(--riel-desde) 0%, var(--riel-hasta) 100%);
 }
 .dark .riel {
-  --riel-desde: #2B2580;
-  --riel-hasta: #0F1638;
+  --riel-desde: #2D2783;
+  --riel-hasta: #12153A;
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 .riel .logo-marca { filter: none; mix-blend-mode: lighten; }
@@ -200,7 +206,7 @@ body {
 .marca-link:hover .logo-marca, .marca-link:focus-visible .logo-marca { animation: latido-marca 1.3s ease-in-out infinite; }
 
 .dark body {
-  background-color: #060A12;
+  background-color: #080A17;
   background-image:
     radial-gradient(ellipse 90% 55% at 50% -10%, rgba(99,102,241,0.16) 0%, transparent 70%),
     radial-gradient(ellipse 50% 35% at 85% 20%, rgba(79,70,229,0.09) 0%, transparent 60%),

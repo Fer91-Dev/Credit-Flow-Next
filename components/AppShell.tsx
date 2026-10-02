@@ -42,7 +42,9 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
   return (
     <div className={`flex min-w-0 items-center ${soloIcono ? "justify-center" : "gap-3"}`}>
       {financiera?.logo_url ? (
-        <img src={financiera.logo_url} alt={marca} className={`${box} shrink-0 bg-card object-contain p-0.5 ring-1 ring-border`} />
+        /* Sin recuadro (Fernando, 02/10/2026): el logo trae fondo negro y la cajita lo dejaba
+           a la vista. `logo-marca` lo funde con el fondo, igual que en el menú desplegado. */
+        <img src={financiera.logo_url} alt={marca} className={`logo-marca shrink-0 object-contain ${size === "lg" ? "h-11 max-w-[3rem]" : "h-9 max-w-[3rem]"} w-auto`} />
       ) : (
         <div className={`${box} flex shrink-0 items-center justify-center bg-gradient-to-br from-primary to-success font-mono font-bold leading-none text-white shadow-lg shadow-primary/30 ring-1 ring-white/15`}>
           {inicial}
@@ -489,7 +491,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-64"}`}>
 
         {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
-        <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar/85 backdrop-blur-md px-4">
+        <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar px-4">
+          {/* Opaca (Fernando, 02/10/2026): con fondo translúcido el `lighten` del logo no tenía
+              contra qué fundir su negro y se veía la cajita oscura. */}
           {/* Burger — solo mobile */}
           <button
             onClick={() => setMobileOpen(true)}
