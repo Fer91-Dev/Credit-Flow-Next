@@ -30,8 +30,6 @@ export function anclaSeccion(titulo: string): string {
 }
 
 export const PARAMETROS: ParametroIndexado[] = [
-  { label: "Moneda", tab: "financiera", seccion: "Presentación" },
-  { label: "Región (locale)", tab: "financiera", seccion: "Presentación" },
   { label: "Convención de tasa", tab: "motor", seccion: "Motor financiero" },
   { label: "Sistema de amortización", tab: "motor", seccion: "Motor financiero" },
   { label: "Monto ($)", tab: "simulador", seccion: "Financiación del simulador" },

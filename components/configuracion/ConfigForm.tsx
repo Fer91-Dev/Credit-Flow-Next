@@ -349,10 +349,6 @@ const AYUDA: Record<string, AyudaBloque> = {
       "Elijas lo que elijas, el cliente paga lo mismo y el capital baja igual: cambia el reparto contable, no la plata.",
     ],
   },
-  presentacion: {
-    titulo: "Presentación",
-    texto: "Formato de la moneda y la región para mostrar los montos. No cambia ningún cálculo, solo cómo se ven los números.",
-  },
   financiacion: {
     titulo: "Financiación del simulador",
     texto: "Dos cosas distintas: lo que el simulador PROPONE al abrirlo, y los LÍMITES que no se pueden pasar. Un campo en 0 no hace nada.",
@@ -842,7 +838,6 @@ export function ConfigForm() {
       case "cajas":         return !eq(f.cajaConfig ?? null, c.cajaConfig ?? null);
       case "notificaciones": return !eq(f.notificacionesConfig ?? null, c.notificacionesConfig ?? null);
       case "imputacion":    return f.imputarCargos !== c.imputarCargos;
-      case "presentacion":  return f.moneda !== c.moneda || f.locale !== c.locale;
       case "gamificacion":  return !eq(f.gamificacionConfig ?? null, c.gamificacionConfig ?? null);
       case "rentabilidad":  return !eq(f.rentabilidadConfig ?? null, c.rentabilidadConfig ?? null);
       case "riesgo":        return !eq(f.riesgoConfig ?? null, c.riesgoConfig ?? null);
@@ -1020,28 +1015,6 @@ export function ConfigForm() {
           {activeTab === "financiera" && <>
           <FinancieraForm />
 
-          {/* Presentación */}
-          <Section title="Presentación" desc="Formato de moneda y región (no afecta los cálculos)." ayuda={AYUDA.presentacion}
-            onSave={() => save("presentacion", { moneda: form.moneda, locale: form.locale })}
-            saving={savingKey === "presentacion"} saved={savedKey === "presentacion"} dirty={isDirty("presentacion")}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Moneda" hint="Código ISO 4217">
-                <Select value={form.moneda} onChange={e => set("moneda", e.target.value)}>
-                  <option value="ARS">ARS — Peso argentino</option>
-                  <option value="COP">COP — Peso colombiano</option>
-                  <option value="MXN">MXN — Peso mexicano</option>
-                  <option value="USD">USD — Dólar</option>
-                </Select>
-              </Field>
-              <Field label="Región (locale)">
-                <Select value={form.locale} onChange={e => set("locale", e.target.value)}>
-                  <option value="es-AR">es-AR — Argentina</option>
-                  <option value="es-CO">es-CO — Colombia</option>
-                  <option value="es-MX">es-MX — México</option>
-                </Select>
-              </Field>
-            </div>
-          </Section>
           </>}
 
           {/* ─── Motor tab: Motor financiero (primero) ─── */}

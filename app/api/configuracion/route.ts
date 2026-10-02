@@ -351,6 +351,15 @@ export const PUT = withErrorHandler(async (req: NextRequest) => {
   const errSim = validarSimulador(body.simulador);
   if (errSim) return errorResponse(errSim, "INVALID_INPUT", 400);
 
+  /*
+    Moneda y región NO se aceptan (Fernando, 02/10/2026: se sacó el bloque "Presentación").
+    Solo el recibo y el libre deuda las leían —el resto del sistema formatea en pesos fijo—,
+    así que poner "USD" imprimía "US$" delante de importes en pesos. Hasta que el sistema sea
+    multi-moneda de punta a punta, quedan en lo que tenga guardado el tenant (ARS / es-AR).
+  */
+  delete body.moneda;
+  delete body.locale;
+
   // Mezclamos lo enviado sobre lo actual y resolvemos contra defaults.
   const nueva = resolverConfig({
     ...actual,
