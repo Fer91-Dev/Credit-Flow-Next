@@ -153,8 +153,8 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onBlur={() => avisar(null)}
       // Estilo "riel de color" (Fernando, 02/10/2026, referencia SmartAdmin): texto claro sobre
       // el degradado, el activo es una pastilla clara con un punto, el hover un velo blanco.
-      className={`group relative flex items-center rounded-lg py-2.5 [@media(min-width:1024px)_and_(max-height:820px)]:py-2 text-[0.95rem] transition-all duration-150 ease-out ${
-        colapsado ? "justify-center px-0" : "gap-3 px-3"
+      className={`group relative flex items-center rounded-lg min-h-[3.7rem] py-2 text-[1.08rem] transition-all duration-150 ease-out ${
+        colapsado ? "justify-center px-0" : "gap-3.5 px-3.5"
       } ${
         isActive
           ? "bg-riel-acento/30 font-medium text-primary-foreground ring-1 ring-inset ring-riel-acento/60 shadow-[0_0_14px_-4px_var(--riel-acento)]"
@@ -163,7 +163,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
     >
       {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
       <Icon
-        className={`h-[18px] w-[18px] shrink-0 transition-colors duration-150 ${
+        className={`h-5 w-5 shrink-0 transition-colors duration-150 ${
           isActive ? "text-riel-acento" : "text-primary-foreground/55 group-hover:text-riel-acento"
         }`}
         strokeWidth={1.75}
@@ -199,7 +199,7 @@ function NavSection({
   // Un grupo plegado que tiene al activo lo sigue mostrando: no se esconde dónde estás.
   const visibles = plegado ? group.items.filter((i) => isActive(i.to)) : group.items;
   return (
-    <div className="mt-7 first:mt-1 [@media(min-width:1024px)_and_(max-height:820px)]:mt-4 [@media(min-width:1024px)_and_(max-height:820px)]:first:mt-0">
+    <div className="mt-9 first:mt-0">
       {/* Contraído, la etiqueta del grupo se reemplaza por una línea. */}
       {colapsado ? (
         !primero && <div aria-hidden className="mb-2 mt-1 h-px bg-primary-foreground/15" />
@@ -209,7 +209,7 @@ function NavSection({
           onClick={onPlegar}
           aria-expanded={!plegado}
           aria-controls={id}
-          className="group/rot mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 [@media(min-width:1024px)_and_(max-height:820px)]:py-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-riel-acento"
+          className="group/rot mb-2.5 flex w-full items-center justify-between rounded-md px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-riel-acento"
         >
           {group.label}
           <ChevronDown
@@ -387,7 +387,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
    * Escape la limpia. No va en el riel contraído: no hay dónde escribir en 64px.
    */
   const filtroMenu = (onNavigate?: () => void) => (
-    <div className="px-3 pb-6 pt-1 [@media(min-width:1024px)_and_(max-height:820px)]:pb-4 [@media(min-width:1024px)_and_(max-height:820px)]:pt-0">
+    <div className="px-4 pb-16 pt-1">
       <input
         type="search"
         value={filtroNav}
@@ -401,7 +401,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         }}
         placeholder="Filtrar menú"
         aria-label="Filtrar el menú"
-        className="h-9 w-full rounded-lg border border-dashed border-riel-acento/60 bg-riel-acento/[0.08] px-3 text-sm text-primary-foreground outline-none transition-colors placeholder:text-primary-foreground/50 focus:border-solid focus:border-riel-acento focus:bg-riel-acento/15 [&::-webkit-search-cancel-button]:hidden"
+        className="h-11 w-full rounded-lg border border-dashed border-riel-acento/60 bg-riel-acento/[0.08] px-3 text-sm text-primary-foreground outline-none transition-colors placeholder:text-primary-foreground/50 focus:border-solid focus:border-riel-acento focus:bg-riel-acento/15 [&::-webkit-search-cancel-button]:hidden"
       />
     </div>
   );
@@ -443,7 +443,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside
         className={`riel group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col transition-[width] duration-200 ease-out ${
-          colapsado ? "w-16" : "w-64"
+          colapsado ? "w-16" : "w-[21.5rem]"
         }`}
       >
         {/* Branding. Sin la línea de abajo (Fernando, 28/09/2026): el logo va suelto y el menú
@@ -452,7 +452,10 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         <Link
           href="/"
           aria-label="Ir al inicio"
-          className={`marca-link flex h-[76px] shrink-0 items-center ${
+          // Zona del logo más alta (Fernando, 02/10/2026, referencia SmartAdmin): el logo
+          // agrandado quedaba pegado arriba y al buscador. Ya no se alinea con los 76px del
+          // encabezado: sin línea abajo, lo que se nota es el aire.
+          className={`marca-link flex shrink-0 items-center ${colapsado ? "h-[76px]" : "h-[10.5rem]"} ${
             colapsado ? "justify-center px-0" : financiera?.logo_url ? "justify-center px-5" : "px-5"
           }`}
         >
@@ -462,7 +465,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
         {!colapsado && filtroMenu()}
-        <nav className={`flex-1 overflow-y-auto pb-3 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-3"}`}>
+        <nav className={`flex-1 overflow-y-auto pb-6 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-4"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
 
@@ -505,7 +508,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       )}
 
       {/* ── COLUMNA DERECHA ───────────────────────────────────────────────── */}
-      <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-64"}`}>
+      <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-[21.5rem]"}`}>
 
         {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
         <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar px-4">
