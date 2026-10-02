@@ -599,7 +599,9 @@ export function CreditosTable({ role }: { role: Role }) {
               { header: "Cliente",
                 cell: (c) => <span className="font-medium text-foreground">{nombreCompleto(c.cliente)}</span> },
               { header: "Agente",
-                cell: (c) => <span className="text-sm text-muted-foreground">{c.vendedor?.nombre ?? "—"}</span> },
+                // Sin agente asignado (lo otorgó el dueño, sin elegir vendedor) se muestra QUIÉN lo
+                // otorgó: salía "—" en los créditos de Silvio (Fernando, 01/10/2026).
+                cell: (c) => <span className="text-sm text-muted-foreground">{c.vendedor?.nombre ?? c.otorgado_por_nombre ?? "—"}</span> },
               { header: "Tipo",
                 cell: (c) => <StatusBadge label={c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} variant={c.tipo_credito === "productos" ? "primary" : "muted"} /> },
               { header: "Monto orig.", mono: true,
@@ -657,7 +659,7 @@ export function CreditosTable({ role }: { role: Role }) {
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                       {/* Misma fecha que la columna de escritorio: la del otorgamiento. */}
-                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFecha(c.fecha_inicio ?? c.created_at)} · {c.vendedor?.nombre ?? "Sin agente"}</p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFecha(c.fecha_inicio ?? c.created_at)} · {c.vendedor?.nombre ?? c.otorgado_por_nombre ?? "Sin agente"}</p>
                     </div>
                     <StatusBadge label={est.label} variant={est.variant} />
                   </div>
