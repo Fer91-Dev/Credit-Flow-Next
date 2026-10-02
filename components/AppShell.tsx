@@ -141,7 +141,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onMouseLeave={() => avisar(null)}
       onFocus={(e) => avisar(e.currentTarget)}
       onBlur={() => avisar(null)}
-      className={`group relative flex items-center rounded-lg py-2 text-sm transition-all duration-150 ease-out ${
+      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-sm transition-all duration-150 ease-out ${
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
@@ -182,8 +182,11 @@ function NavSection({
   /** Primer grupo del menú: no lleva separador arriba (ya está el borde de la marca). */
   primero?: boolean;
 }) {
+  // En pantallas bajas (notebook, ~650px útiles) el menú se compacta para entrar entero sin
+  // scroll (Fernando, 02/10/2026: Silvio lo usa en notebook y celular). En un monitor alto no
+  // cambia nada. Ver también el `py-1` de SideNavLink.
   return (
-    <div className="mt-5 first:mt-0">
+    <div className="mt-5 first:mt-0 [@media(min-width:1024px)_and_(max-height:820px)]:mt-3">
       {/* Contraído, la etiqueta del grupo se reemplaza por una línea: el agrupamiento se
           sigue leyendo, que es para lo que estaba, y no hace falta abreviar la palabra. */}
       {colapsado ? (
@@ -380,7 +383,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        <nav className={`flex-1 overflow-y-auto py-3 sin-scrollbar ${colapsado ? "px-2" : "px-3"}`}>
+        <nav className={`flex-1 overflow-y-auto py-3 [@media(min-width:1024px)_and_(max-height:820px)]:py-2 sin-scrollbar ${colapsado ? "px-2" : "px-3"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
 
