@@ -1992,7 +1992,9 @@ function ClienteCombobox({ clientes, value, onSelect, onAlta }: {
       .filter(c => {
         const nombre = nombreCompleto(c).toLowerCase();
         const docd = (c.documento || "").replace(/\D/g, "");
-        return nombre.includes(s) || (sd.length > 0 && docd.includes(sd));
+        // Por palabras: "colombo marta" o "marta colombo" encuentran a la misma persona.
+        const porPalabras = s.split(/\s+/).filter(Boolean).every((w) => nombre.includes(w));
+        return porPalabras || (sd.length > 0 && docd.includes(sd));
       })
       // Los que pueden recibir un crédito primero: el fallecido o dado de baja se muestra
       // (para que no parezca que no existe) pero no le gana el lugar a uno operable.

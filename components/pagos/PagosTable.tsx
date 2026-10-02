@@ -76,7 +76,9 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
       const nombre = nombreCompleto(c).toLowerCase();
       const doc = (c.documento || "").toLowerCase();
       const docDigits = doc.replace(/\D/g, "");
-      return nombre.includes(q) || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
+      // Por palabras, como el servidor: "colombo marta" encuentra a Marta Colombo.
+      const porPalabras = q.split(/\s+/).filter(Boolean).every((w) => nombre.includes(w));
+      return porPalabras || doc.includes(q) || (qDigits.length > 0 && docDigits.includes(qDigits));
     });
   }, [clientes, query]);
 

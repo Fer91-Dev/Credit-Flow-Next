@@ -1835,7 +1835,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
             <PlanDeCuotas
               cuotas={cuotas}
               unidadCuota={unidadCuota}
-              proximaNro={proximaCuota?.nro ?? null}
+              // Con un acuerdo vigente NINGUNA cuota de este plan es "la que hay que pagar": se
+              // paga la del acuerdo. Sin marca, para no mandar a cobrar el importe equivocado.
+              proximaNro={acuerdoVigente ? null : proximaCuota?.nro ?? null}
               resaltarProxima={resaltarProxima}
               mora={metaCuotas?.mora ?? null}
               /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */

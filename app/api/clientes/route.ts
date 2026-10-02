@@ -53,13 +53,26 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    * y en la base puede estar "20.123.456".
    */
   if (q) {
-    const digitos = q.replace(/\D/g, "");
-    where.OR = [
-      { nombre:    { contains: q, mode: "insensitive" } },
-      { apellido:  { contains: q, mode: "insensitive" } },
-      { documento: { contains: q, mode: "insensitive" } },
-      ...(digitos.length >= 2 ? [{ documento: { contains: digitos } }] : []),
-    ];
+    /*
+      🔴 POR PALABRAS (Fernando, 01/10/2026). Se buscaba el texto ENTERO dentro del nombre o del
+      apellido por separado, así que "Marta Colombo" no encontraba a nadie: ni "Marta" ni
+      "Colombo" contienen "Marta Colombo". Ahora cada palabra tiene que aparecer en el nombre, el
+      apellido o el documento (todas, en cualquier orden): "colombo marta" también la encuentra.
+    */
+    const condicion = (t: string) => {
+      const digitos = t.replace(/\D/g, "");
+      return {
+        OR: [
+          { nombre:    { contains: t, mode: "insensitive" } },
+          { apellido:  { contains: t, mode: "insensitive" } },
+          { documento: { contains: t, mode: "insensitive" } },
+          ...(digitos.length >= 2 ? [{ documento: { contains: digitos } }] : []),
+        ],
+      };
+    };
+    const palabras = q.split(/\s+/).filter(Boolean);
+    if (palabras.length > 1) where.AND = palabras.map(condicion);
+    else Object.assign(where, condicion(q));
   }
 
   /**

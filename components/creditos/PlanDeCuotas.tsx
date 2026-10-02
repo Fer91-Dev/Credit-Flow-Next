@@ -90,6 +90,20 @@ export function PlanDeCuotas({
   const celda = `${px} ${py} border-b border-border/70`;
 
   /*
+    🔴 LA COLUMNA "CUOTA" ES UNA BANDA, como en el simulador (Fernando, 01/10/2026: "que se
+    note bien cuál es la cuota que se debe pagar, con el estilo del simulador"). Y la cuota que
+    toca pagar —la primera impaga: la imputación cobra siempre la más vieja— va enmarcada y
+    con su etiqueta. Si el que llama ya sabe cuál es (`proximaNro`), manda ese.
+  */
+  const BANDA_TH = "relative overflow-hidden text-primary bg-gradient-to-b from-primary/30 to-primary/10 border-x border-x-primary/30 shadow-[inset_0_2px_0_0_var(--primary)]";
+  const BANDA_TD = "bg-primary/[0.1] border-x border-x-primary/30";
+  // Con el cobro bloqueado (acuerdo vigente) no hay cuota de ESTE plan para pagar.
+  const nroAPagar = cobroBloqueado ? null : proximaNro !== undefined
+    ? proximaNro
+    : (cuotas.filter((q) => q.estado === "pendiente" || q.estado === "vencida" || q.estado === "parcial")
+        .sort((a, b) => a.nro - b.nro)[0]?.nro ?? null);
+
+  /*
     ¿Este plan lleva cargos? Y si los lleva, ¿son SOLO honorarios de gestión? De eso depende
     que la columna aparezca y cómo se llame: un otorgamiento normal no tiene cargos y una
     columna de ceros es ruido, mientras que en una refinanciación el único cargo suele ser el
@@ -240,14 +254,14 @@ export function PlanDeCuotas({
                 // El "#" se oculta en el celular: la fecha ya dice qué cuota es.
                 { t: "#", a: "text-left", w: "hidden w-9 sm:table-cell" },
                 { t: "Vencimiento", a: "text-left" },
-                { t: "Cuota", a: "text-right" },
+                { t: "Cuota", a: "text-right", banda: true },
                 /* 🔴 EN EL CELULAR, "A COBRAR" VA ACÁ, pegada a la cuota (Fernando, 29/09/2026):
                    al final, el botón de cobro quedaba fuera de la pantalla y había que deslizar
                    la tabla para encontrarlo. Mora y comprobante pasan a su derecha. En la
                    computadora sigue al final, que es donde cierra la cuenta del renglón. */
                 { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: "text-right", w: "md:hidden" },
-                { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell" },
-                { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell" },
+                { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell", c: "text-warning" },
+                { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell", c: "text-primary" },
                 ...(hayCargos ? [{ t: rotuloCargos, op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
                 ...(hayCap ? [{ t: "Int. acuerdo", op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
                 { t: "Mora", op: "+", a: "text-right" },
@@ -275,11 +289,14 @@ export function PlanDeCuotas({
                   de cobro del acuerdo.
                 */
                 { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}`, w: "hidden md:table-cell" },
-              ].map((h, hi) => (
+              ].map((h: { t: string; a: string; w?: string; op?: string; c?: string; banda?: boolean }, hi) => (
                 <th
                   key={hi}
-                  className={`${px} ${py} ${h.a} text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border ${h.w ?? ""}`}
+                  className={`${px} ${py} ${h.a} text-[11px] font-bold uppercase tracking-wider border-b border-border ${h.banda ? BANDA_TH : h.c ?? "text-muted-foreground"} ${h.w ?? ""}`}
                 >
+                  {h.banda && (
+                    <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-brillo-barra" />
+                  )}
                   {h.op && (
                     <span className={`mr-1 font-mono text-[11px] ${h.op === "=" ? "text-foreground" : "text-muted-foreground/50"}`}>
                       {h.op}
@@ -299,7 +316,8 @@ export function PlanDeCuotas({
               const conPagos = tienePagos(q);
               // En el orden en que se cobraron: un historial se lee del primero al último.
               const comps = [...(q.comprobantes ?? [])].sort((a, c) => a.fecha_hora.localeCompare(c.fecha_hora));
-              const esProxima = proximaNro === q.nro;
+              const esProxima = nroAPagar === q.nro;
+              const pagada = q.estado === "pagada";
               /*
                 El `hover` de la fila no es adorno: son ocho números que se leen de punta a
                 punta, así que hace falta poder seguir el renglón con la vista. Va DESPUÉS del
@@ -418,20 +436,30 @@ export function PlanDeCuotas({
                 <tr
                   key={q.nro}
                   className={`${idx % 2 === 1 && !esVencida ? "bg-muted/5" : ""} ${q.estado === "pagada" ? "text-muted-foreground/60" : ""} ${
-                    esProxima ? "bg-primary/[0.07]" : esVencida ? "bg-destructive/[0.07] hover:bg-destructive/[0.11]" : "hover:bg-muted/20"
-                  } ${esProxima && resaltarProxima ? "ring-1 ring-inset ring-primary/50" : ""} transition-colors`}
+                    esProxima
+                      ? esVencida ? "bg-destructive/[0.09]" : "bg-primary/[0.08]"
+                      : esVencida ? "bg-destructive/[0.07] hover:bg-destructive/[0.11]" : "hover:bg-muted/20"
+                  } ${esProxima ? `ring-2 ring-inset ${resaltarProxima ? "ring-primary" : "ring-primary/60"}` : ""} transition-colors`}
                 >
                   <td className={`${celda} relative hidden font-mono tabular-nums sm:table-cell ${esVencida ? "font-semibold text-destructive" : "text-muted-foreground/50"}`}>
-                    {esVencida && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-destructive" />}
+                    {(esVencida || esProxima) && <span aria-hidden className={`absolute inset-y-0 left-0 ${esProxima ? "w-1 bg-primary" : "w-0.5 bg-destructive"}`} />}
                     {q.nro}
                   </td>
                   <td className={`${celda} whitespace-nowrap tabular-nums ${esVencida ? "text-destructive" : "text-muted-foreground"}`}>
-                    {formatFecha(q.fecha_vencimiento)}
+                    <span className="inline-flex items-center gap-2">
+                      {formatFecha(q.fecha_vencimiento)}
+                      {/* La que toca pagar, dicha con palabras: el marco solo se ve, esto se lee. */}
+                      {esProxima && (
+                        <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[9px] font-bold uppercase tracking-wider text-primary-foreground">
+                          A pagar
+                        </span>
+                      )}
+                    </span>
                   </td>
-                  <td className={`${celda} text-right font-mono font-medium tabular-nums text-foreground`}>${n2(q.cuota_total)}</td>
+                  <td className={`${celda} ${BANDA_TD} text-right font-mono font-bold text-[15px] tabular-nums ${pagada ? "text-muted-foreground/60" : "text-foreground"}`}>${n2(q.cuota_total)}</td>
                   <td className={`${celda} text-right md:hidden`}>{contenidoCobrar}</td>
-                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.interes)}</td>
-                  <td className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell`}>${n2(q.capital)}</td>
+                  <td className={`${celda} hidden text-right font-mono tabular-nums md:table-cell ${pagada ? "text-warning/45" : "text-warning"}`}>${n2(q.interes)}</td>
+                  <td className={`${celda} hidden text-right font-mono tabular-nums md:table-cell ${pagada ? "text-primary/45" : "text-primary"}`}>${n2(q.capital)}</td>
                   {hayCargos && (
                     <td
                       className={`${celda} hidden text-right font-mono tabular-nums text-muted-foreground lg:table-cell`}
@@ -625,7 +653,7 @@ export function PlanDeCuotas({
           </tbody>
 
           <tfoot className={sinAlto ? "" : "sticky bottom-0 z-10"}>
-            <tr className="bg-muted">
+            <tr className="bg-muted [&>td]:border-t-2 [&>td]:border-t-primary/40">
               <td colSpan={2} className={`${px} ${py} hidden border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:table-cell`}>
                 Totales
               </td>
@@ -633,15 +661,15 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:hidden`}>
                 Totales
               </td>
-              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-foreground`}>
+              <td className={`${px} ${py} border-t border-border bg-primary/[0.2] border-x border-x-primary/30 text-right font-mono font-bold text-[15px] tabular-nums text-foreground`}>
                 ${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}
               </td>
               {/* Celular: el total de "A cobrar" debajo de su columna, que ahí va segunda. */}
               <td className={`${px} ${py} border-t border-border text-right md:hidden`}>{totalCobrar}</td>
-              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
+              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-warning md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.interes, 0))}
               </td>
-              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-muted-foreground md:table-cell`}>
+              <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-primary md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.capital, 0))}
               </td>
               {/*
