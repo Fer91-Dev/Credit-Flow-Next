@@ -301,6 +301,14 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
   const moraColor = (pct: number) =>
     pct >= 30 ? "text-destructive" : pct >= 15 ? "text-warning" : "text-success";
 
+  // Totales del equipo: van al costado de cada rótulo, en lugar de una frase.
+  const suma = (f: (v: (typeof filas)[number]) => number | null | undefined) => filas.reduce((s, v) => s + (f(v) ?? 0), 0);
+  const totCobrado = suma((v) => v.cobranza_cobrado);
+  const totEsperado = suma((v) => v.cobranza_esperado);
+  const totPct = totEsperado > 0 ? Math.round((totCobrado / totEsperado) * 100) : 0;
+  const totOtorgado = suma((v) => v.monto_otorgado);
+  const totCartera = suma((v) => v.cartera);
+
   return (
     <div className="group rounded-xl bg-card border border-border p-5">
       <div className="flex items-center gap-2 mb-4">
@@ -317,13 +325,19 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
         importa más que el que debe $40.000 al 10%.
       */}
       <div className="mb-5 space-y-3">
+        {/*
+          Sin frases sueltas al costado de los rótulos (Fernando, 02/10/2026: "nada de textos
+          sueltos sin formato"). Donde iba la explicación va el DATO: el total del equipo.
+        */}
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Cobrando
           </p>
-          <p className="text-[11px] text-muted-foreground">
-            de lo que vencía, cuánto entró
-          </p>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="font-semibold text-foreground">{formatMonto(totCobrado)}</span>
+            {" de "}{formatMonto(totEsperado)}
+            <span className="ml-2 font-sans font-bold text-foreground">{totPct}%</span>
+          </span>
         </div>
         {[...filas]
           .sort((a, b) => (b.cobranza_esperado - b.cobranza_cobrado) - (a.cobranza_esperado - a.cobranza_cobrado))
@@ -347,9 +361,10 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
                 </div>
                 <BarraAvance pct={pct} tono={tono} demora={i * 80} />
                 {falta > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    falta cobrar <span className="font-mono tabular-nums text-foreground/80">{formatMonto(falta)}</span>
-                  </p>
+                  <div className="flex items-baseline justify-end gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Falta cobrar</span>
+                    <span className={`font-mono text-sm font-semibold tabular-nums ${textoTono}`}>{formatMonto(falta)}</span>
+                  </div>
                 )}
               </div>
             );
@@ -367,9 +382,12 @@ function RendimientoVendedores({ filas }: { filas: VendedorRendimiento[] }) {
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Colocando
         </p>
-        <p className="text-[11px] text-muted-foreground">
-          qué prestó cada uno y cómo le está volviendo
-        </p>
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+          <span className="font-sans text-[10px] font-bold uppercase tracking-wider">Otorgado</span>{" "}
+          <span className="font-semibold text-foreground">{formatMonto(totOtorgado)}</span>
+          <span className="ml-3 font-sans text-[10px] font-bold uppercase tracking-wider">Cartera</span>{" "}
+          <span className="font-semibold text-foreground">{formatMonto(totCartera)}</span>
+        </span>
       </div>
 
       {/* Celular: una tarjeta por vendedor, con los mismos seis números (la tabla pedía 640 px). */}
@@ -792,23 +810,26 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
                   {idx === 0 && v.vendido > 0 && <Trophy className="h-3.5 w-3.5 text-warning" />}
                   {v.nombre}
                 </span>
-                {v.meta > 0 && (
+                {v.meta > 0 ? (
                   <span className="font-mono text-xs text-muted-foreground">
                     {formatMonto(v.vendido)} / <span className="text-foreground">{formatMonto(v.meta)}</span>
                   </span>
+                ) : (
+                  /* Sin frase suelta (Fernando, 02/10/2026): estado en etiqueta + el dato rotulado. */
+                  <span className="flex items-baseline gap-2">
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ring-1 ring-inset ring-border">Sin meta</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Comisión</span>
+                    <span className="font-mono text-sm font-semibold tabular-nums text-foreground">{formatMonto(v.comision)}</span>
+                  </span>
                 )}
               </div>
-              {v.meta > 0 ? (
+              {v.meta > 0 && (
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 flex-1 rounded-full bg-muted/40 overflow-hidden">
                     <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
                   </div>
                   <span className={`text-xs font-mono font-semibold w-10 text-right ${cumplido ? "text-success" : "text-foreground"}`}>{v.avance}%</span>
                 </div>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Sin meta vigente · comisión <span className="font-mono tabular-nums text-foreground/80">{formatMonto(v.comision)}</span>
-                </p>
               )}
             </div>
           );
