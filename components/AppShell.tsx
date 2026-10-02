@@ -370,7 +370,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
    * Escape la limpia. No va en el riel contraído: no hay dónde escribir en 64px.
    */
   const filtroMenu = (onNavigate?: () => void) => (
-    <div className="px-3 pb-3 pt-1 [@media(min-width:1024px)_and_(max-height:820px)]:pb-2 [@media(min-width:1024px)_and_(max-height:820px)]:pt-0">
+    <div className="px-3 pb-6 pt-1 [@media(min-width:1024px)_and_(max-height:820px)]:pb-4 [@media(min-width:1024px)_and_(max-height:820px)]:pt-0">
       <input
         type="search"
         value={filtroNav}

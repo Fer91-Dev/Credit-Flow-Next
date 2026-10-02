@@ -56,7 +56,10 @@
   color-scheme: light;
   --radius: 0.5rem;
 
-  --background:         #F6F8FC;
+  /* Claro con NOTAS DE LILA (Fernando, 02/10/2026: "que no sea tan blanco"). El lienzo, los
+     pozos y los bordes toman el tono del acento #7C7FF4 muy diluido; las tarjetas siguen
+     blancas para que floten sobre él. */
+  --background:         #F3F2FC;
   --foreground:         #0F172A;
   --card:               #FFFFFF;
   --card-foreground:    #0F172A;
@@ -67,13 +70,13 @@
   --primary:            #6366F1;
   --primary-foreground: #FFFFFF;
 
-  --secondary:            #EEF2FF;
+  --secondary:            #ECEBFC;
   --secondary-foreground: #0F172A;
 
-  --muted:            #F1F5F9;
-  --muted-foreground: #64748B;
+  --muted:            #EFEEFA;
+  --muted-foreground: #646987;
 
-  --accent:            #EEF2FF;
+  --accent:            #ECEBFC;
   --accent-foreground: #0F172A;
 
   --success:     #059669;
@@ -91,20 +94,21 @@
   --warning-foreground:     #1A1205;
   --destructive-foreground: #FFFFFF;
 
-  --border: #E2E8F0;
-  --input:  #F1F5F9;
+  --border: #E1DFF3;
+  --input:  #F1F0FB;
   --ring:   #6366F1;
 
   /* Chrome: sidebar/header apenas distintos del fondo + borde hairline */
-  --sidebar: #FFFFFF;
-  --edge:    rgba(15, 23, 42, 0.07);
+  --sidebar: #FBFAFF;
+  --edge:    rgba(49, 42, 148, 0.09);
 }
 
 /* Fondo modo claro — leve gradiente indigo en la parte superior */
 body {
-  background-color: #F6F8FC;
+  background-color: #F3F2FC;
   background-image:
-    radial-gradient(ellipse 80% 40% at 50% -5%, rgba(99,102,241,0.06) 0%, transparent 65%);
+    radial-gradient(ellipse 80% 40% at 50% -5%, rgba(124,127,244,0.12) 0%, transparent 65%),
+    radial-gradient(ellipse 45% 35% at 90% 95%, rgba(124,127,244,0.07) 0%, transparent 60%);
   background-attachment: fixed;
 }
 
@@ -180,8 +184,8 @@ body {
   /* De fondo se probó y no: el logo perdía "ZERO" y la flecha, y el texto blanco el
      contraste. Va como ACENTO: pastilla del activo, buscador, flechas, íconos. */
   --riel-acento: #7C7FF4;
-  --riel-desde: #312A94;
-  --riel-hasta: #171C4A;
+  --riel-desde: #4038B8;
+  --riel-hasta: #2B2A78;
   background:
     radial-gradient(120% 40% at 0% 0%, rgba(255, 255, 255, 0.10), transparent 60%),
     linear-gradient(180deg, var(--riel-desde) 0%, var(--riel-hasta) 100%);
@@ -192,6 +196,10 @@ body {
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 .riel .logo-marca { filter: none; mix-blend-mode: lighten; }
+/* En claro el riel es más luminoso (Fernando, 02/10/2026) y el azul de "ZERO" se apagaba
+   contra el índigo: se le sube el brillo al logo. El negro de su fondo sigue siendo negro,
+   así que `lighten` lo sigue fundiendo. */
+:root:not(.dark) .riel .logo-marca { filter: brightness(1.6) saturate(1.15); }
 .riel .marca-nombre { color: var(--primary-foreground); }
 /* Latido suave del logo, SOLO con el mouse encima (Fernando, 28/09/2026). Sin corte por
    "reducir movimiento": lo dispara el propio usuario, es chico, y la PC de Fernando tiene
