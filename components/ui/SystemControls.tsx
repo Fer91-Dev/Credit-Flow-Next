@@ -332,11 +332,11 @@ export function SystemControls({ soloCampanita = false }: { soloCampanita?: bool
       <button
         onClick={toggle}
         title="Notificaciones"
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+        className="relative flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-5 w-5" />
         {totalNuevas > 0 ? (
-          <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ring-2 ring-background ${arqueos.length > 0 ? "bg-warning text-warning-foreground" : "bg-primary text-primary-foreground"}`}>
+          <span className={`absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold ring-2 ring-background ${arqueos.length > 0 ? "bg-warning text-warning-foreground" : "bg-primary text-primary-foreground"}`}>
             {totalNuevas > 9 ? "9+" : totalNuevas}
           </span>
         ) : (aviso || avisoBackup || arqueos.length > 0) ? (
@@ -530,15 +530,15 @@ export function SystemControls({ soloCampanita = false }: { soloCampanita?: bool
   if (soloCampanita) return campanita;
 
   return (
-    <div className="hidden lg:flex items-center gap-1.5">
+    <div className="hidden lg:flex items-center gap-2">
       {/* Buscar (abre el command palette) */}
       <button
         onClick={() => actions?.openSearch()}
-        className="flex items-center gap-2 h-9 w-52 rounded-lg border border-border bg-background pl-3 pr-2 text-left text-sm text-muted-foreground hover:border-primary transition-colors"
+        className="flex items-center gap-2 h-10 w-60 rounded-lg border border-border bg-background pl-3 pr-2 text-left text-[0.95rem] text-muted-foreground hover:border-primary transition-colors"
       >
-        <Search className="h-4 w-4 shrink-0" />
+        <Search className="h-[18px] w-[18px] shrink-0" />
         <span className="flex-1">Buscar</span>
-        <kbd className="rounded bg-muted px-1.5 font-mono text-[10px] font-medium border border-border text-foreground">⌘K</kbd>
+        <kbd className="rounded bg-muted px-1.5 font-mono text-[11px] font-medium border border-border text-foreground">⌘K</kbd>
       </button>
 
       <BotonPantallaCompleta />
@@ -552,9 +552,9 @@ export function SystemControls({ soloCampanita = false }: { soloCampanita?: bool
           onClick={() => setHelpOpen(true)}
           title={`Ayuda: ${helpDoc.titulo}`}
           aria-label="Abrir ayuda de la sección"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <HelpCircle className="h-4 w-4" />
+          <HelpCircle className="h-5 w-5" />
         </button>
       )}
 
@@ -563,9 +563,9 @@ export function SystemControls({ soloCampanita = false }: { soloCampanita?: bool
         <button
           onClick={() => setTheme(isDark ? "light" : "dark")}
           title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
         >
-          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
       )}
 
@@ -591,14 +591,14 @@ function UserMenu() {
       <button
         onClick={() => setOpen((o) => !o)}
         title="Mi cuenta"
-        className="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 text-muted-foreground transition-colors hover:bg-accent"
+        className="flex h-11 items-center gap-2.5 rounded-lg pl-1 pr-2 text-muted-foreground transition-colors hover:bg-accent"
       >
-        <Avatar name={usuario.nombre} src={usuario.avatarUrl} size="xs" />
+        <Avatar name={usuario.nombre} src={usuario.avatarUrl} size="sm" />
         <div className="min-w-0 text-left leading-tight">
-          <p className="max-w-[130px] truncate text-xs font-semibold text-foreground">{usuario.nombre}</p>
-          <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">{ROLE_LABEL[usuario.role]}</p>
+          <p className="max-w-[150px] truncate text-sm font-semibold text-foreground">{usuario.nombre}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{ROLE_LABEL[usuario.role]}</p>
         </div>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -672,9 +672,9 @@ function BotonPantallaCompleta() {
       onClick={alternar}
       title={etiqueta}
       aria-label={etiqueta}
-      className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
-      {activa ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+      {activa ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
     </button>
   );
 }
