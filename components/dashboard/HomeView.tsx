@@ -88,7 +88,10 @@ export function HomeView({ role }: { role: Role }) {
     <div className="space-y-6">
       {/* El dólar como cinta que pasa, arriba de la banda (Fernando, 01/10/2026). Antes era una
           tarjeta en la columna derecha; es contexto, no un número de la financiera. */}
-      <div className="relative z-10 -mt-2 !mb-3"><TickerDolar /></div>
+      {/* Franja de borde a borde, pegada al encabezado (Fernando, 02/10/2026: "que se rellene
+          todo"): los márgenes negativos anulan el padding de la página y el espacio que la
+          separaba del header. */}
+      <div className="relative z-10 -mx-4 -mt-8 !mb-5 md:-mx-6 lg:-mx-8"><TickerDolar /></div>
       {/* ── 1 · LA PLATA, arriba de todo ──
           Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
           contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
