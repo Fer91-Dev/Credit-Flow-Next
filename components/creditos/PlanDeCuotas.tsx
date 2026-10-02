@@ -90,8 +90,10 @@ export function PlanDeCuotas({
   const celda = `${px} ${py} border-b border-border/70`;
 
   /*
-    🔴 LA COLUMNA "CUOTA" ES UNA BANDA, como en el simulador (Fernando, 01/10/2026: "que se
-    note bien cuál es la cuota que se debe pagar, con el estilo del simulador"). Y la cuota que
+    🔴 LA BANDA VA EN "A COBRAR", como en el simulador (Fernando, 01/10/2026: "que se note
+    bien cuál es la cuota que se debe pagar"). La banda marca LO QUE SE ABONA: la puse primero en
+    "Cuota" y Fernando lo corrigió en el acto — "el importe a abonar es el que dice A cobrar"
+    (cuota + mora − lo ya pagado). En el simulador va en "Cuota" porque ahí no hay mora. Y la cuota que
     toca pagar —la primera impaga: la imputación cobra siempre la más vieja— va enmarcada y
     con su etiqueta. Si el que llama ya sabe cuál es (`proximaNro`), manda ese.
   */
@@ -148,7 +150,7 @@ export function PlanDeCuotas({
   // Total de "A cobrar" del pie: en el celular va debajo de la columna que queda segunda.
   const totalCobrar = (
     <>
-                <span className="block font-mono font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
+                <span className="block font-mono text-[15px] font-bold tabular-nums text-foreground">${n2(aCobrarTotal)}</span>
                 {pagadoTotal > 0 && (
                   <span className="block font-mono text-[10px] font-normal tabular-nums text-success">
                     cobrado ${n2(pagadoTotal)}
@@ -254,12 +256,12 @@ export function PlanDeCuotas({
                 // El "#" se oculta en el celular: la fecha ya dice qué cuota es.
                 { t: "#", a: "text-left", w: "hidden w-9 sm:table-cell" },
                 { t: "Vencimiento", a: "text-left" },
-                { t: "Cuota", a: "text-right", banda: true },
+                { t: "Cuota", a: "text-right" },
                 /* 🔴 EN EL CELULAR, "A COBRAR" VA ACÁ, pegada a la cuota (Fernando, 29/09/2026):
                    al final, el botón de cobro quedaba fuera de la pantalla y había que deslizar
                    la tabla para encontrarlo. Mora y comprobante pasan a su derecha. En la
                    computadora sigue al final, que es donde cierra la cuenta del renglón. */
-                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: "text-right", w: "md:hidden" },
+                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: "text-right", w: "md:hidden", banda: true },
                 { t: "Interés", op: "↳", a: "text-right", w: "hidden md:table-cell", c: "text-warning" },
                 { t: "Capital", op: "↳", a: "text-right", w: "hidden md:table-cell", c: "text-primary" },
                 ...(hayCargos ? [{ t: rotuloCargos, op: "↳", a: "text-right", w: "hidden lg:table-cell" }] : []),
@@ -288,7 +290,7 @@ export function PlanDeCuotas({
                   le falta a esa cuota del plan viejo. Mismo arreglo que ya se hizo en el modal
                   de cobro del acuerdo.
                 */
-                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}`, w: "hidden md:table-cell" },
+                { t: cobroBloqueado ? "Le falta" : "A cobrar", op: "=", a: `text-right ${pr}`, w: "hidden md:table-cell", banda: true },
               ].map((h: { t: string; a: string; w?: string; op?: string; c?: string; banda?: boolean }, hi) => (
                 <th
                   key={hi}
@@ -424,7 +426,7 @@ export function PlanDeCuotas({
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </button>
                         ) : (
-                          <span className={`font-mono font-semibold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
+                          <span className={`font-mono text-[15px] font-bold tabular-nums ${esVencida ? "text-destructive" : "text-foreground"}`}>
                             ${n2(q.total_cobrar ?? q.cuota_total)}
                           </span>
                         )}
@@ -456,8 +458,8 @@ export function PlanDeCuotas({
                       )}
                     </span>
                   </td>
-                  <td className={`${celda} ${BANDA_TD} text-right font-mono font-bold text-[15px] tabular-nums ${pagada ? "text-muted-foreground/60" : "text-foreground"}`}>${n2(q.cuota_total)}</td>
-                  <td className={`${celda} text-right md:hidden`}>{contenidoCobrar}</td>
+                  <td className={`${celda} text-right font-mono font-medium tabular-nums ${pagada ? "text-muted-foreground/60" : "text-foreground"}`}>${n2(q.cuota_total)}</td>
+                  <td className={`${celda} ${BANDA_TD} text-right md:hidden`}>{contenidoCobrar}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums md:table-cell ${pagada ? "text-warning/45" : "text-warning"}`}>${n2(q.interes)}</td>
                   <td className={`${celda} hidden text-right font-mono tabular-nums md:table-cell ${pagada ? "text-primary/45" : "text-primary"}`}>${n2(q.capital)}</td>
                   {hayCargos && (
@@ -644,7 +646,7 @@ export function PlanDeCuotas({
                       · pagada a medias → cuánto entró, y debajo el botón con lo que resta
                       · sin tocar       → solo el botón
                   */}
-                  <td className={`${celda} ${pr} hidden text-right md:table-cell`}>
+                  <td className={`${celda} ${pr} ${BANDA_TD} hidden text-right md:table-cell`}>
                     {contenidoCobrar}
                   </td>
                 </tr>
@@ -661,11 +663,11 @@ export function PlanDeCuotas({
               <td className={`${px} ${py} border-t border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:hidden`}>
                 Totales
               </td>
-              <td className={`${px} ${py} border-t border-border bg-primary/[0.2] border-x border-x-primary/30 text-right font-mono font-bold text-[15px] tabular-nums text-foreground`}>
+              <td className={`${px} ${py} border-t border-border text-right font-mono font-bold tabular-nums text-foreground`}>
                 ${n2(cuotas.reduce((s, q) => s + q.cuota_total, 0))}
               </td>
               {/* Celular: el total de "A cobrar" debajo de su columna, que ahí va segunda. */}
-              <td className={`${px} ${py} border-t border-border text-right md:hidden`}>{totalCobrar}</td>
+              <td className={`${px} ${py} border-t border-border bg-primary/[0.2] border-x border-x-primary/30 text-right md:hidden`}>{totalCobrar}</td>
               <td className={`${px} ${py} hidden border-t border-border text-right font-mono font-bold tabular-nums text-warning md:table-cell`}>
                 ${n2(cuotas.reduce((s, q) => s + q.interes, 0))}
               </td>
@@ -738,7 +740,7 @@ export function PlanDeCuotas({
               <td className="hidden border-t border-border md:table-cell" />
               {/* Lo que el cliente debe hoy —coincide con la tarjeta "Deuda total" porque sale
                   de las mismas cuotas— y debajo lo que ya entró, que perdió su columna. */}
-              <td className={`${px} ${py} ${pr} hidden border-t border-border text-right md:table-cell`}>
+              <td className={`${px} ${py} ${pr} hidden border-t border-border bg-primary/[0.2] border-x border-x-primary/30 text-right md:table-cell`}>
                 {totalCobrar}
               </td>
             </tr>
