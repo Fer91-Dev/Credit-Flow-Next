@@ -189,7 +189,7 @@ function NavSection({
   // Un grupo plegado que tiene al activo lo sigue mostrando: no se esconde dónde estás.
   const visibles = plegado ? group.items.filter((i) => isActive(i.to)) : group.items;
   return (
-    <div className="mt-4 first:mt-0 [@media(min-width:1024px)_and_(max-height:820px)]:mt-2.5">
+    <div className="mt-7 first:mt-1 [@media(min-width:1024px)_and_(max-height:820px)]:mt-4 [@media(min-width:1024px)_and_(max-height:820px)]:first:mt-0">
       {/* Contraído, la etiqueta del grupo se reemplaza por una línea. */}
       {colapsado ? (
         !primero && <div aria-hidden className="mb-2 mt-1 h-px bg-primary-foreground/15" />
