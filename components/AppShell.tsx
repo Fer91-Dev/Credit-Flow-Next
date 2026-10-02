@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import {
+import { ChevronDown,
   Bell, Search, LogOut, Menu, X, PlusCircle, Sun, Moon, HelpCircle,
   LayoutDashboard, Users, CreditCard, Banknote, Megaphone,
   Wallet, Receipt, Percent, BarChart3,
@@ -52,7 +52,7 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
           truncarlo a dos letras se lee peor que no ponerlo. */}
       {!soloIcono && (
         <div className="min-w-0 leading-tight">
-          <span className={`block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
+          <span className={`marca-nombre block truncate ${txt} font-bold tracking-tight text-foreground`}>{marca}</span>
         </div>
       )}
     </div>
@@ -141,38 +141,39 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onMouseLeave={() => avisar(null)}
       onFocus={(e) => avisar(e.currentTarget)}
       onBlur={() => avisar(null)}
-      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1.5 text-sm transition-all duration-150 ease-out ${
+      // Estilo "riel de color" (Fernando, 02/10/2026, referencia SmartAdmin): texto claro sobre
+      // el degradado, el activo es una pastilla clara con un punto, el hover un velo blanco.
+      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-[0.95rem] transition-all duration-150 ease-out ${
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
-          ? "bg-primary/10 font-medium text-primary"
-          : `font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
+          ? "bg-primary-foreground/15 font-semibold text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.10)]"
+          : `font-medium text-primary-foreground/75 hover:bg-primary-foreground/10 hover:text-primary-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
       }`}
     >
-      {/* Barra de acento del ítem activo: da un ancla vertical que el fondo solo no
-          logra. Más corta que el ítem, así no toca las esquinas redondeadas. */}
-      <span
-        aria-hidden
-        className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary transition-opacity duration-150 ${
-          isActive ? "opacity-100" : "opacity-0"
-        }`}
-      />
-      {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú.
-          Al heredar currentColor, el ícono se tiñe de indigo con el hover y el foco. */}
+      {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
       <Icon
         className={`h-[18px] w-[18px] shrink-0 transition-colors duration-150 ${
-          isActive ? "" : "text-muted-foreground/70 group-hover:text-primary"
+          isActive ? "" : "text-primary-foreground/55 group-hover:text-primary-foreground"
         }`}
         strokeWidth={1.75}
       />
       {!colapsado && <span className="truncate">{label}</span>}
+      {/* El punto del activo, como en la referencia. Contraído no entra: queda la pastilla. */}
+      {isActive && !colapsado && (
+        <span aria-hidden className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-warning shadow-[0_0_6px_var(--warning)]" />
+      )}
     </Link>
   );
 }
 
-/** Grupo del sidebar: etiqueta separadora (no interactiva) + sus items. */
+/**
+ * Grupo del sidebar. Desplegado, la etiqueta es un BOTÓN que pliega el grupo (flecha, como
+ * la referencia SmartAdmin que pidió Fernando el 02/10/2026); arrancan todos abiertos y lo
+ * plegado se recuerda. Mientras se filtra el menú, todos se abren: el filtro manda.
+ */
 function NavSection({
-  group, isActive, onNavigate, colapsado, onRotulo, primero,
+  group, isActive, onNavigate, colapsado, onRotulo, primero, plegado, onPlegar,
 }: {
   group: NavGroup;
   isActive: (to: string) => boolean;
@@ -181,23 +182,34 @@ function NavSection({
   onRotulo?: AvisoRotulo;
   /** Primer grupo del menú: no lleva separador arriba (ya está el borde de la marca). */
   primero?: boolean;
+  plegado?: boolean;
+  onPlegar?: () => void;
 }) {
-  // En pantallas bajas (notebook, ~650px útiles) el menú se compacta para entrar entero sin
-  // scroll (Fernando, 02/10/2026: Silvio lo usa en notebook y celular). En un monitor alto no
-  // cambia nada. Ver también el `py-1.5` de SideNavLink.
+  const id = `nav-grupo-${group.label.toLowerCase().replace(/\W+/g, "-")}`;
+  // Un grupo plegado que tiene al activo lo sigue mostrando: no se esconde dónde estás.
+  const visibles = plegado ? group.items.filter((i) => isActive(i.to)) : group.items;
   return (
-    <div className="mt-5 first:mt-0 [@media(min-width:1024px)_and_(max-height:820px)]:mt-3">
-      {/* Contraído, la etiqueta del grupo se reemplaza por una línea: el agrupamiento se
-          sigue leyendo, que es para lo que estaba, y no hace falta abreviar la palabra. */}
+    <div className="mt-4 first:mt-0 [@media(min-width:1024px)_and_(max-height:820px)]:mt-2.5">
+      {/* Contraído, la etiqueta del grupo se reemplaza por una línea. */}
       {colapsado ? (
-        !primero && <div aria-hidden className="mb-2 mt-1 h-px bg-border/70" />
+        !primero && <div aria-hidden className="mb-2 mt-1 h-px bg-primary-foreground/15" />
       ) : (
-        <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
+        <button
+          type="button"
+          onClick={onPlegar}
+          aria-expanded={!plegado}
+          aria-controls={id}
+          className="group/rot mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 [@media(min-width:1024px)_and_(max-height:820px)]:py-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-primary-foreground/90"
+        >
           {group.label}
-        </p>
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${plegado ? "-rotate-90" : ""}`}
+            aria-hidden
+          />
+        </button>
       )}
-      <div className="space-y-0.5">
-        {group.items.map((item) => (
+      <div id={id} className="space-y-0.5">
+        {(colapsado ? group.items : visibles).map((item) => (
           <SideNavLink
             key={item.to} {...item}
             isActive={isActive(item.to)} onClick={onNavigate}
@@ -208,6 +220,9 @@ function NavSection({
     </div>
   );
 }
+
+/** Para filtrar el menú sin que importen tildes ni mayúsculas ("configuracion" encuentra). */
+const normalizar = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 export function AppShell({ children, role, nombre, email, avatarUrl, financiera, esOwner = false }: { children: React.ReactNode; role: Role; nombre: string | null; email: string | null; avatarUrl: string | null; financiera?: Financiera | null; esOwner?: boolean }) {
   const router = useRouter();
@@ -253,9 +268,21 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
     setRotulo({ label, top: r.top + r.height / 2 });
   };
 
+  /** Filtro del menú (la cajita punteada de arriba) y grupos plegados (se recuerdan). */
+  const [filtroNav, setFiltroNav] = useState("");
+  const [plegados, setPlegados] = useState<string[]>([]);
+
   useEffect(() => {
     try { setColapsado(localStorage.getItem("cf:navColapsado") === "1"); } catch { /* modo privado */ }
+    try { setPlegados(JSON.parse(localStorage.getItem("cf:navPlegados") ?? "[]")); } catch { /* modo privado */ }
   }, []);
+  const alternarPlegado = (label: string) => {
+    setPlegados((v) => {
+      const n = v.includes(label) ? v.filter((x) => x !== label) : [...v, label];
+      try { localStorage.setItem("cf:navPlegados", JSON.stringify(n)); } catch { /* modo privado */ }
+      return n;
+    });
+  };
   const alternarColapso = () => {
     setRotulo(null); // si no, queda el rótulo colgado al expandir
     setColapsado((v) => {
@@ -327,6 +354,38 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
   // Navegación compartida desktop/mobile: grupos planos con etiqueta separadora.
   // `onNavigate` cierra el drawer en mobile (no-op en desktop).
   // `compacto` solo lo pide el sidebar de escritorio; el drawer mobile siempre va completo.
+  const gruposFiltrados = (compacto: boolean) => {
+    const q = normalizar(filtroNav.trim());
+    if (compacto || !q) return groups;
+    return groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => normalizar(i.label).includes(q)) }))
+      .filter((g) => g.items.length > 0);
+  };
+
+  /**
+   * La cajita "Filtrar menú" (referencia SmartAdmin). Enter abre el primero que coincide;
+   * Escape la limpia. No va en el riel contraído: no hay dónde escribir en 64px.
+   */
+  const filtroMenu = (onNavigate?: () => void) => (
+    <div className="px-3 pb-3 pt-1 [@media(min-width:1024px)_and_(max-height:820px)]:pb-2 [@media(min-width:1024px)_and_(max-height:820px)]:pt-0">
+      <input
+        type="search"
+        value={filtroNav}
+        onChange={(e) => setFiltroNav(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { e.stopPropagation(); setFiltroNav(""); }
+          if (e.key === "Enter") {
+            const primero = gruposFiltrados(false)[0]?.items[0];
+            if (primero) { router.push(primero.to); setFiltroNav(""); onNavigate?.(); }
+          }
+        }}
+        placeholder="Filtrar menú"
+        aria-label="Filtrar el menú"
+        className="h-9 w-full rounded-lg border border-dashed border-primary-foreground/30 bg-primary-foreground/[0.06] px-3 text-sm text-primary-foreground outline-none transition-colors placeholder:text-primary-foreground/50 focus:border-solid focus:border-primary-foreground/50 focus:bg-primary-foreground/10 [&::-webkit-search-cancel-button]:hidden"
+      />
+    </div>
+  );
+
   const renderNav = (onNavigate?: () => void, compacto = false) => (
     <>
       {esOwner ? (
@@ -341,12 +400,19 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       ) : (
         /* Sin "Principal · Home" (Fernando, 02/10/2026): al inicio lleva el logo, arriba del
            menú en escritorio, en la barra del celular y en el cajón. Home sigue en Ctrl+K. */
-        groups.map((g, i) => (
-          <NavSection
-            key={g.label} group={g} isActive={isActive} onNavigate={onNavigate}
-            colapsado={compacto} onRotulo={mostrarRotulo} primero={i === 0}
-          />
-        ))
+        <>
+          {gruposFiltrados(compacto).map((g, i) => (
+            <NavSection
+              key={g.label} group={g} isActive={isActive} onNavigate={onNavigate}
+              colapsado={compacto} onRotulo={mostrarRotulo} primero={i === 0}
+              plegado={!compacto && !filtroNav.trim() && plegados.includes(g.label)}
+              onPlegar={() => alternarPlegado(g.label)}
+            />
+          ))}
+          {!compacto && filtroNav.trim() && gruposFiltrados(false).length === 0 && (
+            <p className="px-3 py-2 text-xs text-primary-foreground/60">Nada coincide con “{filtroNav.trim()}”.</p>
+          )}
+        </>
       )}
     </>
   );
@@ -356,7 +422,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside
-        className={`group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col bg-sidebar border-r border-edge transition-[width] duration-200 ease-out ${
+        className={`riel group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col transition-[width] duration-200 ease-out ${
           colapsado ? "w-16" : "w-64"
         }`}
       >
@@ -375,7 +441,8 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        <nav className={`flex-1 overflow-y-auto py-3 [@media(min-width:1024px)_and_(max-height:820px)]:py-2 sin-scrollbar ${colapsado ? "px-2" : "px-3"}`}>
+        {!colapsado && filtroMenu()}
+        <nav className={`flex-1 overflow-y-auto pb-3 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-3"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
 
@@ -398,7 +465,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           {/* El área de clic es el padding del botón; esto es solo la marca visible. */}
           <span
             aria-hidden
-            className="h-14 w-[3px] rounded-full bg-border transition-colors duration-150 group-hover/aleta:bg-primary"
+            className="h-14 w-[3px] rounded-full bg-primary-foreground/30 transition-colors duration-150 group-hover/aleta:bg-primary"
           />
         </button>
       </aside>
@@ -502,36 +569,37 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col bg-card border-r border-border/50 shadow-2xl">
+          <aside className="riel absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col shadow-2xl">
             <div className="flex min-h-16 shrink-0 items-center justify-between px-4 pb-1 pt-4">
               <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center transition-opacity hover:opacity-80">
                 <Brand financiera={financiera} size="sm" protagonista />
               </Link>
               <button
                 onClick={() => setMobileOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground"
                 aria-label="Cerrar menú"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex items-center gap-3 border-b border-border px-4 py-4">
+            <div className="mb-3 flex items-center gap-3 border-b border-primary-foreground/15 px-4 py-4">
               <Avatar name={displayName} src={avatarUrl} size="sm" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
-                <p className="truncate text-xs text-muted-foreground">{email ?? ""}</p>
+                <p className="truncate text-sm font-semibold text-primary-foreground">{displayName}</p>
+                <p className="truncate text-xs text-primary-foreground/60">{email ?? ""}</p>
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-3 sin-scrollbar">
+            {filtroMenu(() => setMobileOpen(false))}
+            <nav className="flex-1 overflow-y-auto px-3 pb-3 sin-scrollbar">
               {renderNav(() => setMobileOpen(false))}
             </nav>
 
-            <div className="shrink-0 border-t border-border p-3">
+            <div className="shrink-0 border-t border-primary-foreground/15 p-3">
               <button
                 onClick={signOut}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-primary-foreground/75 hover:bg-primary-foreground/10 hover:text-primary-foreground transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Cerrar sesión</span>
