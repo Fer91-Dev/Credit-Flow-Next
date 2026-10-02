@@ -1269,16 +1269,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <div className="mt-2.5 overflow-x-auto rounded-lg border border-border">
                     <table className="w-full border-separate border-spacing-0 text-[13px]">
                       <thead>
-                        <tr className="bg-muted/40 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          <th className="w-8 border-b border-border px-3 py-2.5 text-left font-semibold">#</th>
-                          <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Vencimiento</th>
-                          <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Pactado</th>
-                          <th className="border-b border-border px-3 py-2.5 text-right font-semibold">Cobrado</th>
+                        {/* Mismo estilo que el plan de cuotas (Fernando, 02/10/2026): la banda va en
+                            "Falta", que es lo que se abona, y la cuota pactada que toca va enmarcada. */}
+                        <tr className="bg-muted text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <th className="w-8 border-b border-border px-3 py-2.5 text-left">#</th>
+                          <th className="border-b border-border px-3 py-2.5 text-left">Vencimiento</th>
+                          <th className="border-b border-border px-3 py-2.5 text-right">Pactado</th>
+                          <th className="border-b border-border px-3 py-2.5 text-right text-success">Cobrado</th>
                           <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Comprobante</th>
                           {/* Cuándo entró cada recibo, en su columna: igual que el plan del crédito
                               (Fernando, 15/09/2026). */}
                           <th className="border-b border-border px-3 py-2.5 text-left font-semibold">Fecha de pago</th>
-                          <th className="border-b border-border px-3 py-2.5 pr-4 text-right font-semibold">Falta</th>
+                          <th className="relative overflow-hidden text-primary bg-gradient-to-b from-primary/30 to-primary/10 border-x border-x-primary/30 shadow-[inset_0_2px_0_0_var(--primary)] border-b border-border px-3 py-2.5 pr-4 text-right">
+                            <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-brillo-barra" />
+                            Falta
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1289,12 +1294,21 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           const recibos = c.recibos ?? (c.comprobante ? [{ comprobante: c.comprobante, pago_id: c.pago_id ?? "", monto: c.pagado, monto_pago: c.pagado }] : []);
                           const celdaAc = "border-b border-border/50 px-3 py-2.5";
                           return (
-                            <tr key={c.id} className={`transition-colors ${esProxima ? "bg-primary/[0.07]" : "hover:bg-muted/20"}`}>
+                            <tr key={c.id} className={`transition-colors ${esProxima ? "bg-primary/[0.08] ring-2 ring-inset ring-primary/60" : "hover:bg-muted/20"}`}>
                               <td className={`${celdaAc} relative font-mono tabular-nums text-muted-foreground`}>
-                                {esProxima && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary" />}
+                                {esProxima && <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />}
                                 {c.numero}
                               </td>
-                              <td className={`${celdaAc} tabular-nums text-foreground`}>{fmtDate(c.vencimiento)}</td>
+                              <td className={`${celdaAc} tabular-nums text-foreground`}>
+                                <span className="inline-flex items-center gap-2">
+                                  {fmtDate(c.vencimiento)}
+                                  {esProxima && falta > 0 && (
+                                    <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[9px] font-bold uppercase tracking-wider text-primary-foreground">
+                                      A pagar
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
                               <td className={`${celdaAc} text-right font-mono font-medium tabular-nums text-foreground`}>{formatMonto(c.monto)}</td>
                               <td className={`${celdaAc} text-right font-mono tabular-nums text-success`}>
                                 {c.pagado > 0 ? formatMonto(c.pagado) : <span className="text-muted-foreground/40">—</span>}
@@ -1354,8 +1368,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                                   <span className="text-muted-foreground/40">—</span>
                                 )}
                               </td>
-                              <td className={`${celdaAc} pr-4 text-right font-mono tabular-nums ${
-                                falta === 0 ? "text-success" : c.estado === "vencida" ? "font-semibold text-destructive" : "text-foreground"
+                              <td className={`${celdaAc} pr-4 bg-primary/[0.1] border-x border-x-primary/30 text-right font-mono tabular-nums ${
+                                falta === 0 ? "text-sm text-success" : c.estado === "vencida" ? "text-[15px] font-bold text-destructive" : "text-[15px] font-bold text-foreground"
                               }`}>
                                 {falta === 0 ? "saldada" : formatMonto(falta)}
                               </td>
@@ -1366,7 +1380,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                       {/* El pie: los mismos tres importes del bloque de arriba, sumados por
                           columna. Si alguna vez no coincidieran, se ve en el acto. */}
                       <tfoot>
-                        <tr className="bg-muted">
+                        <tr className="bg-muted [&>td]:border-t-2 [&>td]:border-t-primary/40">
                           <td colSpan={2} className="px-3 py-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                             Totales
                           </td>
@@ -1378,7 +1392,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                           </td>
                           <td className="px-3 py-2.5" />
                           <td className="px-3 py-2.5" />
-                          <td className={`px-3 py-2.5 pr-4 text-right font-mono font-bold tabular-nums ${faltaPlan > 0 ? tono.texto : "text-success"}`}>
+                          <td className={`px-3 py-2.5 pr-4 bg-primary/[0.2] border-x border-x-primary/30 text-right font-mono font-bold tabular-nums ${faltaPlan > 0 ? `text-[15px] ${tono.texto}` : "text-success"}`}>
                             {faltaPlan > 0 ? formatMonto(faltaPlan) : "saldado"}
                           </td>
                         </tr>
@@ -1462,8 +1476,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
         >
         <details open={planAbierto} onToggle={(e) => setPlanAbierto((e.target as HTMLDetailsElement).open)}
           className="group/plan block">
-          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 [&::-webkit-details-marker]:hidden">
-            <div className="flex items-center gap-2">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 list-none transition-colors hover:bg-muted/20 sm:flex-nowrap [&::-webkit-details-marker]:hidden">
+            <div className="flex shrink-0 items-center gap-2">
               <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/plan:rotate-180" />
               <Emoji name={credito.es_refinanciacion ? "counterclockwise-arrows-button" : "calendar"} className="h-4 w-4" />
               {/*
@@ -1531,9 +1545,10 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               costado, con el mismo `.fila-deslizable` de las pestañas de Cobranzas.
             */}
             <Deslizable
-              envoltorio="w-full"
-              // Renglón propio, con los botones CENTRADOS en el ancho de la tarjeta (Fernando,
-              // 27/09/2026). En el celular sigue deslizándose de costado, con pista.
+              // Desde `sm`, en la MISMA línea que el título y centrados en el lugar que queda
+              // (Fernando, 02/10/2026: "alineá estos a la misma altura y centrados al medio").
+              // Antes iban en un renglón propio. En el celular siguen en su renglón, deslizándose.
+              envoltorio="w-full sm:w-auto sm:min-w-0 sm:flex-1"
               className="fila-deslizable flex w-full items-center gap-5 sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2 sm:overflow-visible"
               onClick={(e) => e.stopPropagation()}
               role="presentation"
