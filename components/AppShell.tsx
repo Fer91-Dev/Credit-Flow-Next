@@ -455,7 +455,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           // Zona del logo más alta (Fernando, 02/10/2026, referencia SmartAdmin): el logo
           // agrandado quedaba pegado arriba y al buscador. Ya no se alinea con los 88px del
           // encabezado: sin línea abajo, lo que se nota es el aire.
-          className={`marca-link flex shrink-0 items-center ${colapsado ? "h-[88px]" : "h-[10.5rem]"} ${
+          className={`marca-link flex shrink-0 items-center h-[88px] ${
             colapsado ? "justify-center px-0" : financiera?.logo_url ? "justify-center px-5" : "px-5"
           }`}
         >
@@ -464,7 +464,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
 
         {/* Nav — Home suelto + grupos colapsables. La identidad del usuario + logout viven ahora
             en el header (menú de usuario en SystemControls), no al pie del sidebar. */}
-        {!colapsado && filtroMenu()}
+        {/* El logo se centra en los mismos 88px del encabezado (Fernando, 02/10/2026: "a la
+            misma altura que los objetos del header"); el aire que tenía abajo pasa acá. */}
+        {!colapsado && <div className="pt-7">{filtroMenu()}</div>}
         <nav className={`flex-1 overflow-y-auto pb-6 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-4"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
