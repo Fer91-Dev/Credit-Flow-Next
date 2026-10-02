@@ -218,8 +218,9 @@ function NavSection({
           />
         </button>
       )}
-      {/* Más aire entre ítems (Fernando, 02/10/2026), también en notebook: entra igual. */}
-      <div id={id} className="space-y-1">
+      {/* Línea punteada que baja del rótulo y acompaña a los ítems del grupo (Fernando,
+          02/10/2026, referencia SmartAdmin). Contraído no va: no hay lugar. */}
+      <div id={id} className={colapsado ? "space-y-1" : "ml-[1.35rem] space-y-1 border-l border-dashed border-primary-foreground/35 pl-2"}>
         {(colapsado ? group.items : visibles).map((item) => (
           <SideNavLink
             key={item.to} {...item}
