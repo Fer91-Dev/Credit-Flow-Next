@@ -1,6 +1,7 @@
 "use client";
 
 import { Deslizable } from "@/components/ui/Deslizable";
+import { Emoji } from "@/components/ui/Emoji";
 import { Printer, Check, AlertTriangle } from "lucide-react";
 import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -774,58 +775,67 @@ export function PlanDeCuotas({
         parámetros son los CONGELADOS de este crédito, no los de la configuración de hoy: sin
         eso el importe de la columna no se puede verificar.
       */}
+      {/*
+        "Darle vida" (Fernando, 02/10/2026: "que deje de ser solo texto"). Las fórmulas pintan
+        cada término con el color de SU columna (interés amarillo, capital índigo, mora roja,
+        pagado verde, a cobrar con la banda), y los parámetros congelados del crédito pasan de
+        párrafo a tarjetas: el dato grande, la explicación en una línea abajo.
+      */}
       <div className="rounded-xl border border-border bg-muted/20 px-4 py-3.5">
-        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          Cómo se calcula
-        </p>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-          <Formula>Cuota = interés + capital</Formula>
-          <Formula>{cobroBloqueado ? "Le falta" : "A cobrar"} = cuota + mora − lo ya pagado</Formula>
+        <div className="mb-3 flex items-center gap-2">
+          <Emoji name="balance-scale" className="h-4 w-4" />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Cómo se calcula</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Formula>
+            <Termino tono="base">Cuota</Termino><Op>=</Op>
+            <Termino tono="warning">Interés</Termino><Op>+</Op>
+            <Termino tono="primary">Capital</Termino>
+          </Formula>
+          <Formula>
+            <Termino tono="banda">{cobroBloqueado ? "Le falta" : "A cobrar"}</Termino><Op>=</Op>
+            <Termino tono="base">Cuota</Termino><Op>+</Op>
+            <Termino tono="destructive">Mora</Termino><Op>−</Op>
+            <Termino tono="success">Ya pagado</Termino>
+          </Formula>
           {moraTotal > 0 && mora && (
-            <Formula acento>
-              Mora = días de atraso × {formatNumero(mora.tasaDiaria * 100, 2)}% × importe de la cuota
+            <Formula>
+              <Termino tono="destructive">Mora</Termino><Op>=</Op>
+              <Termino tono="base">Días de atraso</Termino><Op>×</Op>
+              <Termino tono="destructive">{formatNumero(mora.tasaDiaria * 100, 2)}%</Termino><Op>×</Op>
+              <Termino tono="base">Cuota</Termino>
             </Formula>
           )}
         </div>
-        {(cobroBloqueado || (moraTotal > 0 && mora)) && (
-          <div className="mt-3 space-y-1.5 border-t border-border/60 pt-3 text-xs leading-relaxed text-muted-foreground">
-            {/* Por qué este plan está de referencia y no se cobra. Va acá, con el resto de
-                las aclaraciones del cálculo, no como un cartel más arriba. */}
-            {cobroBloqueado && <p>{cobroBloqueado}.</p>}
-            {moraTotal > 0 && mora && (
-              <p>
-                La mora corre sobre el <strong className="font-medium text-foreground">importe de la cuota</strong>,
-                no sobre el saldo que queda tras un pago parcial
-                {mora.topePct > 0 && <>, y deja de crecer al llegar al {mora.topePct}% de la cuota</>}.
-                {/*
-                  🔴 LA GRACIA, EXPLICADA COMO UNA RESTA.
-
-                  Decía "a partir del día 3 de atraso", que es exacto y no ayuda: arriba el KPI
-                  dice "En mora · 11 días" y el punitorio está calculado sobre 9. Escrita como
-                  resta, la diferencia deja de ser un misterio.
-                */}
-                {mora.diasGracia > 0 && (
-                  <>
-                    {" "}Los primeros{" "}
-                    <strong className="font-medium text-foreground">{formatDias(mora.diasGracia)}</strong>{" "}
-                    de atraso no devengan, así que se cobran los días de atraso menos {mora.diasGracia}.
-                  </>
-                )}
-              </p>
+        {moraTotal > 0 && mora && (
+          <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border/60 pt-3 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
+            <Regla emoji="receipt" dato="Sobre la cuota">
+              No sobre el saldo que queda tras un pago parcial.
+            </Regla>
+            <Regla emoji="alarm-clock" dato={`${formatNumero(mora.tasaDiaria * 100, 2)}% por día`} tono="destructive">
+              Por cada día de atraso, sobre el importe de la cuota.
+            </Regla>
+            {mora.diasGracia > 0 && (
+              <Regla emoji="hourglass-done" dato={`${formatDias(mora.diasGracia)} de gracia`} tono="success">
+                No devengan: se cobran los días de atraso menos {mora.diasGracia}.
+              </Regla>
             )}
-            {/*
-              Y si parte de la cuota se agregó después, por qué la base no es el importe que
-              se lee en la columna "Cuota". Sin esto, el cuadro estaría diciendo que la mora
-              sale del importe de la cuota mientras cada fila se calcula sobre otra base.
-            */}
-            {moraTotal > 0 && mora && capitalizadoTotal > 0 && (
-              <p>
-                De ese importe quedan afuera los{" "}
-                <span className="font-mono font-medium tabular-nums text-foreground">${n2(capitalizadoTotal)}</span>{" "}
-                de interés de acuerdo que se capitalizaron en el plan: se cobran como cargo, pero no
-                devengan punitorios por días anteriores a que existieran.
-              </p>
+            {mora.topePct > 0 && (
+              <Regla emoji="prohibited" dato={`Tope ${mora.topePct}%`} tono="warning">
+                Al llegar a ese % de la cuota, la mora deja de crecer.
+              </Regla>
             )}
+            {capitalizadoTotal > 0 && (
+              <Regla emoji="money-bag" dato={`$${n2(capitalizadoTotal)}`} tono="warning" mono>
+                Interés de acuerdo capitalizado: se cobra como cargo, sin punitorios previos.
+              </Regla>
+            )}
+          </div>
+        )}
+        {cobroBloqueado && (
+          <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/[0.07] px-3 py-2.5 text-xs leading-relaxed text-foreground/90">
+            <Emoji name="prohibited" className="mt-0.5 h-4 w-4" />
+            <p>{cobroBloqueado}.</p>
           </div>
         )}
         {aviso && (
@@ -839,20 +849,56 @@ export function PlanDeCuotas({
   );
 }
 
-/**
- * Una fórmula del cuadro de reglas: chip monoespaciado, para que se lea como una cuenta y no
- * como una frase. Iban sueltas dentro del párrafo y se perdían entre el texto.
- */
-function Formula({ children, acento }: { children: React.ReactNode; acento?: boolean }) {
+type Tono = "base" | "primary" | "warning" | "destructive" | "success" | "banda";
+const TONO_TERMINO: Record<Tono, string> = {
+  base: "bg-muted text-foreground ring-border",
+  primary: "bg-primary/10 text-primary ring-primary/30",
+  warning: "bg-warning/10 text-warning ring-warning/30",
+  destructive: "bg-destructive/10 text-destructive ring-destructive/30",
+  success: "bg-success/10 text-success ring-success/30",
+  banda: "bg-gradient-to-b from-primary/30 to-primary/10 text-primary ring-primary/40 shadow-[inset_0_2px_0_0_var(--primary)]",
+};
+
+/** Una fórmula del cuadro: los términos van en chips con el color de su columna en la tabla. */
+function Formula({ children }: { children: React.ReactNode }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-lg border px-2.5 py-1.5 font-mono text-xs ${
-        acento
-          ? "border-destructive/25 bg-destructive/[0.07] text-destructive"
-          : "border-border bg-card text-foreground"
-      }`}
-    >
+    <span className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-xs">
       {children}
     </span>
+  );
+}
+
+function Termino({ tono, children }: { tono: Tono; children: React.ReactNode }) {
+  return (
+    <span className={`rounded-md px-1.5 py-0.5 font-semibold ring-1 ring-inset ${TONO_TERMINO[tono]}`}>{children}</span>
+  );
+}
+
+function Op({ children }: { children: React.ReactNode }) {
+  return <span className="px-0.5 font-bold text-muted-foreground">{children}</span>;
+}
+
+const TONO_DATO: Record<Exclude<Tono, "banda">, string> = {
+  base: "text-foreground",
+  primary: "text-primary",
+  warning: "text-warning",
+  destructive: "text-destructive",
+  success: "text-success",
+};
+
+/** Un parámetro congelado del crédito: el dato grande, la explicación en una línea. */
+function Regla({
+  emoji, dato, tono = "base", mono, children,
+}: { emoji: string; dato: string; tono?: Exclude<Tono, "banda">; mono?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="group flex items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:border-primary/30">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted ring-1 ring-inset ring-border">
+        <Emoji name={emoji} className="h-[18px] w-[18px] transition-transform duration-150 group-hover:scale-110" />
+      </span>
+      <div className="min-w-0">
+        <p className={`text-sm font-bold leading-tight ${mono ? "font-mono tabular-nums" : ""} ${TONO_DATO[tono]}`}>{dato}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{children}</p>
+      </div>
+    </div>
   );
 }
