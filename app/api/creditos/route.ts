@@ -173,11 +173,23 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    */
   if (contacto === "reciente" || contacto === "sin_reciente") {
     const { dias_sin_gestion } = await getCobranzaConfig(tenantId);
-    const corte = new Date(Date.now() - dias_sin_gestion * 86_400_000);
+    /*
+      🔴 LA MISMA REGLA QUE `decidirAgenda`, no una parecida (cableado de Configuración,
+      02/10/2026). Este filtro contaba como contacto el aviso AUTOMÁTICO del cron y cortaba a
+      la hora actual; la agenda no cuenta el aviso (nadie trabajó a ese cliente) y corta desde
+      `hoyComercial()`. Resultado: el mismo moroso salía "contactado hace poco" acá y
+      "enfriado, sin gestión" en la agenda. Contacto = gestión humana o envío de campaña
+      (`cuentaComoContacto`), y "reciente" = hace menos de N días contados como la agenda.
+    */
+    const corte = new Date(hoyComercial().getTime() - dias_sin_gestion * 86_400_000);
+    const contactoReciente = {
+      created_at: { gt: corte },
+      OR: [{ automatico: false }, { nota: { startsWith: "[CAMPAÑA" } }],
+    };
     condiciones.push(
       contacto === "reciente"
-        ? { acciones: { some: { created_at: { gte: corte } } } }
-        : { acciones: { none: { created_at: { gte: corte } } } },
+        ? { acciones: { some: contactoReciente } }
+        : { acciones: { none: contactoReciente } },
     );
   }
 

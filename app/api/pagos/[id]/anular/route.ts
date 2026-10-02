@@ -1,3 +1,4 @@
+import { AR_OFFSET_MS } from "@/lib/domain/fechas";
 import { requireRole, ApiError } from "@/lib/auth";
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
@@ -53,7 +54,14 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   // Ventana de anulación (tesorería): no se puede anular pasado el plazo desde el registro.
   const { dias_anulacion_pago } = await getCajaConfig(tenantId);
-  const diasDesdeRegistro = Math.floor((Date.now() - pago.created_at.getTime()) / 86_400_000);
+  /*
+    🔴 DÍAS DE CALENDARIO ARGENTINO, no bloques de 24 horas (cableado de Configuración,
+    02/10/2026). La config promete "0 = solo el mismo día del registro", y contando horas un
+    pago de las 23:00 se podía anular a la 1:00 del día siguiente; con 1 día, la ventana
+    real era de hasta 48 horas según la hora del cobro.
+  */
+  const diaAR = (t: number) => Math.floor((t - AR_OFFSET_MS) / 86_400_000);
+  const diasDesdeRegistro = diaAR(Date.now()) - diaAR(pago.created_at.getTime());
   if (diasDesdeRegistro > dias_anulacion_pago) {
     return errorResponse(
       `El plazo para anular este pago venció: se permite hasta ${dias_anulacion_pago} día${dias_anulacion_pago !== 1 ? "s" : ""} desde el registro y ya pasaron ${diasDesdeRegistro}. Se puede corregir con un ajuste de caja.`,
