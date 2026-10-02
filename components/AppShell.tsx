@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown,
-  Bell, Search, LogOut, Menu, X, PlusCircle, Sun, Moon, HelpCircle,
+  Search, LogOut, Menu, PlusCircle, Sun, Moon, HelpCircle,
   LayoutDashboard, Users, CreditCard, Banknote, Megaphone,
   Wallet, Receipt, Percent, BarChart3,
   UserCog, Package, ArrowLeftRight, Truck,
@@ -11,9 +11,10 @@ import { ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Footer } from "./Footer";
 import { SystemActionsProvider } from "./system-actions";
+import { SystemControls } from "@/components/ui/SystemControls";
 import { canAccess, type Role } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/client";
 import { HelpPanel } from "@/components/ui/HelpPanel";
@@ -242,6 +243,15 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         .filter((g) => g.items.length > 0);
   const { resolvedTheme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  /**
+   * Deslizar para cerrar el menú del celular (Fernando, 02/10/2026: "para qué está la X si
+   * se puede deslizar"). Hasta acá NO se podía; ahora el panel sigue al dedo hacia la
+   * izquierda y, pasado un tercio de su ancho (o con un gesto rápido), se cierra. Si el gesto
+   * es más vertical que horizontal, es un scroll del menú y no se toca.
+   */
+  const arrastre = useRef<{ x: number; y: number; t: number; horizontal: boolean | null } | null>(null);
+  const [desplazamiento, setDesplazamiento] = useState(0);
+  const cerrarMenu = () => { setMobileOpen(false); setDesplazamiento(0); arrastre.current = null; };
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
@@ -518,9 +528,15 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
               <Search className="h-5 w-5" />
             </button>
 
-            <button className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent">
-              <Bell className="h-5 w-5" />
-            </button>
+            {/* La campanita real (antes era un botón sin acción). Lleva su provider porque esta
+                barra queda fuera del de `children`. */}
+            <SystemActionsProvider
+              openSearch={() => setPaletteOpen(true)}
+              usuario={{ nombre: displayName, email, role, avatarUrl }}
+              signOut={signOut}
+            >
+              <SystemControls soloCampanita />
+            </SystemActionsProvider>
 
             {/* Ayuda de la sección (solo si hay documento para esta ruta) */}
             {helpDoc && (
@@ -572,20 +588,41 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
+            onClick={cerrarMenu}
+            aria-label="Cerrar menú"
           />
-          <aside className="riel absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col shadow-2xl">
-            <div className="flex min-h-16 shrink-0 items-center justify-between px-4 pb-1 pt-4">
-              <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center transition-opacity hover:opacity-80">
+          <aside
+            className={`riel absolute inset-y-0 left-0 flex w-[82%] max-w-xs flex-col shadow-2xl ${desplazamiento === 0 ? "transition-transform duration-200 ease-out" : ""}`}
+            style={{ transform: `translateX(${desplazamiento}px)` }}
+            onTouchStart={(e) => {
+              const t = e.touches[0];
+              arrastre.current = { x: t.clientX, y: t.clientY, t: Date.now(), horizontal: null };
+            }}
+            onTouchMove={(e) => {
+              const a = arrastre.current;
+              if (!a) return;
+              const t = e.touches[0];
+              const dx = t.clientX - a.x;
+              const dy = t.clientY - a.y;
+              if (a.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) a.horizontal = Math.abs(dx) > Math.abs(dy);
+              if (a.horizontal) setDesplazamiento(Math.min(0, dx));
+            }}
+            onTouchEnd={(e) => {
+              const a = arrastre.current;
+              arrastre.current = null;
+              if (!a?.horizontal) return;
+              const dx = e.changedTouches[0].clientX - a.x;
+              const ancho = e.currentTarget.offsetWidth;
+              const rapido = dx < -40 && Date.now() - a.t < 250;
+              if (dx < -ancho / 3 || rapido) cerrarMenu();
+              else setDesplazamiento(0);
+            }}
+          >
+            {/* Sin la X (Fernando, 02/10/2026): se cierra deslizando, tocando afuera o con Escape. */}
+            <div className="flex min-h-16 shrink-0 items-center px-4 pb-1 pt-4">
+              <Link href="/" onClick={cerrarMenu} className="flex items-center transition-opacity hover:opacity-80">
                 <Brand financiera={financiera} size="sm" protagonista />
               </Link>
-              <button
-                onClick={() => setMobileOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground"
-                aria-label="Cerrar menú"
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
 
             <div className="mb-3 flex items-center gap-3 border-b border-primary-foreground/15 px-4 py-4">
@@ -596,9 +633,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
               </div>
             </div>
 
-            {filtroMenu(() => setMobileOpen(false))}
+            {filtroMenu(cerrarMenu)}
             <nav className="flex-1 overflow-y-auto px-3 pb-3 sin-scrollbar">
-              {renderNav(() => setMobileOpen(false))}
+              {renderNav(cerrarMenu)}
             </nav>
 
             <div className="shrink-0 border-t border-primary-foreground/15 p-3">

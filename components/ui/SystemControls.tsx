@@ -139,7 +139,7 @@ const TIPO_LABEL: Record<string, string> = {
  */
 const CASI_ESTATICO = { revalidateOnFocus: false, dedupingInterval: 600_000 } as const;
 
-export function SystemControls() {
+export function SystemControls({ soloCampanita = false }: { soloCampanita?: boolean } = {}) {
   const actions = useSystemActions();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -327,6 +327,208 @@ export function SystemControls() {
     });
   };
 
+  const campanita = (
+    <div className="relative">
+      <button
+        onClick={toggle}
+        title="Notificaciones"
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
+      >
+        <Bell className="h-4 w-4" />
+        {totalNuevas > 0 ? (
+          <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ring-2 ring-background ${arqueos.length > 0 ? "bg-warning text-warning-foreground" : "bg-primary text-primary-foreground"}`}>
+            {totalNuevas > 9 ? "9+" : totalNuevas}
+          </span>
+        ) : (aviso || avisoBackup || arqueos.length > 0) ? (
+          <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${(aviso?.tipo === "vencido" || avisoBackup) ? "bg-destructive" : "bg-warning"}`} />
+        ) : null}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
+          {/* En el celular, a lo ancho y debajo de la barra (un `w-96` anclado a la derecha se
+              salía de la pantalla). */}
+          <div className={`z-50 max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20 ${
+            soloCampanita ? "fixed inset-x-3 top-16" : "absolute right-0 top-11 w-96"
+          }`}>
+            <div className="flex items-center justify-between px-2 py-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
+              {/* La ruedita: qué avisos aparecen acá. Solo el admin configura la financiera. */}
+              {esAdmin && (
+                <Link
+                  href="/configuracion?tab=notificaciones"
+                  onClick={() => setOpen(false)}
+                  title="Configurar notificaciones"
+                  aria-label="Configurar notificaciones"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-all hover:rotate-45 hover:bg-accent hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                </Link>
+              )}
+            </div>
+
+            {/* Cobranzas y recupero, agrupadas: un aviso por pestaña. */}
+            {gruposCobranza.map((g) => {
+              const nuevo = resaltarCobranza.has(g.key);
+              const tono = g.tono === "primary" ? "border-primary/20 bg-primary/10" : g.tono === "warning" ? "border-warning/20 bg-warning/10" : "border-destructive/20 bg-destructive/10";
+              const numero = g.tono === "primary" ? "bg-primary text-primary-foreground" : g.tono === "warning" ? "bg-warning text-warning-foreground" : "bg-destructive text-destructive-foreground";
+              return (
+                <Link
+                  key={g.key}
+                  href={g.href}
+                  onClick={() => setOpen(false)}
+                  className={`group relative flex items-center gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-accent ${nuevo ? "bg-primary/[0.06]" : ""}`}
+                >
+                  <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${tono}`}>
+                    <Emoji name={g.emoji} className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{g.titulo}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{g.texto}</p>
+                  </div>
+                  <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${numero}`}>{g.n}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              );
+            })}
+
+            {/* Cierres de caja sin resolver — PRIMERO: es plata que no cuadra. */}
+            {arqueos.map((a) => {
+              const sobrante = a.diferencia > 0;
+              return (
+                <Link
+                  key={a.id}
+                  href={a.href}
+                  onClick={() => setOpen(false)}
+                  className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-warning/5"
+                >
+                  <Scale className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {sobrante ? "Sobrante" : "Faltante"} sin resolver en {a.caja}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      <span className={`font-mono font-semibold ${sobrante ? "text-success" : "text-destructive"}`}>
+                        {sobrante ? "+" : "−"}${Math.abs(a.diferencia).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>{" "}
+                      en {a.cuenta}
+                      {a.creado_por ? ` · lo declaró ${a.creado_por}` : ""}
+                      {a.observacion ? ` · "${a.observacion}"` : ""}
+                    </p>
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                      Revisar en Caja <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+
+            {/* Aviso de plan */}
+            {aviso && (
+              <Link
+                href="/facturacion"
+                onClick={() => setOpen(false)}
+                className={`group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 ${aviso.tipo === "vencido" ? "hover:bg-destructive/5" : "hover:bg-warning/5"}`}
+              >
+                <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${aviso.tipo === "vencido" ? "text-destructive" : "text-warning"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{aviso.titulo}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{aviso.texto}</p>
+                  <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    Ir a Plan y facturación <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </div>
+              </Link>
+            )}
+
+            {/* Aviso de respaldo con problemas (solo admin) */}
+            {avisoBackup && (
+              <Link
+                href="/configuracion"
+                onClick={() => setOpen(false)}
+                className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-destructive/5"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">Respaldo con problemas</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{avisoBackup.titulo}. {avisoBackup.detalle}</p>
+                  <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                    Ir a Configuración → Respaldos <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                </div>
+              </Link>
+            )}
+
+            {/* Movimientos de caja (ocultable desde Configuración → Notificaciones) */}
+            {verMovimientos && (<>
+            <div className="mt-1 flex items-center justify-between px-2 pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Movimientos de caja</p>
+              <Link href="/caja" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
+                Ver todo
+              </Link>
+            </div>
+
+            {movimientos.length === 0 ? (
+              <div className="flex items-center gap-2 px-2.5 py-4 text-sm text-muted-foreground">
+                <CheckCircle2 className="h-4 w-4 text-success" /> Sin movimientos recientes.
+              </div>
+            ) : (
+              <ul className="mt-1 space-y-0.5">
+                {movimientos.map((m) => {
+                  const ingreso = m.monto >= 0;
+                  const nuevo = resaltar.has(m.id);
+                  return (
+                    <li key={m.id}>
+                      <Link
+                        href={m.href}
+                        onClick={() => setOpen(false)}
+                        className={`group relative flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:bg-accent hover:translate-x-0.5 ${nuevo ? "bg-primary/[0.06]" : ""}`}
+                      >
+                        {/* Barra de acento izquierda que crece al hover (indicador de selección) */}
+                        <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
+                        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${ingreso ? "border-success/20 bg-success/10 text-success" : "border-warning/20 bg-warning/10 text-warning"}`}>
+                          {ingreso ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {TIPO_LABEL[m.tipo] ?? m.tipo} · <span className="text-muted-foreground">{m.caja}</span>
+                            </p>
+                            <span className={`shrink-0 font-mono text-xs font-semibold ${ingreso ? "text-success" : "text-warning"}`}>
+                              {ingreso ? "+" : "−"}{formatMonto(Math.abs(m.monto))}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.descripcion}</p>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground/60">{formatFechaHora(m.created_at)}</p>
+                        </div>
+                        {nuevo && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            </>)}
+
+            {/* Panel vacío: ni movimientos ni avisos activos */}
+            {!verMovimientos && !aviso && !avisoBackup && arqueos.length === 0 && gruposCobranza.length === 0 && (
+              <div className="px-2.5 py-4 text-sm text-muted-foreground">No hay notificaciones para mostrar.</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  /*
+    En el celular la barra de arriba es del AppShell y su campanita era un botón muerto
+    (Fernando, 02/10/2026: "clickeo y no pasa nada"). Ahora monta esta misma, con el mismo
+    panel y las mismas fuentes.
+  */
+  if (soloCampanita) return campanita;
+
   return (
     <div className="hidden lg:flex items-center gap-1.5">
       {/* Buscar (abre el command palette) */}
@@ -340,194 +542,7 @@ export function SystemControls() {
       </button>
 
       {/* Notificaciones */}
-      <div className="relative">
-        <button
-          onClick={toggle}
-          title="Notificaciones"
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent transition-colors"
-        >
-          <Bell className="h-4 w-4" />
-          {totalNuevas > 0 ? (
-            <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ring-2 ring-background ${arqueos.length > 0 ? "bg-warning text-warning-foreground" : "bg-primary text-primary-foreground"}`}>
-              {totalNuevas > 9 ? "9+" : totalNuevas}
-            </span>
-          ) : (aviso || avisoBackup || arqueos.length > 0) ? (
-            <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-background ${(aviso?.tipo === "vencido" || avisoBackup) ? "bg-destructive" : "bg-warning"}`} />
-          ) : null}
-        </button>
-
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40 cursor-pointer" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 top-11 z-50 max-h-[70vh] w-96 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl shadow-black/20">
-              <div className="flex items-center justify-between px-2 py-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
-                {/* La ruedita: qué avisos aparecen acá. Solo el admin configura la financiera. */}
-                {esAdmin && (
-                  <Link
-                    href="/configuracion?tab=notificaciones"
-                    onClick={() => setOpen(false)}
-                    title="Configurar notificaciones"
-                    aria-label="Configurar notificaciones"
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-all hover:rotate-45 hover:bg-accent hover:text-foreground"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Link>
-                )}
-              </div>
-
-              {/* Cobranzas y recupero, agrupadas: un aviso por pestaña. */}
-              {gruposCobranza.map((g) => {
-                const nuevo = resaltarCobranza.has(g.key);
-                const tono = g.tono === "primary" ? "border-primary/20 bg-primary/10" : g.tono === "warning" ? "border-warning/20 bg-warning/10" : "border-destructive/20 bg-destructive/10";
-                const numero = g.tono === "primary" ? "bg-primary text-primary-foreground" : g.tono === "warning" ? "bg-warning text-warning-foreground" : "bg-destructive text-destructive-foreground";
-                return (
-                  <Link
-                    key={g.key}
-                    href={g.href}
-                    onClick={() => setOpen(false)}
-                    className={`group relative flex items-center gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-accent ${nuevo ? "bg-primary/[0.06]" : ""}`}
-                  >
-                    <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${tono}`}>
-                      <Emoji name={g.emoji} className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">{g.titulo}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{g.texto}</p>
-                    </div>
-                    <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${numero}`}>{g.n}</span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                  </Link>
-                );
-              })}
-
-              {/* Cierres de caja sin resolver — PRIMERO: es plata que no cuadra. */}
-              {arqueos.map((a) => {
-                const sobrante = a.diferencia > 0;
-                return (
-                  <Link
-                    key={a.id}
-                    href={a.href}
-                    onClick={() => setOpen(false)}
-                    className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-warning/5"
-                  >
-                    <Scale className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">
-                        {sobrante ? "Sobrante" : "Faltante"} sin resolver en {a.caja}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        <span className={`font-mono font-semibold ${sobrante ? "text-success" : "text-destructive"}`}>
-                          {sobrante ? "+" : "−"}${Math.abs(a.diferencia).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>{" "}
-                        en {a.cuenta}
-                        {a.creado_por ? ` · lo declaró ${a.creado_por}` : ""}
-                        {a.observacion ? ` · "${a.observacion}"` : ""}
-                      </p>
-                      <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
-                        Revisar en Caja <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-
-              {/* Aviso de plan */}
-              {aviso && (
-                <Link
-                  href="/facturacion"
-                  onClick={() => setOpen(false)}
-                  className={`group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 ${aviso.tipo === "vencido" ? "hover:bg-destructive/5" : "hover:bg-warning/5"}`}
-                >
-                  <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${aviso.tipo === "vencido" ? "text-destructive" : "text-warning"}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{aviso.titulo}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{aviso.texto}</p>
-                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
-                      Ir a Plan y facturación <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                </Link>
-              )}
-
-              {/* Aviso de respaldo con problemas (solo admin) */}
-              {avisoBackup && (
-                <Link
-                  href="/configuracion"
-                  onClick={() => setOpen(false)}
-                  className="group flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:translate-x-0.5 hover:bg-destructive/5"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">Respaldo con problemas</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{avisoBackup.titulo}. {avisoBackup.detalle}</p>
-                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary">
-                      Ir a Configuración → Respaldos <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                </Link>
-              )}
-
-              {/* Movimientos de caja (ocultable desde Configuración → Notificaciones) */}
-              {verMovimientos && (<>
-              <div className="mt-1 flex items-center justify-between px-2 pt-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Movimientos de caja</p>
-                <Link href="/caja" onClick={() => setOpen(false)} className="text-[11px] font-medium text-primary hover:underline">
-                  Ver todo
-                </Link>
-              </div>
-
-              {movimientos.length === 0 ? (
-                <div className="flex items-center gap-2 px-2.5 py-4 text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-success" /> Sin movimientos recientes.
-                </div>
-              ) : (
-                <ul className="mt-1 space-y-0.5">
-                  {movimientos.map((m) => {
-                    const ingreso = m.monto >= 0;
-                    const nuevo = resaltar.has(m.id);
-                    return (
-                      <li key={m.id}>
-                        <Link
-                          href={m.href}
-                          onClick={() => setOpen(false)}
-                          className={`group relative flex items-start gap-2.5 rounded-lg p-2.5 transition-all duration-150 hover:bg-accent hover:translate-x-0.5 ${nuevo ? "bg-primary/[0.06]" : ""}`}
-                        >
-                          {/* Barra de acento izquierda que crece al hover (indicador de selección) */}
-                          <span className="absolute left-0 top-1/2 h-0 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-150 group-hover:h-7" />
-                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-110 ${ingreso ? "border-success/20 bg-success/10 text-success" : "border-warning/20 bg-warning/10 text-warning"}`}>
-                            {ingreso ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="truncate text-sm font-medium text-foreground">
-                                {TIPO_LABEL[m.tipo] ?? m.tipo} · <span className="text-muted-foreground">{m.caja}</span>
-                              </p>
-                              <span className={`shrink-0 font-mono text-xs font-semibold ${ingreso ? "text-success" : "text-warning"}`}>
-                                {ingreso ? "+" : "−"}{formatMonto(Math.abs(m.monto))}
-                              </span>
-                            </div>
-                            <p className="mt-0.5 truncate text-xs text-muted-foreground">{m.descripcion}</p>
-                            <p className="mt-0.5 text-[10px] text-muted-foreground/60">{formatFechaHora(m.created_at)}</p>
-                          </div>
-                          {nuevo && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              </>)}
-
-              {/* Panel vacío: ni movimientos ni avisos activos */}
-              {!verMovimientos && !aviso && !avisoBackup && arqueos.length === 0 && gruposCobranza.length === 0 && (
-                <div className="px-2.5 py-4 text-sm text-muted-foreground">No hay notificaciones para mostrar.</div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      {campanita}
 
       {/* Ayuda de la sección (solo si hay documento para esta ruta) */}
       {helpDoc && (
