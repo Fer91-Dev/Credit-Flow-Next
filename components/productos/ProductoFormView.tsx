@@ -233,9 +233,9 @@ export function ProductoFormView({ productoId }: { productoId?: string }) {
 
   return (
     <div className="-mx-4 -mb-6 flex min-h-[calc(100dvh-3rem)] flex-col bg-background md:-mx-6 md:-mb-8 lg:-mx-8">
-      {/* Encabezado de la pantalla — misma altura (76px) que el PageHeader y que la pantalla
+      {/* Encabezado de la pantalla — misma altura (88px) que el PageHeader y que la pantalla
           de campaña, para que el salto entre secciones no se note. */}
-      <div className="flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge px-5">
+      <div className="flex h-[88px] shrink-0 items-center justify-between gap-3 border-b border-edge px-5">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"

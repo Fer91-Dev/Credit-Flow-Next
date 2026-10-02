@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle, Scale, Settings } from "lucide-react";
+import { Maximize, Minimize, Search, Bell, Sun, Moon, AlertTriangle, CheckCircle2, ArrowRight, ArrowDownLeft, ArrowUpRight, LogOut, ChevronDown, User, HelpCircle, Scale, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSystemActions } from "@/components/system-actions";
 import { Avatar } from "@/components/ui/Avatar";
@@ -541,6 +541,8 @@ export function SystemControls({ soloCampanita = false }: { soloCampanita?: bool
         <kbd className="rounded bg-muted px-1.5 font-mono text-[10px] font-medium border border-border text-foreground">⌘K</kbd>
       </button>
 
+      <BotonPantallaCompleta />
+
       {/* Notificaciones */}
       {campanita}
 
@@ -636,5 +638,43 @@ function UserMenu() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * PANTALLA COMPLETA (Fernando, 02/10/2026, referencia SmartAdmin). Pone todo el sistema en
+ * pantalla completa con la API del navegador; Escape o el mismo botón la cierran. El ícono
+ * sigue al estado REAL (`fullscreenchange`), no a un estado propio: si se sale con Escape o
+ * con F11, el botón no queda mintiendo. Solo escritorio (la barra entera es `lg:flex`): en
+ * iPhone Safari no deja poner una página en pantalla completa.
+ */
+function BotonPantallaCompleta() {
+  const [activa, setActiva] = useState(false);
+  // Se averigua recién montado: en el render del servidor no hay `document`, y decidirlo ahí
+  // daría un HTML distinto del primero del navegador.
+  const [soportada, setSoportada] = useState(false);
+  useEffect(() => {
+    setSoportada(!!document.fullscreenEnabled);
+    const sync = () => setActiva(!!document.fullscreenElement);
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  if (!soportada) return null;
+  const alternar = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen().catch(() => { /* bloqueado por el navegador */ });
+  };
+  const etiqueta = activa ? "Salir de pantalla completa" : "Pantalla completa";
+  return (
+    <button
+      type="button"
+      onClick={alternar}
+      title={etiqueta}
+      aria-label={etiqueta}
+      className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {activa ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+    </button>
   );
 }

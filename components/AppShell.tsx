@@ -447,15 +447,15 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         }`}
       >
         {/* Branding. Sin la línea de abajo (Fernando, 28/09/2026): el logo va suelto y el menú
-            arranca debajo. Mismo alto que el PageHeader (76px): el logo queda centrado a la
+            arranca debajo. Mismo alto que el PageHeader (88px): el logo queda centrado a la
             altura del título de cada sección. */}
         <Link
           href="/"
           aria-label="Ir al inicio"
           // Zona del logo más alta (Fernando, 02/10/2026, referencia SmartAdmin): el logo
-          // agrandado quedaba pegado arriba y al buscador. Ya no se alinea con los 76px del
+          // agrandado quedaba pegado arriba y al buscador. Ya no se alinea con los 88px del
           // encabezado: sin línea abajo, lo que se nota es el aire.
-          className={`marca-link flex shrink-0 items-center ${colapsado ? "h-[76px]" : "h-[10.5rem]"} ${
+          className={`marca-link flex shrink-0 items-center ${colapsado ? "h-[88px]" : "h-[10.5rem]"} ${
             colapsado ? "justify-center px-0" : financiera?.logo_url ? "justify-center px-5" : "px-5"
           }`}
         >

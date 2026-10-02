@@ -304,10 +304,10 @@ export function PerfilForm({
           la altura de la fila del grid. Un grid item con `items-start` se encoge a su
           contenido y entonces no le queda recorrido para desplazarse. Este item se
           estira (sin items-start) y la tarjeta se mueve dentro de él.
-          `top-[84px]` = los 76px del PageHeader sticky + 8 de aire, así queda justo
+          `top-[96px]` = los 88px del PageHeader sticky + 8 de aire, así queda justo
           debajo del encabezado y no se le mete abajo. */}
       <div>
-        <div className="lg:sticky lg:top-[84px]">
+        <div className="lg:sticky lg:top-[96px]">
           <IdentidadCard
             nombre={nombreCompleto}
             email={initialEmail}

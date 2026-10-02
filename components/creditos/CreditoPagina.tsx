@@ -79,7 +79,7 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
     */
     <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex min-h-[calc(100dvh-3rem)] flex-col bg-background">
       {/*
-        Encabezado — misma altura (76px) que el PageHeader, el sidebar y Refinanciar.
+        Encabezado — misma altura (88px) que el PageHeader, el sidebar y Refinanciar.
 
         REDISEÑO (Fernando, 02/10/2026: "dale un mejor aspecto y que se vea el nombre del
         cliente y su DNI"). El operador tiene a esa persona enfrente o al teléfono, y lo primero
@@ -87,7 +87,7 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
         número del crédito y sus estados bajan a un renglón de chips. El ícono dice qué clase
         de crédito es antes de leer nada (refinanciación, acuerdo, común).
       */}
-      <div className="sticky top-0 z-30 flex min-h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge bg-background/95 px-5 py-2.5 backdrop-blur lg:h-[76px] lg:py-0">
+      <div className="sticky top-0 z-30 flex min-h-[88px] shrink-0 items-center justify-between gap-3 border-b border-edge bg-background/95 px-5 py-2.5 backdrop-blur lg:h-[88px] lg:py-0">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
