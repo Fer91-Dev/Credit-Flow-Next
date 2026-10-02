@@ -37,7 +37,14 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
   */
   if (protagonista && financiera?.logo_url && !soloIcono) {
     return (
-      <img src={financiera.logo_url} alt={marca} className="logo-marca h-auto max-h-[4.6rem] w-auto max-w-[11.5rem] object-contain" />
+      /*
+        Más grande (Fernando, 02/10/2026). El logo subido trae ~30% de margen negro que
+        `lighten` funde con el fondo: a tamaño real el dibujo quedaba chico. Se agranda y el margen
+        sobrante queda afuera, invisible. Va con la propiedad `scale` en el propio <img>: un
+        contenedor con `transform` aísla la mezcla y el margen negro se VE (probado). Y `scale`
+        se compone con el `transform` del latido del hover, no lo pisa.
+      */
+      <img src={financiera.logo_url} alt={marca} className="logo-marca block h-auto max-h-[4.6rem] w-auto max-w-[10rem] scale-[1.45] object-contain" />
     );
   }
   return (
@@ -146,7 +153,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onBlur={() => avisar(null)}
       // Estilo "riel de color" (Fernando, 02/10/2026, referencia SmartAdmin): texto claro sobre
       // el degradado, el activo es una pastilla clara con un punto, el hover un velo blanco.
-      className={`group relative flex items-center rounded-lg py-2.5 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-[0.95rem] transition-all duration-150 ease-out ${
+      className={`group relative flex items-center rounded-lg py-2.5 [@media(min-width:1024px)_and_(max-height:820px)]:py-2 text-[0.95rem] transition-all duration-150 ease-out ${
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
@@ -619,8 +626,9 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
             }}
           >
             {/* Sin la X (Fernando, 02/10/2026): se cierra deslizando, tocando afuera o con Escape. */}
-            <div className="flex min-h-16 shrink-0 items-center px-4 pb-1 pt-4">
-              <Link href="/" onClick={cerrarMenu} className="flex items-center transition-opacity hover:opacity-80">
+            {/* El logo crece desde la izquierda (acá va alineado a la izquierda, no centrado). */}
+            <div className="flex min-h-16 shrink-0 items-center px-5 pb-4 pt-7">
+              <Link href="/" onClick={cerrarMenu} className="flex items-center transition-opacity hover:opacity-80 [&_img]:origin-left">
                 <Brand financiera={financiera} size="sm" protagonista />
               </Link>
             </div>
