@@ -7,6 +7,7 @@ import { SystemControls } from "@/components/ui/SystemControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCreditos, useDiasLegales, type Credito } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Emoji } from "@/components/ui/Emoji";
 import { estadoBadgeCredito } from "./estado-badge";
 import { formatCreditoNumero, nombreCompleto } from "@/lib/utils";
 import { type Role } from "@/lib/auth/roles";
@@ -77,39 +78,70 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
       está mirando y perderla al bajar es lo único que el alto fijo resolvía bien.
     */
     <div className="-mx-4 -mb-6 md:-mx-6 md:-mb-8 lg:-mx-8 flex min-h-[calc(100dvh-3rem)] flex-col bg-background">
-      {/* Encabezado — misma altura (76px) que el PageHeader, el sidebar y Refinanciar. */}
-      <div className="sticky top-0 z-30 flex h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge bg-background/95 px-5 backdrop-blur">
+      {/*
+        Encabezado — misma altura (76px) que el PageHeader, el sidebar y Refinanciar.
+
+        REDISEÑO (Fernando, 02/10/2026: "dale un mejor aspecto y que se vea el nombre del
+        cliente y su DNI"). El operador tiene a esa persona enfrente o al teléfono, y lo primero
+        que pide para identificarla es el DNI: va en el renglón de arriba, junto al nombre. El
+        número del crédito y sus estados bajan a un renglón de chips. El ícono dice qué clase
+        de crédito es antes de leer nada (refinanciación, acuerdo, común).
+      */}
+      <div className="sticky top-0 z-30 flex min-h-[76px] shrink-0 items-center justify-between gap-3 border-b border-edge bg-background/95 px-5 py-2.5 backdrop-blur lg:h-[76px] lg:py-0">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={volver}
             title="Volver a Créditos"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Volver a Créditos"
+            className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card/60 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
           </button>
+          <div
+            className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border sm:flex ${
+              credito?.es_refinanciacion
+                ? "border-warning/30 bg-warning/10"
+                : acuerdo
+                  ? "border-primary/30 bg-primary/10"
+                  : "border-border/60 bg-muted/40"
+            }`}
+          >
+            <Emoji
+              name={credito?.es_refinanciacion ? "counterclockwise-arrows-button" : acuerdo ? "handshake" : "credit-card"}
+              className="h-6 w-6"
+            />
+          </div>
           <div className="min-w-0">
             {/*
-              El numero, el ESTADO y el titular viven SOLO aca.
-
-              El cuerpo del detalle los repetia enteros veinte pixeles mas abajo -- numero en
-              24px, badge y nombre -- asi que la pantalla arrancaba diciendo dos veces lo mismo
-              y le comia al plan de cuotas el alto que necesita para verse sin scroll.
+              El numero, el ESTADO y el titular viven SOLO aca: el cuerpo del detalle no los
+              repite (le comia al plan de cuotas el alto que necesita).
             */}
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <h1 className="truncate text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg">
+                {credito ? nombreCompleto(credito.cliente) : "Detalle del crédito"}
+              </h1>
+              {credito?.cliente.documento && (
+                <span className="flex shrink-0 items-baseline gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary/70">DNI</span>
+                  <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                    {formatDni(credito.cliente.documento)}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               {/*
-                🔴 EN UNA REFINANCIACIÓN EL NÚMERO VA EN ÁMBAR, no en el color del texto.
-
-                El prefijo "REF-" ya lo dice, pero un prefijo se lee y un color se ve: la
-                pantalla tiene que anunciar que esto NO es un crédito común antes de que nadie
-                lea nada. Es el mismo ámbar del badge "Refinanciado" y de la tarjeta de abajo:
-                un solo color para un solo concepto, en toda la pantalla.
+                🔴 EN UNA REFINANCIACIÓN EL NÚMERO VA EN ÁMBAR: el prefijo "REF-" se lee, el
+                color se ve. Mismo ámbar del badge "Refinanciado" y de la tarjeta de abajo.
               */}
-              <h1 className={`truncate font-mono text-base font-semibold leading-tight ${
-                credito?.es_refinanciacion ? "text-warning" : "text-foreground"
+              <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-xs font-bold tracking-wide ring-1 ring-inset ${
+                credito?.es_refinanciacion
+                  ? "bg-warning/10 text-warning ring-warning/30"
+                  : "bg-muted text-foreground ring-border"
               }`}>
                 {credito ? formatCreditoNumero(credito.numero, credito.refinancia_a_numero) : "Crédito"}
-              </h1>
+              </span>
               {credito?.es_refinanciacion && (
                 <span
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning ring-1 ring-inset ring-warning/30"
@@ -119,15 +151,9 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
                 </span>
               )}
               {/*
-                EL CHIP DEL ACUERDO VA ANTES QUE EL BADGE, y no lo reemplaza: el badge dice
-                en qué ESTADO está el crédito ("En acuerdo" / "Acuerdo atrasado"); el chip
-                dice que hay un contrato nuevo de por medio, que es lo que cambia cómo se
-                opera la pantalla — lo que se cobra es la cuota pactada, no la del plan.
-
-                Ámbar y índigo conviven a propósito: el ámbar habla del ORIGEN del crédito
-                (nació de refinanciar otro, y eso no cambia nunca) y el índigo de su SITUACIÓN
-                de hoy (hay un acuerdo corriendo, y mañana puede no haberlo). Un crédito puede
-                ser las dos cosas.
+                EL CHIP DEL ACUERDO VA ANTES QUE EL BADGE, y no lo reemplaza: el badge dice en
+                qué ESTADO está el crédito; el chip, que hay un contrato nuevo de por medio.
+                Ámbar = ORIGEN (nació de refinanciar), índigo = SITUACIÓN de hoy (acuerdo).
               */}
               {acuerdo && (
                 <span
@@ -147,15 +173,6 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
               )}
               {credito && <StatusBadge {...estadoBadgeCredito(credito.estado, credito.dias_mora, diasLegales, acuerdo ? { alDia: acuerdo.al_dia } : null, (credito.cobrado_post_castigo ?? 0) > 0)} />}
             </div>
-            {/*
-              EL CLIENTE NO ES UN SUBTÍTULO. Iba en `text-xs` gris, del mismo peso que
-              cualquier pie de página, cuando es la otra mitad de la identidad de esta
-              pantalla: el operador tiene a esa persona enfrente o al teléfono. Sube al color
-              del texto y a un cuerpo que se lee sin acercarse.
-            */}
-            <p className="mt-0.5 truncate text-sm font-medium text-foreground">
-              {credito ? nombreCompleto(credito.cliente) : "Detalle del crédito"}
-            </p>
           </div>
         </div>
         <SystemControls />
@@ -203,4 +220,10 @@ export function CreditoPagina({ id, role }: { id: string; role?: Role }) {
       </div>
     </div>
   );
+}
+
+/** DNI con puntos de miles ("30.123.456"), como figura en el documento. Si no es solo dígitos, tal cual. */
+function formatDni(doc: string): string {
+  const d = doc.replace(/\D/g, "");
+  return d.length >= 6 && d.length <= 9 && d === doc.replace(/[.\s]/g, "") ? Number(d).toLocaleString("es-AR") : doc;
 }
