@@ -189,7 +189,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   /** A cuántos días de atraso el crédito pasa a Legales (Configuración → Cobranza). */
   const diasLegales = useDiasLegales();
   const { amortizacion } = useAmortizacion(credito.id);
-  const { cuotas, resumen, meta: metaCuotas, isLoading: loadingCuotas } = useCuotas(credito.id);
+  const { cuotas, meta: metaCuotas, isLoading: loadingCuotas } = useCuotas(credito.id);
   const { financiera } = useFinanciera(); // co-branding de lo que se imprime
 
   /**
@@ -1510,19 +1510,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 son los que tiene que pedirle al cliente. Eso va en el rótulo; el resto, en el
                 tooltip, para el que quiera entender por qué la tabla sigue viva.
               */}
-              {acuerdoVigente && (
-                <span
-                  className="rounded-md bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-warning/25"
-                  title={
-                    "Estos importes NO son los que se le cobran hoy. Al firmar el acuerdo, toda la deuda de este plan " +
-                    "se consolidó en las cuotas pactadas de arriba, y esas son las que se cobran.\n\n" +
-                    "La tabla sigue acá porque es el libro del crédito: cada cobro del acuerdo se imputa en estas cuotas, " +
-                    "cuota por cuota, y es lo que explica de dónde salió la deuda que se pactó."
-                  }
-                >
-                  no se cobra · manda el acuerdo
-                </span>
-              )}
+              {/* "No se cobra · manda el acuerdo" se mudó al pie de "Cómo se calcula", en un
+                  recuadro amarillo (Fernando, 02/10/2026): acá apretaba los botones. */}
               {/*
                 🔴 EL SALDO NO VA ACÁ: YA ESTÁ ARRIBA.
 
@@ -1553,12 +1542,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               onClick={(e) => e.stopPropagation()}
               role="presentation"
             >
-              {resumen && (
-                <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground/70 tabular-nums">
-                  {resumen.pagadas}/{resumen.total} pagadas
-                  {resumen.vencidas > 0 && <span className="text-destructive"> · {resumen.vencidas} vencida{resumen.vencidas !== 1 ? "s" : ""}</span>}
-                </span>
-              )}
+              {/* Sin el conteo "0/3 pagadas · 3 vencidas" (Fernando, 02/10/2026: no hace falta,
+                  le quitaba lugar a los botones). Las vencidas se ven en rojo en la tabla. */}
               {/* Las dos vistas del plan, a un clic. La de operador estaba escondida en el
                   formulario de edición, que la imprimía con fechas recalculadas desde hoy. */}
               <div className={GRUPO_BARRA} role="group" aria-label="Documentos">
@@ -1855,6 +1840,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               proximaNro={acuerdoVigente ? null : proximaCuota?.nro ?? null}
               resaltarProxima={resaltarProxima}
               mora={metaCuotas?.mora ?? null}
+              aviso={acuerdoVigente ? (
+                <>
+                  <strong className="font-semibold text-warning">No se cobra: manda el acuerdo.</strong>{" "}
+                  Estos importes no son los que se le cobran hoy. Al firmar el acuerdo, toda la deuda de este
+                  plan se consolidó en las cuotas pactadas de arriba, y esas son las que se cobran. La tabla
+                  sigue acá porque es el libro del crédito: cada cobro del acuerdo se imputa en estas cuotas.
+                </>
+              ) : undefined}
               /* Sin `onCobrar`: el cobro vive solo en Pagos. Acá es de lectura. */
               /* Sin alto acotado: la sección se despliega entera y el que scrollea es la página. */
               sinAlto

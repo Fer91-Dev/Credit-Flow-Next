@@ -1,7 +1,7 @@
 "use client";
 
 import { Deslizable } from "@/components/ui/Deslizable";
-import { Printer, Check } from "lucide-react";
+import { Printer, Check, AlertTriangle } from "lucide-react";
 import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
@@ -75,10 +75,16 @@ export interface PlanDeCuotasProps {
   denso?: boolean;
   /** Sin alto acotado: la tabla se muestra entera y el que scrollea es la página. */
   sinAlto?: boolean;
+  /**
+   * Advertencia sobre este plan (ej. "no se cobra, manda el acuerdo"). Va al pie de "Cómo se
+   * calcula", en un recuadro amarillo con "!" (Fernando, 02/10/2026): en el encabezado era un
+   * chip más que apretaba los botones.
+   */
+  aviso?: React.ReactNode;
 }
 
 export function PlanDeCuotas({
-  cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso, sinAlto,
+  cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso, sinAlto, aviso,
 }: PlanDeCuotasProps) {
   if (cuotas.length === 0) return null;
 
@@ -820,6 +826,12 @@ export function PlanDeCuotas({
                 devengan punitorios por días anteriores a que existieran.
               </p>
             )}
+          </div>
+        )}
+        {aviso && (
+          <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs leading-relaxed text-foreground/90">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+            <div>{aviso}</div>
           </div>
         )}
       </div>
