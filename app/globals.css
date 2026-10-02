@@ -27,6 +27,9 @@
      Tailwind v4 no generaba la regla `.border-sidebar-border` por colisión de prefijo. */
   --color-sidebar:            var(--sidebar);
   --color-edge:               var(--edge);
+  /* Acento del riel (sidebar): lila #7C7FF4, elegido por Fernando el 02/10/2026. Vive
+     dentro de `.riel`; fuera de él la utilidad no tiene valor. */
+  --color-riel-acento:        var(--riel-acento);
 
   /* Tokens extra CreditFlow */
   --color-surface:  var(--surface);
@@ -168,6 +171,9 @@ body {
   El logo se funde igual que en oscuro: el riel es oscuro en los dos temas.
 */
 .riel {
+  /* De fondo se probó y no: el logo perdía "ZERO" y la flecha, y el texto blanco el
+     contraste. Va como ACENTO: pastilla del activo, buscador, flechas, íconos. */
+  --riel-acento: #7C7FF4;
   --riel-desde: #312A94;
   --riel-hasta: #171C4A;
   background:

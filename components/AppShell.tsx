@@ -147,14 +147,14 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
-          ? "bg-primary-foreground/15 font-semibold text-primary-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.10)]"
-          : `font-medium text-primary-foreground/75 hover:bg-primary-foreground/10 hover:text-primary-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
+          ? "bg-riel-acento/30 font-semibold text-primary-foreground ring-1 ring-inset ring-riel-acento/60 shadow-[0_0_14px_-4px_var(--riel-acento)]"
+          : `font-medium text-primary-foreground/75 hover:bg-riel-acento/15 hover:text-primary-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
       }`}
     >
       {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
       <Icon
         className={`h-[18px] w-[18px] shrink-0 transition-colors duration-150 ${
-          isActive ? "" : "text-primary-foreground/55 group-hover:text-primary-foreground"
+          isActive ? "text-riel-acento" : "text-primary-foreground/55 group-hover:text-riel-acento"
         }`}
         strokeWidth={1.75}
       />
@@ -199,11 +199,11 @@ function NavSection({
           onClick={onPlegar}
           aria-expanded={!plegado}
           aria-controls={id}
-          className="group/rot mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 [@media(min-width:1024px)_and_(max-height:820px)]:py-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-primary-foreground/90"
+          className="group/rot mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 [@media(min-width:1024px)_and_(max-height:820px)]:py-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-riel-acento"
         >
           {group.label}
           <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform duration-200 ${plegado ? "-rotate-90" : ""}`}
+            className={`h-3.5 w-3.5 text-riel-acento transition-transform duration-200 ${plegado ? "-rotate-90" : ""}`}
             aria-hidden
           />
         </button>
@@ -381,7 +381,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         }}
         placeholder="Filtrar menú"
         aria-label="Filtrar el menú"
-        className="h-9 w-full rounded-lg border border-dashed border-primary-foreground/30 bg-primary-foreground/[0.06] px-3 text-sm text-primary-foreground outline-none transition-colors placeholder:text-primary-foreground/50 focus:border-solid focus:border-primary-foreground/50 focus:bg-primary-foreground/10 [&::-webkit-search-cancel-button]:hidden"
+        className="h-9 w-full rounded-lg border border-dashed border-riel-acento/60 bg-riel-acento/[0.08] px-3 text-sm text-primary-foreground outline-none transition-colors placeholder:text-primary-foreground/50 focus:border-solid focus:border-riel-acento focus:bg-riel-acento/15 [&::-webkit-search-cancel-button]:hidden"
       />
     </div>
   );
@@ -465,7 +465,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
           {/* El área de clic es el padding del botón; esto es solo la marca visible. */}
           <span
             aria-hidden
-            className="h-14 w-[3px] rounded-full bg-primary-foreground/30 transition-colors duration-150 group-hover/aleta:bg-primary"
+            className="h-14 w-[3px] rounded-full bg-riel-acento/50 transition-colors duration-150 group-hover/aleta:bg-riel-acento"
           />
         </button>
       </aside>
