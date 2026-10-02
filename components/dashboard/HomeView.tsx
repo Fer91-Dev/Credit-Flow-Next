@@ -91,7 +91,7 @@ export function HomeView({ role }: { role: Role }) {
       {/* Franja de borde a borde, pegada al encabezado (Fernando, 02/10/2026: "que se rellene
           todo"): los márgenes negativos anulan el padding de la página y el espacio que la
           separaba del header. */}
-      <div className="relative z-10 -mx-4 -mt-8 !mb-5 md:-mx-6 lg:-mx-8"><TickerDolar /></div>
+      <div className="relative z-10 -mx-4 -mt-8 !mb-0 md:-mx-6 lg:-mx-8"><TickerDolar /></div>
       {/* ── 1 · LA PLATA, arriba de todo ──
           Antes lo primero de la pantalla era la cotización del dólar: siete cifras de
           contexto ganándole en presencia a lo único que es de la financiera. Ahora abre con
