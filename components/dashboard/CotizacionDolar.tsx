@@ -260,7 +260,7 @@ export function TickerDolar() {
     return () => cancelAnimationFrame(raf);
   }, [hayDatos]);
 
-  if (isLoading) return <Skeleton className="h-[3.6rem] rounded-none" />;
+  if (isLoading) return <Skeleton className="h-[3.6rem] rounded-2xl" />;
   if (!hayDatos) return null;
 
   const byCasa = new Map(cotizaciones.map((c) => [c.casa, c]));
@@ -305,7 +305,7 @@ export function TickerDolar() {
       onMouseLeave={() => { encima.current = false; }}
     >
       <div
-        className="cursor-grab touch-pan-y select-none overflow-hidden border-b border-edge bg-card/60 py-3.5 active:cursor-grabbing"
+        className="cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-card/60 py-3.5 ring-1 ring-inset ring-border/40 active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_3%,black_97%,transparent)]"
         onPointerDown={(e) => {
           salto.current = null;
           arrastre.current = { x: e.clientX, desde: offset.current };

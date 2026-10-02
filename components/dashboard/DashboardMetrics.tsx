@@ -165,10 +165,8 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
   const hoy = data.hoy ?? { cobrado: 0, cobros: 0 };
   const hubo = hoy.cobros > 0;
   const R = 42, C = 2 * Math.PI * R;
-  // Esquinas de ARRIBA rectas (Fernando, 02/10/2026): la banda cuelga de la cinta del dólar,
-  // que es una franja recta; con las cuatro redondeadas quedaban cuñas oscuras en el encuentro.
   return (
-    <div className="animate-entrada relative overflow-hidden rounded-b-[1.75rem] rounded-t-none px-4 py-4 sm:px-8 sm:py-7
+    <div className="animate-entrada relative overflow-hidden rounded-[1.75rem] px-4 py-4 sm:px-8 sm:py-7
       bg-gradient-to-br from-primary/[0.14] via-card to-success/[0.08]
       shadow-[0_18px_45px_-25px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-border/40" style={{ animationDelay: "35ms" }}>
       <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
