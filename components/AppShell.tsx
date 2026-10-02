@@ -143,12 +143,12 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       onBlur={() => avisar(null)}
       // Estilo "riel de color" (Fernando, 02/10/2026, referencia SmartAdmin): texto claro sobre
       // el degradado, el activo es una pastilla clara con un punto, el hover un velo blanco.
-      className={`group relative flex items-center rounded-lg py-2 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-[0.95rem] transition-all duration-150 ease-out ${
+      className={`group relative flex items-center rounded-lg py-2.5 [@media(min-width:1024px)_and_(max-height:820px)]:py-1 text-[0.95rem] transition-all duration-150 ease-out ${
         colapsado ? "justify-center px-0" : "gap-3 px-3"
       } ${
         isActive
-          ? "bg-riel-acento/30 font-semibold text-primary-foreground ring-1 ring-inset ring-riel-acento/60 shadow-[0_0_14px_-4px_var(--riel-acento)]"
-          : `font-medium text-primary-foreground/75 hover:bg-riel-acento/15 hover:text-primary-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
+          ? "bg-riel-acento/30 font-medium text-primary-foreground ring-1 ring-inset ring-riel-acento/60 shadow-[0_0_14px_-4px_var(--riel-acento)]"
+          : `font-normal text-primary-foreground/80 hover:bg-riel-acento/15 hover:text-primary-foreground ${colapsado ? "" : "hover:translate-x-0.5"}`
       }`}
     >
       {/* `strokeWidth` bajo: el trazo fino es lo que baja el ruido visual del menú. */}
@@ -208,7 +208,8 @@ function NavSection({
           />
         </button>
       )}
-      <div id={id} className="space-y-0.5">
+      {/* Más aire entre ítems (Fernando, 02/10/2026), también en notebook: entra igual. */}
+      <div id={id} className="space-y-1">
         {(colapsado ? group.items : visibles).map((item) => (
           <SideNavLink
             key={item.to} {...item}
