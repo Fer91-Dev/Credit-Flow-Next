@@ -155,7 +155,7 @@ function SideNavLink({ icon: Icon, label, to, isActive, onClick, colapsado, onRo
       // Estilo "riel de color" (Fernando, 02/10/2026, referencia SmartAdmin): texto claro sobre
       // el degradado, el activo es una pastilla clara con un punto, el hover un velo blanco.
       className={`group relative flex items-center rounded-lg min-h-[3.7rem] py-2 text-[1.08rem] transition-all duration-150 ease-out ${
-        colapsado ? "justify-center px-0" : "gap-3.5 px-3.5"
+        colapsado ? "justify-center px-0" : "gap-3 px-2.5"
       } ${
         isActive
           ? "bg-riel-acento/30 font-medium text-primary-foreground ring-1 ring-inset ring-riel-acento/60 shadow-[0_0_14px_-4px_var(--riel-acento)]"
@@ -210,7 +210,7 @@ function NavSection({
           onClick={onPlegar}
           aria-expanded={!plegado}
           aria-controls={id}
-          className="group/rot mb-2.5 flex w-full items-center justify-between rounded-md px-3.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-riel-acento"
+          className="group/rot mb-2.5 flex w-full items-center justify-between rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-foreground/55 transition-colors hover:text-riel-acento"
         >
           {group.label}
           <ChevronDown
@@ -221,7 +221,7 @@ function NavSection({
       )}
       {/* Línea punteada que baja del rótulo y acompaña a los ítems del grupo (Fernando,
           02/10/2026, referencia SmartAdmin). Contraído no va: no hay lugar. */}
-      <div id={id} className={colapsado ? "space-y-1" : "ml-[1.35rem] space-y-1 border-l border-dashed border-primary-foreground/35 pl-2"}>
+      <div id={id} className={colapsado ? "space-y-1" : "ml-[1.1rem] space-y-1 border-l border-dashed border-primary-foreground/35 pl-1.5"}>
         {(colapsado ? group.items : visibles).map((item) => (
           <SideNavLink
             key={item.to} {...item}
@@ -389,7 +389,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
    * Escape la limpia. No va en el riel contraído: no hay dónde escribir en 64px.
    */
   const filtroMenu = (onNavigate?: () => void) => (
-    <div className="px-4 pb-16 pt-1">
+    <div className="px-3 pb-16 pt-1">
       <input
         type="search"
         value={filtroNav}
@@ -445,7 +445,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       {/* ── SIDEBAR DESKTOP (lg+) ─────────────────────────────────────────── */}
       <aside
         className={`riel group/side hidden lg:flex fixed inset-y-0 left-0 z-30 flex-col transition-[width] duration-200 ease-out ${
-          colapsado ? "w-16" : "w-[21.5rem]"
+          colapsado ? "w-16" : "w-[18.5rem]"
         }`}
       >
         {/* Branding. Sin la línea de abajo (Fernando, 28/09/2026): el logo va suelto y el menú
@@ -469,7 +469,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         {/* El logo se centra en los mismos 88px del encabezado (Fernando, 02/10/2026: "a la
             misma altura que los objetos del header"); el aire que tenía abajo pasa acá. */}
         {!colapsado && <div className="pt-7">{filtroMenu()}</div>}
-        <nav className={`flex-1 overflow-y-auto pb-6 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-4"}`}>
+        <nav className={`flex-1 overflow-y-auto pb-6 sin-scrollbar ${colapsado ? "px-2 pt-3" : "px-3"}`}>
           {renderNav(undefined, colapsado)}
         </nav>
 
@@ -512,7 +512,7 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
       )}
 
       {/* ── COLUMNA DERECHA ───────────────────────────────────────────────── */}
-      <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-[21.5rem]"}`}>
+      <div className={`flex flex-1 flex-col min-w-0 overflow-hidden transition-[padding] duration-200 ease-out ${colapsado ? "lg:pl-16" : "lg:pl-[18.5rem]"}`}>
 
         {/* TOPBAR — solo mobile (en desktop los controles viven en el PageHeader) */}
         <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-edge bg-sidebar px-4">
