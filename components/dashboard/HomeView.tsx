@@ -284,7 +284,7 @@ function ContactosPorAgente() {
                 {" · "}<span className="font-mono tabular-nums text-foreground/80">{f.mes}</span> en el mes
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted/50">
+            <div className="h-2 overflow-hidden rounded-full bg-pista">
               <div className="h-full rounded-full bg-success transition-all duration-700" style={{ width: `${(f.hoy / max) * 100}%` }} />
             </div>
           </div>
@@ -756,7 +756,7 @@ function MiMetaBarra({ label, actual, meta, avance, money }: { label: string; ac
           {meta > 0 && <span className={`ml-1.5 font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>{avance}%</span>}
         </span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+      <div className="h-1.5 w-full rounded-full bg-pista overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${meta > 0 ? pct : 0}%` }} />
       </div>
     </div>
@@ -825,7 +825,7 @@ function ObjetivosEquipo({ vendedores }: { vendedores: ReturnType<typeof useVend
               </div>
               {v.meta > 0 && (
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 flex-1 rounded-full bg-muted/40 overflow-hidden">
+                  <div className="h-1.5 flex-1 rounded-full bg-pista overflow-hidden">
                     <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
                   </div>
                   <span className={`text-xs font-mono font-semibold w-10 text-right ${cumplido ? "text-success" : "text-foreground"}`}>{v.avance}%</span>

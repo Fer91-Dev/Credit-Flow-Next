@@ -309,7 +309,7 @@ export function AcuerdosTab({ role }: { role: Role }) {
                         ruido, y en una intacta una barra vacía no dice nada. */}
                     {c.pagado > 0 && resta > 0 && (
                       <div className="mt-2.5 pl-1.5">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-muted/50">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-pista">
                           <div className={`h-full rounded-full ${tono.barra}`} style={{ width: `${pct}%` }} />
                         </div>
                         <p className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">

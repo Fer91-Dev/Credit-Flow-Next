@@ -426,7 +426,7 @@ function KpisDelDia({ resumen, loading, filtro, onFiltro }: {
               <span className="text-muted-foreground/30"> / </span>
               <span className="text-primary">{pct(transferencia)}%</span>
             </p>
-            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted/40">
+            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-pista">
               <div className="bg-foreground/70" style={{ width: `${pct(efectivo)}%` }} />
               <div className="bg-primary" style={{ width: `${pct(transferencia)}%` }} />
               {otros > 0.01 && <div className="bg-warning" style={{ width: `${pct(otros)}%` }} />}

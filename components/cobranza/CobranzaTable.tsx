@@ -1393,7 +1393,7 @@ function EsperadoVsMora({
       </div>
 
       {/* Barra apilada: al día (success) + en mora (destructive) */}
-      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-muted/40">
+      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-pista">
         <div
           className="h-full bg-success transition-all duration-700"
           style={{ width: `${pctAlDia}%` }}

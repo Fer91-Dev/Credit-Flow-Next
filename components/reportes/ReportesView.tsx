@@ -831,7 +831,7 @@ function TabProductos({ p }: { p?: ReporteProductos }) {
                     <span className="font-semibold text-foreground">${n2(c.monto)}</span> · {n0(c.unidades)} u. · {n1(c.pct_monto)}%
                   </span>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-pista">
                   <div className="h-1.5 rounded-full bg-primary transition-[width] duration-700 ease-out" style={{ width: `${Math.max(2, (c.monto / maxCat) * 100)}%` }} />
                 </div>
               </div>

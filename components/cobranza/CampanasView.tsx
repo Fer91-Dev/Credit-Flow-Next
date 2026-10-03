@@ -390,7 +390,7 @@ function CampanaCard({ campana: c, onOpen }: { campana: CampanaCobranza; onOpen:
             <span>de {formatMonto(deuda)} reclamados</span>
             <span className="font-mono font-semibold text-foreground tabular-nums">{Math.round(pctRecuperado)}%</span>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted/50">
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-pista">
             <div className="h-full rounded-full bg-success transition-all duration-500" style={{ width: `${pctRecuperado}%` }} />
           </div>
         </div>

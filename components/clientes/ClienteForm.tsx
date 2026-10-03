@@ -419,7 +419,7 @@ export function ClienteForm({ clienteId, initialDocumento, onClose }: ClienteFor
               </span>
               <span className={`font-mono font-semibold tabular-nums ${completos === obligatorios.length ? "text-success" : "text-foreground"}`}>{completos} de {obligatorios.length}</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted/60">
+            <div className="h-1.5 overflow-hidden rounded-full bg-pista">
               <div className={`h-full rounded-full transition-all duration-300 ${completos === obligatorios.length ? "bg-success" : "bg-primary"}`} style={{ width: `${(completos / obligatorios.length) * 100}%` }} />
             </div>
             <div className="flex flex-wrap gap-1.5">

@@ -166,7 +166,7 @@ export function IdentidadCard({
             <span className="text-xs text-muted-foreground">Perfil completo</span>
             <span className="font-mono text-xs font-bold text-foreground">{completitud}%</span>
           </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted/40">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-pista">
             <div
               className={`h-full rounded-full transition-all duration-500 ${completitud === 100 ? "bg-success" : "bg-primary"}`}
               style={{ width: `${completitud}%` }}

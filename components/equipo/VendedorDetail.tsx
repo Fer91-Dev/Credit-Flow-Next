@@ -526,7 +526,7 @@ function MetaBarra({ label, actual, meta, avance, money }: { label: string; actu
           {meta > 0 && <span className={`ml-1.5 font-semibold ${avance >= 100 ? "text-success" : "text-foreground"}`}>{avance}%</span>}
         </span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+      <div className="h-1.5 w-full rounded-full bg-pista overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${meta > 0 ? pct : 0}%` }} />
       </div>
     </div>
@@ -794,7 +794,7 @@ function LogrosTab({ vendedorId }: { vendedorId: string }) {
           )}
         </div>
         {rango.siguiente && (
-          <div className="mt-3 h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+          <div className="mt-3 h-1.5 w-full rounded-full bg-pista overflow-hidden">
             <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${progreso}%` }} />
           </div>
         )}

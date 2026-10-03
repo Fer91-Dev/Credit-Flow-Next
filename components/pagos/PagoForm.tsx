@@ -1323,7 +1323,7 @@ export function PagoForm({ creditoId, clienteId, montoSugerido, motivoSugerido, 
                                   </table>
 
                                   <div className="mt-3 flex items-center gap-2.5">
-                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/40">
+                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-pista">
                                       <div className="h-full rounded-full bg-warning transition-all" style={{ width: `${pctCubierto}%` }} />
                                     </div>
                                     <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">

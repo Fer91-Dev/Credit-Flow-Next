@@ -1369,7 +1369,7 @@ export function CreditoForm({ creditoId, onClose }: CreditoFormProps) {
                             </span>
                           </p>
                         )}
-                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-pista">
                           <div className={`h-full rounded-full transition-all ${meta.barra}`} style={{ width: `${Math.min(100, usado * 100)}%` }} />
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-[11px]">

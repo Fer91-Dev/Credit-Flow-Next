@@ -105,7 +105,7 @@ export function BarraAvance({
   }[tono];
 
   return (
-    <div className={`relative w-full overflow-hidden rounded-full bg-muted/40 ${alto}`}>
+    <div className={`relative w-full overflow-hidden rounded-full bg-pista ${alto}`}>
       <div
         className={`${alto} rounded-full ${color} transition-[width] duration-[900ms] ease-out`}
         style={{ width: `${Math.max(0, Math.min(100, ancho))}%` }}

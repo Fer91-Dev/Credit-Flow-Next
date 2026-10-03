@@ -411,7 +411,7 @@ function AvanceCobranzas({
       </div>
 
       {/* Barra de progreso */}
-      <div className="h-2.5 w-full rounded-full bg-muted/40 overflow-hidden">
+      <div className="h-2.5 w-full rounded-full bg-pista overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-700 ${barColor}`}
           style={{ width: `${pct}%` }}
@@ -459,7 +459,7 @@ function MoraRow({
         </span>
       </div>
       {total > 0 && (
-        <div className="h-1 w-full rounded-full bg-muted/40 overflow-hidden">
+        <div className="h-1 w-full rounded-full bg-pista overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${count > 0 ? colorBar : "bg-transparent"}`}
             style={{ width: `${pct}%`, opacity: 0.6 }}

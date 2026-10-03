@@ -43,7 +43,7 @@ export function MetaBar({ meta, avance, periodo }: { meta: number; avance: numbe
           {avance}%
         </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/40">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-pista">
         <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
