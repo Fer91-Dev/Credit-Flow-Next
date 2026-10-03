@@ -39,12 +39,13 @@ function Brand({ financiera, size = "lg", soloIcono = false, protagonista = fals
     return (
       /*
         Más grande (Fernando, 02/10/2026). El logo subido trae ~30% de margen negro que
-        `lighten` funde con el fondo: a tamaño real el dibujo quedaba chico. Se agranda y el margen
-        sobrante queda afuera, invisible. Va con la propiedad `scale` en el propio <img>: un
-        contenedor con `transform` aísla la mezcla y el margen negro se VE (probado). Y `scale`
-        se compone con el `transform` del latido del hover, no lo pisa.
+        `lighten` funde con el fondo: a tamaño real el dibujo quedaba chico. Se dibuja MÁS
+        GRANDE de verdad (alto real de 6.6rem) y los márgenes negativos devuelven el espacio
+        del borde negro, que queda afuera e invisible. 🔴 Nada de `scale`/`transform`: el
+        navegador rasteriza al tamaño chico y estira, y el logo se veía pixelado (Fernando,
+        03/10/2026). Tampoco un contenedor con transform: aísla la mezcla y el negro se VE.
       */
-      <img src={financiera.logo_url} alt={marca} className="logo-marca block h-auto max-h-[4.6rem] w-auto max-w-[10rem] scale-[1.45] object-contain" />
+      <img src={financiera.logo_url} alt={marca} className="logo-marca block h-[6.6rem] w-auto max-w-[15rem] -my-3 object-contain" />
     );
   }
   return (
