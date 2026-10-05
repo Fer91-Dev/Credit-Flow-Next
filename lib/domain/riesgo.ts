@@ -188,6 +188,13 @@ export interface BureauConfig {
   usuario: string;
   /** Config por bureau: varios pueden estar activos a la vez. Ver `resolverProveedoresBureau`. */
   proveedores?: Partial<Record<string, BureauProveedorConfig>>;
+  /**
+   * ¿Los VENDEDORES pueden consultar el bureau desde la ficha? (Fernando, 05/10/2026). Son los
+   * que originan en la calle: sin consulta, el motor evalúa "sin bureau" y todo queda en
+   * revisar. Solo los bureaus AUTOMÁTICOS: la carga manual de señales sigue siendo del admin
+   * —un vendedor podría cargar una situación limpia inventada y hacer pasar el motor—.
+   */
+  vendedoresConsultan: boolean;
 }
 
 export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
@@ -197,6 +204,7 @@ export const BUREAU_CONFIG_DEFAULT: BureauConfig = {
   token: "",
   usuario: "",
   proveedores: {},
+  vendedoresConsultan: true,
 };
 
 /**

@@ -739,10 +739,10 @@ export function ClienteDetail({
         </div>
         )}
 
-        {/* Perfil crediticio (bureau) — feature premium; se auto-oculta si no está habilitada.
-            Solo ADMIN: la API del bureau es solo de admin, y al vendedor el panel le mostraba
-            "Sin consultas registradas" en clientes que SÍ las tenían (05/10/2026). */}
-        {showCreditos && !esTerminal && role === "admin" && <ClienteBureauPanel clienteId={clienteId} />}
+        {/* Perfil crediticio (bureau) — feature premium. Se oculta solo si la feature está
+            apagada o si quien mira no tiene permiso (vendedor con el parámetro apagado): lo
+            decide el server, no el rol, porque depende de Configuración (05/10/2026). */}
+        {showCreditos && !esTerminal && <ClienteBureauPanel clienteId={clienteId} />}
 
         {/* Prontuario: cómo LLEGÓ hasta acá, no cómo está. Va después del bureau porque es
             la contracara interna de lo que el bureau dice desde afuera. */}

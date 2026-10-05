@@ -102,8 +102,11 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
   const tiene = useHasFeature("bureau_credito");
   const toast = useToast();
   const [ultima, setUltima] = useState<Consulta | null>(null);
+  /** Lo que dice el server que puede hacer quien mira (el vendedor no carga a mano). */
+  const [permisos, setPermisos] = useState<{ consultar: boolean; manual: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [oculto, setOculto] = useState(false);
   const [manual, setManual] = useState({ situacionBcra: "", scoreExterno: "", chequesRechazados: "", deudaSistemaFinanciero: "" });
   const { config } = useConfiguracion();
 
@@ -120,12 +123,19 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
     let cancel = false;
     fetch(`/api/clientes/${clienteId}/bureau`)
       .then((r) => r.json())
-      .then((j) => { if (!cancel && j.ok) setUltima(j.data.ultima); })
+      .then((j) => {
+        if (cancel) return;
+        // Sin permiso (vendedor con el parámetro apagado) el panel no se muestra: mostrarlo
+        // vacío decía "Sin consultas" en clientes que sí las tenían.
+        if (!j.ok) { setPermisos({ consultar: false, manual: false }); setOculto(true); return; }
+        setUltima(j.data.ultima);
+        setPermisos(j.data.permisos ?? { consultar: true, manual: true });
+      })
       .catch(() => {});
     return () => { cancel = true; };
   }, [tiene, clienteId]);
 
-  if (!tiene) return null;
+  if (!tiene || oculto || !permisos) return null;
 
   /**
    * 🔴 UN BOTÓN POR BUREAU ACTIVO, no uno solo contra "el proveedor por defecto".
@@ -197,6 +207,7 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
               : "Sin consultas registradas para este cliente."}
           </p>
           <div className="flex shrink-0 items-center gap-2">
+            {permisos.manual && (
             <button
               onClick={() => setManualOpen((o) => !o)}
               disabled={loading}
@@ -204,6 +215,7 @@ export function ClienteBureauPanel({ clienteId }: { clienteId: string }) {
             >
               Cargar manual
             </button>
+            )}
             {activos.map((clave) => (
               <button
                 key={clave}

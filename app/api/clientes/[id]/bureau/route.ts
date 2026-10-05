@@ -20,16 +20,30 @@ const PROVEEDORES: BureauProveedor[] = ["manual", "bcra", "nosis", "veraz", "cre
  * GET /api/clientes/[id]/bureau  (admin · feature premium)
  * Última consulta de bureau del cliente (para mostrar en la ficha).
  */
+/**
+ * Quién puede qué con el bureau (Fernando, 05/10/2026). El admin todo; el vendedor ver y
+ * consultar los bureaus automáticos si `bureau.vendedoresConsultan` está prendido, y NUNCA
+ * cargar señales a mano (podría inventar una situación limpia y hacer pasar el motor).
+ */
+async function permisosBureau(ctx: { tenantId: string; role: string }) {
+  if (ctx.role === "admin") return { ver: true, consultar: true, manual: true };
+  const { bureau } = await getRiesgoConfig(ctx.tenantId);
+  const si = bureau.vendedoresConsultan !== false;
+  return { ver: si, consultar: si, manual: false };
+}
+
 export const GET = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
-  const ctx = await requireRole(["admin"], req);
+  const ctx = await requireRole(["admin", "vendedor"], req);
   requireFeature(ctx, "bureau_credito");
+  const permisos = await permisosBureau(ctx);
+  if (!permisos.ver) return errorResponse("La financiera no habilitó el bureau para los vendedores.", "FORBIDDEN", 403);
   const { id } = await params;
 
   const ultima = await prisma.consultas_bureau.findFirst({
     where: { ...withTenant(ctx.tenantId), cliente_id: id },
     orderBy: { created_at: "desc" },
   });
-  return successResponse({ ultima });
+  return successResponse({ ultima, permisos });
 });
 
 /**
@@ -40,8 +54,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  */
 export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
-  const ctx = await requireRole(["admin"], req);
+  const ctx = await requireRole(["admin", "vendedor"], req);
   requireFeature(ctx, "bureau_credito");
+  const permisos = await permisosBureau(ctx);
+  if (!permisos.consultar) return errorResponse("La financiera no habilitó el bureau para los vendedores.", "FORBIDDEN", 403);
   const { tenantId, userId, nombre } = ctx;
   const { id } = await params;
 
@@ -56,6 +72,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
 
   const { bureau } = await getRiesgoConfig(tenantId);
   const proveedor: BureauProveedor = PROVEEDORES.includes(body.proveedor) ? body.proveedor : bureau.proveedor;
+  if (proveedor === "manual" && !permisos.manual) {
+    return errorResponse("La carga manual de señales del bureau es solo para administradores.", "FORBIDDEN", 403);
+  }
 
   // Consentimiento del titular (Ley 25.326): obligatorio para consultar bureaus externos.
   // El modo manual (el analista carga datos que ya posee legítimamente) queda exento.

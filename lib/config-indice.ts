@@ -87,6 +87,7 @@ export const PARAMETROS: ParametroIndexado[] = [
   { label: "Usuario (si aplica)", tab: "riesgo", seccion: "Política de originación" },
   { label: "Token / API key", tab: "riesgo", seccion: "Política de originación" },
   { label: "Consulta automática al evaluar", tab: "riesgo", seccion: "Política de originación" },
+  { label: "Los vendedores pueden consultar el bureau", tab: "riesgo", seccion: "Política de originación" },
   { label: "Movimientos de caja", tab: "notificaciones", seccion: "Notificaciones del sistema" },
   { label: "Respaldos", tab: "notificaciones", seccion: "Notificaciones del sistema" },
   { label: "Plan y facturación", tab: "notificaciones", seccion: "Notificaciones del sistema" },

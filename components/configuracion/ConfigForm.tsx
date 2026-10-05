@@ -2065,6 +2065,11 @@ export function ConfigForm() {
                       <Toggle checked={riesgo.bureau.enabled} onChange={v => setBureau({ enabled: v })} />
                     </div>
                   </Field>
+                  <Field label="Los vendedores pueden consultar el bureau" hint="Desde la ficha del cliente, solo los bureaus automáticos. La carga manual de señales es siempre del administrador.">
+                    <div className="flex h-10 items-center">
+                      <Toggle checked={riesgo.bureau.vendedoresConsultan !== false} onChange={v => setBureau({ vendedoresConsultan: v })} />
+                    </div>
+                  </Field>
                 </div>
               </div>
               </FeatureGate>
@@ -3239,7 +3244,7 @@ function defaultRiesgo(): RiesgoConfig {
       accionSinIngreso: "autorizar",
       accionAlNoCalificar: "autorizar",
     },
-    bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "" },
+    bureau: { proveedor: "manual", enabled: false, endpoint: "", token: "", usuario: "", vendedoresConsultan: true },
   };
 }
 
