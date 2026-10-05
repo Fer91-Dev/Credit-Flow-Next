@@ -1,4 +1,5 @@
 import { PagosTable } from "@/components/pagos/PagosTable";
+import { requireAuth } from "@/lib/auth";
 
 /**
  * `?cliente=<id>` llega COMO PROP, resuelto en el servidor.
@@ -13,6 +14,6 @@ export default async function PagosPage({
 }: {
   searchParams: Promise<{ cliente?: string }>;
 }) {
-  const { cliente } = await searchParams;
-  return <PagosTable clienteInicial={cliente ?? null} />;
+  const [{ cliente }, { role }] = await Promise.all([searchParams, requireAuth()]);
+  return <PagosTable clienteInicial={cliente ?? null} role={role} />;
 }

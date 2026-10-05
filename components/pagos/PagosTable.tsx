@@ -1,5 +1,7 @@
 "use client";
 
+import type { Role } from "@/lib/auth/roles";
+
 import { useEffect, useMemo, useState } from "react";
 import { useDebounce } from "@/lib/use-debounce";
 import { Wallet, Search, User, Phone, IdCard, ChevronRight, X, Clock, TrendingUp, TrendingDown } from "lucide-react";
@@ -20,7 +22,7 @@ import { Nota } from "@/components/ui/Nota";
  * operador ingresa un DNI o nombre; al elegir el cliente se muestra su ficha
  * 360 a pantalla completa, desde donde se registra el cobro.
  */
-export function PagosTable({ clienteInicial = null }: { clienteInicial?: string | null }) {
+export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: string | null; role?: Role }) {
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   /**
@@ -146,7 +148,7 @@ export function PagosTable({ clienteInicial = null }: { clienteInicial?: string 
         />
         {/* Ficha principal del cliente, con las acciones en su encabezado */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail clienteId={clienteId} variant="pagos" />
+          <ClienteDetail clienteId={clienteId} variant="pagos" role={role} />
         </div>
       </div>
     );

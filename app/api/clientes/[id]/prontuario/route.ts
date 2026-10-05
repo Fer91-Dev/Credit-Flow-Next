@@ -45,7 +45,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: { param
     },
     orderBy: { created_at: "desc" },
   });
-  if (scope.vendedor_id && !creditos.some((c) => c.vendedor_id === scope.vendedor_id)) {
+  /*
+    🔴 La MISMA regla que la ficha (`vendedorPuedeEditar` en clientes/[id]): un cliente SIN
+    NINGÚN crédito es de cualquiera. Faltaba la excepción y a un vendedor le salía "No se pudo
+    cargar el prontuario" en cualquier cliente sin créditos —todos los migrados—, aunque la
+    ficha lo dejaba verlo y editarlo (Fernando, 05/10/2026, Aida del Valle Ponce).
+  */
+  if (scope.vendedor_id && creditos.length > 0 && !creditos.some((c) => c.vendedor_id === scope.vendedor_id)) {
     return errorResponse("Sin acceso a este cliente", "FORBIDDEN", 403);
   }
 
