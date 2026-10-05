@@ -582,7 +582,11 @@ export function AppShell({ children, role, nombre, email, avatarUrl, financiera,
         {/* MAIN — sin padding vertical en el scrollport, así el PageHeader sticky se
             pega al borde superior real (con padding, el sticky quedaba 32px abajo y
             el contenido se colaba por la franja de arriba). El padding va al contenido. */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* `relative`: es la referencia de posición de todo lo `absolute` sin padre posicionado
+            (los `sr-only` de accesibilidad, p.ej.). Sin él se anclaban al <body>, quedaban
+            abajo del contenido que scrollea y estiraban la PÁGINA: en Mi Perfil seguía el
+            scroll debajo del footer (Fernando, 05/10/2026). */}
+        <main className="relative flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="w-full min-w-0 px-4 pb-6 md:px-6 md:pb-8 lg:px-8 space-y-8">
             <SystemActionsProvider
               openSearch={() => setPaletteOpen(true)}
