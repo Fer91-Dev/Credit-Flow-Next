@@ -16,7 +16,8 @@
     "seed:cartera": "node --env-file=.env.local scripts/seed-cartera-prueba.mjs",
     "seed:demo": "node --env-file=.env.local scripts/sembrar-demo.mjs",
     "respaldo:docs": "node scripts/respaldo-docs.mjs",
-    "docs:traer": "node scripts/traer-docs.mjs"
+    "docs:traer": "node scripts/traer-docs.mjs",
+    "pase:produccion": "node scripts/pase-produccion.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
