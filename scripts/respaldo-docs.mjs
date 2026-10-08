@@ -17,6 +17,7 @@
  *   memoria/          ← la memoria de Claude de este proyecto
  *   entrega/          ← ProyectoSilvio\entrega (manuales PDF + su fuente HTML)
  *   logos/            ← ProyectoSilvio\logos
+ *   fer-server/       ← ProyectoSilvioer-server (scripts y Caddyfile del servidor Oracle)
  *   raiz/             ← los .bat de arranque de ProyectoSilvio\
  *
  * 🔴 DOS MÁQUINAS (03/10/2026): si la otra máquina subió algo que esta todavía no trajo, NO sube
@@ -80,6 +81,7 @@ espejar(join(RAIZ, ".claude", "skills"), join(DESTINO, "skills"));
 espejar(MEMORIA, join(DESTINO, "memoria"));
 espejar(join(RAIZ, "entrega"), join(DESTINO, "entrega"));
 espejar(join(RAIZ, "logos"), join(DESTINO, "logos"));
+if (existsSync(join(RAIZ, "fer-server"))) espejar(join(RAIZ, "fer-server"), join(DESTINO, "fer-server"));
 // raiz/: los .bat de arranque (los datos de clientes que hay en la raíz NO viajan).
 rmSync(join(DESTINO, "raiz"), { recursive: true, force: true });
 mkdirSync(join(DESTINO, "raiz"), { recursive: true });

@@ -154,6 +154,7 @@ estado está el proyecto?"*.
 | \`skills/\` | \`ProyectoSilvio/.claude/skills/\` |
 | \`memoria/\` | \`C:\\Users\\<usuario>\\.claude\\projects\\<carpeta-del-proyecto>\\memory\\\` |
 | \`entrega/\`, \`logos/\` | \`ProyectoSilvio/entrega/\` y \`ProyectoSilvio/logos/\` |
+| \`fer-server/\` | \`ProyectoSilvio/fer-server/\` (scripts del servidor Oracle) |
 | \`raiz/\` | los \`.bat\` de arranque, en \`ProyectoSilvio/\` |
 
 \`<carpeta-del-proyecto>\` sale de la ruta donde se abre el proyecto: \`F:\\ProyectoSilvio\` →

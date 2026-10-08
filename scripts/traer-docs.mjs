@@ -86,6 +86,7 @@ reemplazar(join(DESTINO, "skills"), join(RAIZ, ".claude", "skills"), "skills");
 actualizar(join(DESTINO, "sistema"), PROYECTO, "documentación del proyecto (.md)");
 actualizar(join(DESTINO, "entrega"), join(RAIZ, "entrega"), "manuales");
 actualizar(join(DESTINO, "logos"), join(RAIZ, "logos"), "logos");
+actualizar(join(DESTINO, "fer-server"), join(RAIZ, "fer-server"), "scripts de Fer-Server");
 actualizar(join(DESTINO, "raiz"), RAIZ, ".bat de arranque");
 
 registrarSync(sha);
