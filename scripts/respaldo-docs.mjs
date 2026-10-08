@@ -17,7 +17,7 @@
  *   memoria/          ← la memoria de Claude de este proyecto
  *   entrega/          ← ProyectoSilvio\entrega (manuales PDF + su fuente HTML)
  *   logos/            ← ProyectoSilvio\logos
- *   fer-server/       ← ProyectoSilvioer-server (scripts y Caddyfile del servidor Oracle)
+ *   fer-server/       ← ProyectoSilvio\fer-server (scripts y Caddyfile del servidor Oracle)
  *   raiz/             ← los .bat de arranque de ProyectoSilvio\
  *
  * 🔴 DOS MÁQUINAS (03/10/2026): si la otra máquina subió algo que esta todavía no trajo, NO sube
