@@ -12,7 +12,11 @@
  *      (Si hay diferencia, el pase lleva migración: se hace a mano, ver REFERENCIA-SISTEMA.md.)
  *   5. `npm run build`.
  *   6. `git push origin origin/preview:main`.
- *   7. Espera el deploy de Production en GitHub y prueba que /auth responda 200.
+ *   7. Espera los deploys de main y prueba que /auth responda 200 en cada destino:
+ *      - Vercel (mientras exista): el deployment "Production" de GitHub.
+ *      - Fer-Server: la corrida de `desplegar.yml` para ese commit (09/10/2026). El chequeo de
+ *        salud y la vuelta atrás automática los hace `desplegar` en el servidor.
+ *      En el corte a Fer-Server (MIGRACION-FER-SERVER.md §8): VERCEL = null y FER = el dominio.
  *
  * No toca datos de producción: solo lee el esquema y empuja código.
  */
@@ -22,7 +26,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PROD = "https://credit-flow-next.vercel.app";
+const VERCEL = "https://credit-flow-next.vercel.app"; // null el día que se apague Vercel
+const FER = "https://creditflow.146-181-28-228.sslip.io"; // → https://DOMINIO en el corte
 const sh = (cmd, opts = {}) => execSync(cmd, { cwd: RAIZ, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }).trim();
 const git = (...a) => execFileSync("git", a, { cwd: RAIZ, encoding: "utf8" }).trim();
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,18 +95,53 @@ execFileSync("git", ["push", "-q", "origin", "origin/preview:main"], { cwd: RAIZ
 console.log(`  ✔ main = ${sha.slice(0, 7)}`);
 
 // 7) Deploy
-paso(7, "Deploy de Vercel");
-let estado = null;
-for (let i = 0; i < 60; i++) {
-  await dormir(15_000);
-  try {
-    const id = sh(`gh api "repos/:owner/:repo/deployments?environment=Production&sha=${sha}" --jq ".[0].id"`);
-    if (id) estado = sh(`gh api "repos/:owner/:repo/deployments/${id}/statuses" --jq ".[0].state"`);
-  } catch { /* todavía no aparece */ }
-  if (["success", "failure", "error"].includes(estado)) break;
+paso(7, "Deploys de main");
+const listos = [];
+
+if (VERCEL) {
+  let estado = null;
+  for (let i = 0; i < 60; i++) {
+    await dormir(15_000);
+    try {
+      const id = sh(`gh api "repos/:owner/:repo/deployments?environment=Production&sha=${sha}" --jq ".[0].id"`);
+      if (id) estado = sh(`gh api "repos/:owner/:repo/deployments/${id}/statuses" --jq ".[0].state"`);
+    } catch { /* todavía no aparece */ }
+    if (["success", "failure", "error"].includes(estado)) break;
+  }
+  if (estado !== "success") frenar(`Vercel: el deploy terminó en "${estado ?? "sin respuesta en 15 minutos"}".`);
+  const http = (await fetch(`${VERCEL}/auth`)).status;
+  if (http !== 200) frenar(`Vercel: el deploy salió bien pero /auth responde ${http}.`);
+  listos.push("Vercel");
 }
-if (estado !== "success") frenar(`el deploy terminó en "${estado ?? "sin respuesta en 15 minutos"}".`);
-const http = (await fetch(`${PROD}/auth`)).status;
-if (http !== 200) frenar(`el deploy salió bien pero /auth responde ${http}.`);
+
+// Fer-Server: si el deploy no está configurado, el workflow termina en success sin publicar
+// (avisa con un notice). Se distingue mirando si la corrida llegó a conectarse.
+let corrida = null;
+for (let i = 0; i < 80; i++) {
+  await dormir(15_000);
+  const runs = JSON.parse(sh(`gh run list --workflow=desplegar.yml --commit ${sha} --json databaseId,status,conclusion`));
+  corrida = runs[0] ?? null;
+  if (corrida?.status === "completed") break;
+}
+if (!corrida) frenar("Fer-Server: no apareció la corrida de desplegar.yml para este commit.");
+if (corrida.status !== "completed") frenar("Fer-Server: el deploy no terminó en 20 minutos.");
+if (corrida.conclusion !== "success") frenar(`Fer-Server: el deploy terminó en "${corrida.conclusion}" (gh run view ${corrida.databaseId} --log).`);
+const log = sh(`gh run view ${corrida.databaseId} --log`);
+if (/sin configurar/.test(log)) {
+  if (!VERCEL) frenar("Fer-Server: el deploy automático no está configurado y Vercel ya no existe.");
+  console.log("  ⚠ Fer-Server: deploy automático todavía sin configurar (no se publicó ahí).");
+} else {
+  try {
+    const http = (await fetch(`${FER}/auth`)).status;
+    if (http !== 200) frenar(`Fer-Server: el deploy salió bien pero /auth responde ${http}.`);
+  } catch (e) {
+    // El router de Fernando no resuelve sslip.io; con el dominio propio esto no pasa.
+    if (FER.includes("sslip.io")) console.log(`  ⚠ Fer-Server: no pude abrir ${FER} desde esta PC (DNS); el servidor ya chequeó la salud.`);
+    else frenar(`Fer-Server: no responde (${e.cause?.code ?? e.message}).`);
+  }
+  listos.push("Fer-Server");
+}
+
 rmSync(join(RAIZ, ".next"), { recursive: true, force: true }); // el dev arranca limpio
-console.log(`\n✅ EN PRODUCCIÓN: ${sha.slice(0, 7)} (${n} commit(s)) · deploy success · /auth 200`);
+console.log(`
+✅ EN PRODUCCIÓN: ${sha.slice(0, 7)} (${n} commit(s)) · ${listos.join(" + ")} · /auth 200`);

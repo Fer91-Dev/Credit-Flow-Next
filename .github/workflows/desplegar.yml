@@ -1,0 +1,41 @@
+# Deploy a Fer-Server (Oracle, Santiago) — ver MIGRACION-FER-SERVER.md §7.
+#   push a preview → proyecto creditflow-preview (base de DEV)
+#   push a main    → proyecto creditflow         (base de PRODUCCIÓN)
+# La clave FER_SERVER_SSH_KEY entra como gh-deploy, cuyo authorized_keys fuerza el comando
+# /usr/local/sbin/desplegar-gh: solo acepta "<proyecto> <commit>" de esos dos proyectos.
+# Las compilaciones las encola el servidor (flock en `desplegar`): nunca dos a la vez.
+name: Deploy Fer-Server
+
+on:
+  push:
+    branches: [main, preview]
+  workflow_dispatch:
+
+# Por rama: un push nuevo reemplaza al pendiente de SU rama, nunca al de la otra.
+concurrency:
+  group: fer-server-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Desplegar
+        env:
+          KEY: ${{ secrets.FER_SERVER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.FER_SERVER_KNOWN_HOSTS }}
+          PROYECTO: ${{ github.ref_name == 'main' && 'creditflow' || 'creditflow-preview' }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "::notice::Deploy a Fer-Server sin configurar (faltan los secrets): no se publica."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/fer_server && chmod 600 ~/.ssh/fer_server
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/fer_server -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+              gh-deploy@146.181.28.228 "$PROYECTO $GITHUB_SHA"

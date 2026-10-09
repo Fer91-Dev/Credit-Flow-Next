@@ -17,7 +17,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
-import { PROYECTO, RAIZ, DESTINO, REPO_DOCS, carpetaMemoria, registrarSync } from "./docs-comun.mjs";
+import { PROYECTO, RAIZ, DESTINO, REPO_DOCS, carpetaMemoria, ultimoSync, registrarSync } from "./docs-comun.mjs";
 
 const MEMORIA = carpetaMemoria();
 const git = (...a) => execFileSync("git", ["-C", DESTINO, ...a], { encoding: "utf8" }).trim();
@@ -28,6 +28,8 @@ if (!existsSync(join(DESTINO, ".git"))) {
 }
 const rama = git("rev-parse", "--abbrev-ref", "HEAD");
 git("fetch", "-q", "origin");
+// Lo último que ESTA máquina trajo o subió: la base para saber qué cambió de cada lado.
+const baseSha = ultimoSync();
 git("reset", "-q", "--hard", `origin/${rama}`);
 const sha = git("rev-parse", "HEAD");
 
@@ -45,24 +47,43 @@ function archivos(dir, base = dir) {
 }
 const igual = (a, b) => existsSync(a) && existsSync(b) && readFileSync(a).equals(readFileSync(b));
 
-/** ¿El destino local tiene algo distinto de lo que viene? Entonces se guarda una copia antes. */
-function resguardar(local, nombre) {
-  if (!existsSync(local)) return;
-  cpSync(local, join(PREVIO, nombre), { recursive: true });
-  guardados++;
+/** Contenido de `ruta` en el commit `sha` del respaldo (null si no existía). */
+function enBase(sha, ruta) {
+  if (!sha) return null;
+  try {
+    return execFileSync("git", ["-C", DESTINO, "show", `${sha}:${ruta}`], { maxBuffer: 64 << 20 });
+  } catch { return null; }
 }
+const conflictos = [];
 
-/** Reemplaza `local` entero por `origen` del respaldo (si difiere, guarda antes lo local). */
-function reemplazar(origen, local, nombre) {
+/**
+ * Espeja `origen` del respaldo sobre `local` comparando contra lo último que ESTA máquina
+ * sincronizó (`base`). 09/10/2026: antes reemplazaba la carpeta entera y pisaba una nota de
+ * memoria escrita acá y nunca subida. Ahora, por archivo:
+ *   - solo cambió el respaldo → se trae;
+ *   - solo cambió acá (sin subir) → se conserva, la sube el próximo respaldo:docs;
+ *   - cambiaron los dos → gana el respaldo y lo local queda en .sync-previo (se avisa).
+ */
+function reemplazar(origen, local, nombre, prefijo) {
   if (!existsSync(origen)) return;
-  const a = archivos(origen), b = archivos(local);
-  const distinto = a.length !== b.length || a.some((f) => !igual(join(origen, f), join(local, f)));
-  if (!distinto) return;
-  resguardar(local, nombre);
-  rmSync(local, { recursive: true, force: true });
-  mkdirSync(dirname(local), { recursive: true });
-  cpSync(origen, local, { recursive: true });
-  console.log(`  ✔ ${nombre}`);
+  const nuevos = new Set(archivos(origen)), locales = new Set(archivos(local));
+  let n = 0;
+  for (const f of new Set([...nuevos, ...locales])) {
+    const de = join(origen, f), a = join(local, f);
+    if (igual(de, a)) continue;
+    const base = enBase(baseSha, `${prefijo}/${f.replaceAll("\\", "/")}`);
+    const localCambio = existsSync(a) ? !(base && readFileSync(a).equals(base)) : base !== null;
+    const remotoCambio = nuevos.has(f) ? !(base && readFileSync(de).equals(base)) : base !== null;
+    if (!remotoCambio) continue; // lo distinto es solo local: se conserva
+    if (localCambio && baseSha) {
+      conflictos.push(`${nombre}/${f}`);
+      if (existsSync(a)) { mkdirSync(dirname(join(PREVIO, nombre, f)), { recursive: true }); cpSync(a, join(PREVIO, nombre, f)); guardados++; }
+    }
+    if (nuevos.has(f)) { mkdirSync(dirname(a), { recursive: true }); cpSync(de, a); }
+    else rmSync(a, { force: true });
+    n++;
+  }
+  if (n) console.log(`  ✔ ${nombre} (${n} archivo${n === 1 ? "" : "s"})`);
 }
 
 /** Copia archivo por archivo sin borrar lo que haya de más en `local`. */
@@ -81,8 +102,8 @@ function actualizar(origen, local, nombre) {
 }
 
 console.log(`Trayendo ${sha.slice(0, 7)} de github.com/Fer91-Dev/creditflow-docs…`);
-reemplazar(join(DESTINO, "memoria"), MEMORIA, "memoria de Claude");
-reemplazar(join(DESTINO, "skills"), join(RAIZ, ".claude", "skills"), "skills");
+reemplazar(join(DESTINO, "memoria"), MEMORIA, "memoria de Claude", "memoria");
+reemplazar(join(DESTINO, "skills"), join(RAIZ, ".claude", "skills"), "skills", "skills");
 actualizar(join(DESTINO, "sistema"), PROYECTO, "documentación del proyecto (.md)");
 actualizar(join(DESTINO, "entrega"), join(RAIZ, "entrega"), "manuales");
 actualizar(join(DESTINO, "logos"), join(RAIZ, "logos"), "logos");
@@ -92,3 +113,7 @@ actualizar(join(DESTINO, "raiz"), RAIZ, ".bat de arranque");
 registrarSync(sha);
 console.log(`✅ Al día con ${sha.slice(0, 7)}. Memoria en: ${MEMORIA}`);
 if (guardados) console.log(`   Lo que había antes en esta máquina quedó copiado en: ${PREVIO}`);
+if (conflictos.length) {
+  console.log("⚠️  Cambiados en LAS DOS máquinas (quedó la versión del respaldo; la local está en la copia):");
+  for (const c of conflictos) console.log(`   - ${c}`);
+}
