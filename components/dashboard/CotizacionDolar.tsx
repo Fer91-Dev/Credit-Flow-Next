@@ -301,8 +301,13 @@ export function TickerDolar() {
     <div
       className="group relative"
       aria-label="Cotización del dólar"
-      onMouseEnter={() => { encima.current = true; }}
-      onMouseLeave={() => { encima.current = false; }}
+      /*
+        Pausa SOLO con un mouse de verdad. Con `onMouseEnter` un toque en el celular disparaba el
+        "mouse encima" simulado del navegador, que nunca manda el "se fue": la cinta quedaba
+        quieta hasta tocar otra parte de la pantalla.
+      */
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") encima.current = true; }}
+      onPointerLeave={() => { encima.current = false; }}
     >
       <div
         className="cursor-grab touch-pan-y select-none overflow-hidden rounded-2xl bg-card/60 py-3.5 ring-1 ring-inset ring-border/40 active:cursor-grabbing [mask-image:linear-gradient(to_right,transparent,black_3%,black_97%,transparent)]"
