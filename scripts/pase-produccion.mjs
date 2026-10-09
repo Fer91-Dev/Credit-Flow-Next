@@ -127,7 +127,7 @@ if (!corrida) frenar("Fer-Server: no apareció la corrida de desplegar.yml para 
 if (corrida.status !== "completed") frenar("Fer-Server: el deploy no terminó en 20 minutos.");
 if (corrida.conclusion !== "success") frenar(`Fer-Server: el deploy terminó en "${corrida.conclusion}" (gh run view ${corrida.databaseId} --log).`);
 const log = sh(`gh run view ${corrida.databaseId} --log`);
-if (/##[notice]Deploy a Fer-Server sin configurar/.test(log)) { // el log también repite el script: mirar solo el aviso emitido
+if (/##\[notice\]Deploy a Fer-Server sin configurar/.test(log)) { // el log también repite el script: mirar solo el aviso emitido
   if (!VERCEL) frenar("Fer-Server: el deploy automático no está configurado y Vercel ya no existe.");
   console.log("  ⚠ Fer-Server: deploy automático todavía sin configurar (no se publicó ahí).");
 } else {
