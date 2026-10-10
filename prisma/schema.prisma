@@ -386,12 +386,6 @@ model creditos {
   refinancia_a      String? @db.Uuid // (en el nuevo) crédito original que reemplaza
   refinanciado_en   String? @db.Uuid // (en el viejo) refinanciación que lo reemplazó
 
-  // Crédito vivo de la planilla del sistema anterior, PASADO A CRÉDITO desde el historial del
-  // cliente migrado. Como `es_refinanciacion`: no es plata nueva colocada (no cuenta como
-  // otorgado ni mueve caja), pero sí es cartera y mora reales. El detalle del pase (cuota de la
-  // planilla, cuotas ya pagadas, próxima cuota) vive en `cronograma.migracion`.
-  migrado Boolean @default(false)
-
   // Crédito de PRODUCTO (tipo_credito = "productos"): en vez de desembolsar dinero, el
   // cliente se lleva un producto del inventario. El capital = precio × cantidad y NO mueve
   // caja (sin desembolso); el control es el descuento de stock. El valor ya queda snapshot

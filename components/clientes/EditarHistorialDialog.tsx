@@ -8,7 +8,6 @@ import { ModalHeader, MoneyInput, FieldLabel, FormActions } from "@/components/u
 import { useToast } from "@/components/ui/toast";
 import type { HistorialMigrado } from "@/lib/swr";
 import { parseMontoInput, numeroAInput } from "@/lib/utils";
-import { CreditoLink } from "@/components/ui/CreditoLink";
 
 const INP =
   "h-9 w-full rounded-lg border border-border bg-input px-2.5 text-sm text-foreground shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.22)] outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 [&>option]:bg-card";
@@ -18,11 +17,7 @@ const ESTADOS = [
   { v: "parcial", l: "Parcial" }, { v: "terminado", l: "Pagado" }, { v: "recien", l: "Reciente" },
 ];
 
-type Fila = {
-  descripcion: string; monto: string; cuota: string; pagadas: string; total: string; saldo: string; estado: string;
-  /** Fila ya pasada a crédito: viaja intacta y no se edita ni se quita (el servidor lo exige). */
-  marca?: { credito_id: string; credito_numero?: number; pasado_el?: string };
-};
+type Fila = { descripcion: string; monto: string; cuota: string; pagadas: string; total: string; saldo: string; estado: string };
 
 /**
  * Edición (SOLO admin) de la historia clínica de un cliente migrado. Permite corregir cada
@@ -49,7 +44,6 @@ function Form({ clienteId, historial, onClose }: { clienteId: string; historial:
       descripcion: c.descripcion, monto: numeroAInput(c.monto), cuota: numeroAInput(c.cuota),
       pagadas: String(c.cuotas_pagadas), total: String(c.cuotas_pagadas + c.cuotas_pendientes),
       saldo: numeroAInput(c.saldo), estado: c.estado,
-      marca: c.credito_id ? { credito_id: c.credito_id, credito_numero: c.credito_numero, pasado_el: c.pasado_el } : undefined,
     })),
   );
   const [saving, setSaving] = useState(false);
@@ -73,7 +67,6 @@ function Form({ clienteId, historial, onClose }: { clienteId: string; historial:
         cuotas_pendientes: total - pagadas,
         saldo: parseMontoInput(f.saldo) || 0,
         estado: f.estado,
-        ...(f.marca ?? {}),
       };
     });
     const total_prestado = hist.reduce((s, c) => s + c.monto, 0);
@@ -115,14 +108,7 @@ function Form({ clienteId, historial, onClose }: { clienteId: string; historial:
       />
 
       <div className="space-y-3">
-        {filas.map((f, i) => f.marca ? (
-          <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-success/25 bg-success/[0.05] px-3 py-2.5 text-sm">
-            <span className="font-medium text-foreground">{f.descripcion}</span>
-            <span className="text-xs text-muted-foreground">
-              Pasado a crédito <CreditoLink id={f.marca.credito_id} numero={f.marca.credito_numero ?? null} />
-            </span>
-          </div>
-        ) : (
+        {filas.map((f, i) => (
           <div key={i} className="rounded-xl border border-border bg-muted/10 p-3 space-y-2.5">
             <div className="flex items-center gap-2">
               <input

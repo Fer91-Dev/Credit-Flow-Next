@@ -747,14 +747,6 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     viene de {formatCreditoNumero(credito.refinancia_a_numero ?? null)}
                   </Link>
                 )}
-                {credito.migrado && (
-                  <span
-                    className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-warning/25"
-                    title="Crédito vivo de la planilla del sistema anterior, pasado desde el historial del cliente"
-                  >
-                    sistema anterior
-                  </span>
-                )}
                 {credito.tipo_credito === "productos" && credito.producto && (
                   <span className="truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">
                     {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` x${credito.producto_cantidad}` : ""}
@@ -780,7 +772,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 de pagar en mes y medio. Se nombra con la frecuencia real.
               */}
               <p className="mt-2.5 flex flex-wrap items-baseline gap-x-2 border-t border-border/60 pt-2.5 text-xs">
-                <span className="font-mono font-semibold tabular-nums text-foreground">{Number(credito.tasa.toFixed(2))}%</span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">{credito.tasa}%</span>
                 <span className="text-muted-foreground">TNA</span>
                 <span className="text-muted-foreground/50">·</span>
                 <span className="font-semibold text-foreground">{credito.plazo_meses}</span>
@@ -906,9 +898,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           <Stat
             cargando={loadingCuotas}
             icon="chart-increasing"
-            // El total es el número de la ÚLTIMA cuota, no cuántas hay guardadas: un crédito pasado
-            // desde la planilla vieja guarda solo las que faltan (la 2 a la 6 de 6).
-            label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas[cuotas.length - 1]?.nro ?? cuotas.length}` : cap(unidadCuota)}
+            label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
             accent="primary"
             value={proximaCuota ? `$${n2(proximaCuota.total_cobrar ?? proximaCuota.cuota_total)}` : "—"}
             sub={

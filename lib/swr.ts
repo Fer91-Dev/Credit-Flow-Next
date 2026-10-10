@@ -129,8 +129,6 @@ export interface HistorialMigrado {
   historial: Array<{
     descripcion: string; monto: number; cuota: number;
     cuotas_pagadas: number; cuotas_pendientes: number; saldo: number; estado: string; revisar?: string;
-    /** Marca de "Pasar a crédito": el crédito real que nació de esta fila. */
-    credito_id?: string; credito_numero?: number; pasado_el?: string;
   }>;
 }
 
@@ -202,8 +200,6 @@ export interface CreditoConFinanzas {
   estado: string;
   /** El crédito NACIÓ de refinanciar otro (no es plata nueva). */
   es_refinanciacion?: boolean;
-  /** Pasado desde el historial previo de un cliente migrado (no es plata nueva). */
-  migrado?: boolean;
   /** Crédito origen que esta refinanciación reemplazó. */
   refinancia_a?: string | null;
   /** Refinanciación que reemplazó a este crédito. */
@@ -388,8 +384,6 @@ export interface Credito {
   cobros_vivos?: boolean;
   /** True si nació de una refinanciación (no es plata nueva otorgada). */
   es_refinanciacion?: boolean;
-  /** Pasado desde el historial previo de un cliente migrado (no es plata nueva otorgada). */
-  migrado?: boolean;
   /** (En el nuevo) crédito original que esta refinanciación reemplaza. */
   refinancia_a?: string | null;
   /** (En el viejo) refinanciación que reemplazó a este crédito. */

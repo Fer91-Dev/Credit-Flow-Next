@@ -523,23 +523,6 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   // Historia clínica del cliente migrado: SOLO un admin puede editarla (referencia, no toca caja).
   if ("historial_migrado" in body && role === "admin") {
     const h = body.historial_migrado;
-    /*
-      Las filas ya PASADAS A CRÉDITO no se pueden quitar ni desmarcar desde acá: la marca es lo
-      que impide pasar dos veces la misma deuda. Si el historial nuevo pierde alguna, se rechaza.
-    */
-    type FilaMarcada = { credito_id?: string };
-    const marcadasAntes = (((existing.historial_migrado as { historial?: FilaMarcada[] } | null)?.historial) ?? [])
-      .map((f) => f.credito_id).filter(Boolean);
-    const marcadasDespues = new Set(
-      ((h && typeof h === "object" ? (h as { historial?: FilaMarcada[] }).historial : null) ?? []).map((f) => f?.credito_id).filter(Boolean),
-    );
-    if (marcadasAntes.some((id) => !marcadasDespues.has(id))) {
-      return errorResponse(
-        "No se puede quitar una fila del historial que ya se pasó a crédito. Para deshacerlo, anulá el crédito.",
-        "HISTORIAL_PASADO",
-        409,
-      );
-    }
     updateData.historial_migrado = h && typeof h === "object" ? h : null;
   }
 

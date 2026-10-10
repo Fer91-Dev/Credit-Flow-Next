@@ -5,7 +5,6 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
-import { desmarcarFilaHistorialTx } from "@/lib/pasar-a-credito";
 import { getCobranzaConfig } from "@/lib/config";
 import { senalesRecupero } from "@/lib/recupero-server";
 import { aplicarYRegistrarStock } from "@/lib/stock";
@@ -424,7 +423,6 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
         motivo: `Eliminación ${formatCreditoNumero(existing.numero, origenNumDel)}`,
       });
     }
-    await desmarcarFilaHistorialTx(tx, tenantId, existing);
     await tx.creditos.delete({ where: { id } });
   });
 

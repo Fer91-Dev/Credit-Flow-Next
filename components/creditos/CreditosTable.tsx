@@ -657,7 +657,7 @@ export function CreditosTable({ role }: { role: Role }) {
                     <div>
                       <p className="font-mono text-[11px] text-muted-foreground">{formatCreditoNumero(c.numero, c.refinancia_a_numero)}</p>
                       <p className="font-medium text-foreground text-sm">{nombreCompleto(c.cliente)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {Number(c.tasa.toFixed(2))}% TNA · {c.plazo_meses}m</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.tipo_credito === "productos" ? "Producto" : c.tipo_credito} · {c.tasa}% TNA · {c.plazo_meses}m</p>
                       {/* Misma fecha que la columna de escritorio: la del otorgamiento. */}
                       <p className="text-[10px] text-muted-foreground/70 mt-0.5">{formatFecha(c.fecha_inicio ?? c.created_at)} · {c.vendedor?.nombre ?? c.otorgado_por_nombre ?? "Sin agente"}</p>
                     </div>

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { TX_PLATA } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
-import { desmarcarFilaHistorialTx } from "@/lib/pasar-a-credito";
 import { aplicarYRegistrarStock } from "@/lib/stock";
 import { ESTADOS_CUOTA_CERRADA } from "@/lib/domain";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -243,9 +242,9 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
       });
     } else if (desembolsoMov) {
       /*
-        🔴 Reversa SOLO si hubo desembolso. Una refinanciación o un crédito pasado desde la
-        planilla vieja no sacaron plata de la caja: emitirles la reversa por `monto_original`
-        metía en la caja una plata que nunca salió (en un migrado de $1.255.000,00, eso).
+        🔴 Reversa SOLO si hubo desembolso. Una refinanciación no sacó plata de la caja (la
+        deuda se mudó de un crédito a otro): emitirle la reversa por `monto_original` metía en
+        la caja la deuda consolidada como si fuera plata que vuelve.
       */
       // Reversa del desembolso (ingreso): la plata no se considera prestada.
       // Lock de la cuenta también en el ingreso, para que un arqueo en curso no cierre
@@ -334,9 +333,6 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
         });
       }
     }
-
-    // Un crédito pasado desde el historial previo libera su fila para poder volver a pasarse.
-    await desmarcarFilaHistorialTx(tx, tenantId, existing);
 
     return c;
   }, TX_PLATA);

@@ -15,7 +15,6 @@ export * from "./amortization";
 export * from "./cft";
 export * from "./frequency";
 export * from "./planes";
-export * from "./migracion-credito";
 export * from "./mora";
 export * from "./payments";
 export * from "./refinanciacion";
