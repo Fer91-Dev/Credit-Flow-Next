@@ -214,21 +214,46 @@ function NavSection({
         >
           {group.label}
           <ChevronDown
-            className={`h-3.5 w-3.5 text-riel-acento transition-transform duration-200 ${plegado ? "-rotate-90" : ""}`}
+            className={`h-3.5 w-3.5 text-riel-acento transition-transform duration-300 ${plegado ? "-rotate-90" : ""}`}
             aria-hidden
           />
         </button>
       )}
       {/* Línea punteada que baja del rótulo y acompaña a los ítems del grupo (Fernando,
           02/10/2026, referencia SmartAdmin). Contraído no va: no hay lugar. */}
-      <div id={id} className={colapsado ? "space-y-1" : "ml-[1.1rem] space-y-1 border-l border-dashed border-primary-foreground/35 pl-1.5"}>
-        {(colapsado ? group.items : visibles).map((item) => (
-          <SideNavLink
-            key={item.to} {...item}
-            isActive={isActive(item.to)} onClick={onNavigate}
-            colapsado={colapsado} onRotulo={onRotulo}
-          />
-        ))}
+      <div id={id} className={colapsado ? "space-y-1" : "ml-[1.1rem] border-l border-dashed border-primary-foreground/35 pl-1.5"}>
+        {colapsado
+          ? group.items.map((item) => (
+              <SideNavLink
+                key={item.to} {...item}
+                isActive={isActive(item.to)} onClick={onNavigate}
+                colapsado onRotulo={onRotulo}
+              />
+            ))
+          : group.items.map((item) => {
+              // Plegar/desplegar con transición de alto (grid 0fr↔1fr): los ítems ocultos
+              // quedan en el DOM, sin foco (inert), en vez de desaparecer de golpe.
+              const oculto = !visibles.includes(item);
+              return (
+                <div
+                  key={item.to}
+                  inert={oculto}
+                  className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out motion-reduce:transition-none ${oculto ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`}
+                >
+                  {/* clip con margen: recorta al plegar sin comerse el outline de foco, el
+                      corrimiento del hover ni el brillo del activo. */}
+                  <div className="min-h-0 [overflow:clip] [overflow-clip-margin:8px]">
+                    <div className="pb-1">
+                      <SideNavLink
+                        {...item}
+                        isActive={isActive(item.to)} onClick={onNavigate}
+                        onRotulo={onRotulo}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
       </div>
     </div>
   );
