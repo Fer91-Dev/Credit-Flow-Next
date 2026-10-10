@@ -574,9 +574,32 @@ export function ConfigForm() {
     if (t && (validas as readonly string[]).includes(t)) setActiveTab(t as (typeof validas)[number]);
   }, []);
 
-  // Hidratar el form local cuando llega la config.
+  /**
+   * Hidratar el form cuando llega la config, SIN pisar lo que el usuario está editando.
+   *
+   * Antes era `setForm(config)` a secas: guardar un bloque recargaba la pantalla entera desde
+   * el servidor y borraba lo tipeado y no guardado en los OTROS bloques. Con los interruptores
+   * que guardan solos (10/10/2026) eso pasaba a cada rato. Ahora, por cada parte de la config:
+   * si el form todavía es igual a lo que vino del servidor la vez anterior, toma lo nuevo; si
+   * el usuario la cambió, se queda con su cambio (y su Guardar sigue encendido).
+   */
+  const configPrevio = useRef<ConfiguracionFinanciera | null>(null);
+  /** Última config confirmada por el servidor: base de los interruptores (ver `interruptor`). */
+  const servidor = useRef<ConfiguracionFinanciera | null>(null);
   useEffect(() => {
-    if (config) setForm(config);
+    if (!config) return;
+    const previo = configPrevio.current;
+    configPrevio.current = config;
+    servidor.current = config;
+    setForm(prev => {
+      if (!prev || !previo) return config;
+      const next = { ...config } as Record<string, unknown>;
+      const p = prev as unknown as Record<string, unknown>, a = previo as unknown as Record<string, unknown>;
+      for (const k of new Set([...Object.keys(p), ...Object.keys(a)])) {
+        if (JSON.stringify(p[k]) !== JSON.stringify(a[k])) next[k] = p[k];
+      }
+      return next as unknown as ConfiguracionFinanciera;
+    });
   }, [config]);
 
   useEffect(() => {
@@ -606,7 +629,13 @@ export function ConfigForm() {
   };
 
   // Guarda un subconjunto de la config; el PUT hace merge parcial sobre lo actual.
-  const save = async (key: string, patch: Partial<ConfiguracionFinanciera>) => {
+  /**
+   * Devuelve si se guardó. `tomarDelServidor` (por defecto sí): las partes enviadas se reemplazan
+   * en el form por lo que devolvió el servidor (puede normalizar valores). Los interruptores lo
+   * apagan: mandan la config del servidor con UN cambio, y el form conserva lo demás que el
+   * usuario esté editando en esa misma parte.
+   */
+  const save = async (key: string, patch: Partial<ConfiguracionFinanciera>, { tomarDelServidor = true } = {}): Promise<boolean> => {
     setSavingKey(key);
     setSaveError(null);
     setErrorKey(null);
@@ -619,9 +648,19 @@ export function ConfigForm() {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "No se pudo guardar");
+      servidor.current = json.data;
       await mutate(json.data, { revalidate: false });
+      if (tomarDelServidor) {
+        setForm(prev => {
+          if (!prev) return prev;
+          const next = { ...prev } as Record<string, unknown>;
+          for (const k of Object.keys(patch)) next[k] = (json.data as Record<string, unknown>)[k];
+          return next as unknown as ConfiguracionFinanciera;
+        });
+      }
       setSavedKey(key);
       setTimeout(() => setSavedKey(k => (k === key ? null : k)), 2500);
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error al guardar";
       setSaveError(msg);
@@ -633,10 +672,39 @@ export function ConfigForm() {
        * seguían encendidos. El toast es fijo: se ve estés donde estés.
        */
       toast.error(msg);
+      return false;
     } finally {
       setSavingKey(null);
     }
   };
+
+  /**
+   * INTERRUPTOR DE ENCABEZADO: se aplica al tocarlo, sin "Guardar" (Fernando, 10/10/2026:
+   * «activar el switch se entiende que el cambio se aplica»).
+   *
+   * - Manda la config del SERVIDOR con un solo cambio: un valor editado y sin guardar en el
+   *   mismo bloque no viaja escondido; su Guardar queda encendido.
+   * - Van en fila: tocar dos seguidos no deja que el segundo, armado sobre una config vieja,
+   *   deshaga el primero (los bloques del simulador comparten la misma columna).
+   * - Si el servidor lo rechaza, el interruptor vuelve a como estaba y el motivo sale en el bloque.
+   */
+  const cola = useRef<Promise<unknown>>(Promise.resolve());
+  const interruptor = <K extends keyof ConfiguracionFinanciera>(
+    key: string, etiqueta: string, parte: K,
+    cambiar: (actual: ConfiguracionFinanciera[K], v: boolean) => ConfiguracionFinanciera[K],
+  ) => (v: boolean) => {
+    setForm(prev => (prev ? { ...prev, [parte]: cambiar(prev[parte], v) } : prev));
+    cola.current = cola.current.then(async () => {
+      const base = servidor.current;
+      if (!base) return;
+      const ok = await save(key, { [parte]: cambiar(base[parte], v) } as Partial<ConfiguracionFinanciera>, { tomarDelServidor: false });
+      if (ok) toast.success(`${etiqueta}: ${v ? "activado" : "desactivado"}`);
+      else setForm(prev => (prev ? { ...prev, [parte]: cambiar(prev[parte], !v) } : prev));
+    });
+  };
+  /** Interruptor de un cargo del simulador (`activo` de ese cargo). */
+  const interruptorCargo = (key: string, etiqueta: string, cargo: keyof CargosConfig) =>
+    interruptor(key, etiqueta, "simulador", (s, v) => ({ ...s, cargos: { ...s.cargos, [cargo]: { ...s.cargos[cargo], activo: v } } }));
   // Los bloques del simulador comparten la misma columna JSON: cada uno guarda todo el bloque.
   const saveSim = (key: string) => { if (form) save(key, { simulador: form.simulador }); };
 
@@ -1165,10 +1233,10 @@ export function ConfigForm() {
           */}
           <Section title="Redondeo de cuota" desc="Deja la cuota del cliente en un número redondo. La última absorbe la diferencia." ayuda={AYUDA.redondeo}
             enabled={form.simulador.redondeoCuota.modo !== "ninguno"}
-            onToggle={v => setSim("redondeoCuota", {
-              ...form.simulador.redondeoCuota,
-              modo: v ? (modoRedondeoPrevio.current || "multiplo") : "ninguno",
-            })}
+            onToggle={interruptor("redondeo", "Redondeo de cuota", "simulador", (sim, v) => ({
+              ...sim,
+              redondeoCuota: { ...sim.redondeoCuota, modo: v ? (modoRedondeoPrevio.current || "multiplo") : "ninguno" },
+            }))}
             onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}
             error={errorKey === "redondeo" ? saveError ?? undefined : undefined}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1309,7 +1377,7 @@ export function ConfigForm() {
               {/* Comisión de otorgamiento */}
               <CargoBlock title="Comisión de otorgamiento" desc="Cargo único por dar el crédito." ayuda={AYUDA["cargo-comision"]}
                 activo={form.simulador.cargos.comisionOtorgamiento.activo}
-                onToggle={v => setCargo("comisionOtorgamiento", "activo", v)}
+                onToggle={interruptorCargo("cargo-comision", "Comisión de otorgamiento", "comisionOtorgamiento")}
                 onSave={() => saveSim("cargo-comision")} saving={savingKey === "cargo-comision"} saved={savedKey === "cargo-comision"} dirty={isDirty("cargo-comision")}
                 error={errorKey === "cargo-comision" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1346,7 +1414,7 @@ export function ConfigForm() {
               {/* IVA */}
               <CargoBlock title="IVA sobre interés" desc="Impuesto sobre el interés de cada cuota." ayuda={AYUDA["cargo-iva"]}
                 activo={form.simulador.cargos.iva.activo}
-                onToggle={v => setCargo("iva", "activo", v)}
+                onToggle={interruptorCargo("cargo-iva", "IVA sobre interés", "iva")}
                 onSave={() => saveSim("cargo-iva")} saving={savingKey === "cargo-iva"} saved={savedKey === "cargo-iva"} dirty={isDirty("cargo-iva")}
                 error={errorKey === "cargo-iva" ? saveError ?? undefined : undefined}>
                 <div className="max-w-[12rem]">
@@ -1362,7 +1430,7 @@ export function ConfigForm() {
               {/* Seguro */}
               <CargoBlock title="Seguro" desc="Cobertura aplicada por período." ayuda={AYUDA["cargo-seguro"]}
                 activo={form.simulador.cargos.seguro.activo}
-                onToggle={v => setCargo("seguro", "activo", v)}
+                onToggle={interruptorCargo("cargo-seguro", "Seguro", "seguro")}
                 onSave={() => saveSim("cargo-seguro")} saving={savingKey === "cargo-seguro"} saved={savedKey === "cargo-seguro"} dirty={isDirty("cargo-seguro")}
                 error={errorKey === "cargo-seguro" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1390,7 +1458,7 @@ export function ConfigForm() {
               {/* Gastos administrativos */}
               <CargoBlock title="Gastos administrativos" desc="Cargo por cuota." ayuda={AYUDA["cargo-gastos"]}
                 activo={form.simulador.cargos.gastosAdministrativos.activo}
-                onToggle={v => setCargo("gastosAdministrativos", "activo", v)}
+                onToggle={interruptorCargo("cargo-gastos", "Gastos administrativos", "gastosAdministrativos")}
                 onSave={() => saveSim("cargo-gastos")} saving={savingKey === "cargo-gastos"} saved={savedKey === "cargo-gastos"} dirty={isDirty("cargo-gastos")}
                 error={errorKey === "cargo-gastos" ? saveError ?? undefined : undefined}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1424,7 +1492,7 @@ export function ConfigForm() {
 
           {/* Mora */}
           <Section title="Interés por mora" desc="Recargo aplicado por días de atraso. Apagá el switch para no cobrar mora." ayuda={AYUDA.mora}
-            enabled={form.moraActiva} onToggle={v => set("moraActiva", v)}
+            enabled={form.moraActiva} onToggle={interruptor("mora", "Interés por mora", "moraActiva", (_, v) => v)}
             onSave={() => save("mora", { moraActiva: form.moraActiva, tasaMoraDiaria: form.tasaMoraDiaria, topeMoraPct: form.topeMoraPct })}
             saving={savingKey === "mora"} saved={savedKey === "mora"} dirty={isDirty("mora")}>
             <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-2xl transition-opacity ${form.moraActiva ? "" : "opacity-50"}`}>
@@ -1547,7 +1615,7 @@ export function ConfigForm() {
                 title="WhatsApp Cloud API (Meta)"
                 ayuda={AYUDA["canal-whatsapp"]}
                 enabled={!!form.whatsappConfig?.enabled}
-                onToggle={(v) => set("whatsappConfig", { ...(form.whatsappConfig ?? defaultWhatsapp()), enabled: v })}
+                onToggle={interruptor("canal-whatsapp", "WhatsApp", "whatsappConfig", (c, v) => ({ ...(c ?? defaultWhatsapp()), enabled: v }))}
                 onSave={() => save("canal-whatsapp", { whatsappConfig: form.whatsappConfig ?? null } as any)}
                 saving={savingKey === "canal-whatsapp"}
                 saved={savedKey === "canal-whatsapp"}
@@ -1601,7 +1669,7 @@ export function ConfigForm() {
                 title="SMS"
                 ayuda={AYUDA["canal-sms"]}
                 enabled={!!form.smsConfig?.enabled}
-                onToggle={(v) => set("smsConfig", { ...(form.smsConfig ?? defaultSms()), enabled: v })}
+                onToggle={interruptor("canal-sms", "SMS", "smsConfig", (c, v) => ({ ...(c ?? defaultSms()), enabled: v }))}
                 onSave={() => save("canal-sms", { smsConfig: form.smsConfig ?? null } as any)}
                 saving={savingKey === "canal-sms"}
                 saved={savedKey === "canal-sms"}
@@ -1643,7 +1711,7 @@ export function ConfigForm() {
                 title="Email"
                 ayuda={AYUDA["canal-email"]}
                 enabled={!!form.emailConfig?.enabled}
-                onToggle={(v) => set("emailConfig", { ...(form.emailConfig ?? defaultEmail()), enabled: v })}
+                onToggle={interruptor("canal-email", "Email", "emailConfig", (c, v) => ({ ...(c ?? defaultEmail()), enabled: v }))}
                 onSave={() => save("canal-email", { emailConfig: form.emailConfig ?? null } as any)}
                 saving={savingKey === "canal-email"}
                 saved={savedKey === "canal-email"}
@@ -1740,7 +1808,7 @@ export function ConfigForm() {
             title="Gamificación (medallas y logros)"
             desc="Cómo se calcula la medalla del vendedor: período, pesos de cada objetivo y umbrales de Oro/Plata/Bronce."
             ayuda={AYUDA.gamificacion}
-            enabled={g.habilitado} onToggle={(v) => setGam({ habilitado: v })}
+            enabled={g.habilitado} onToggle={interruptor("gamificacion", "Gamificación", "gamificacionConfig", (c, v) => ({ ...defaultGamificacion(), ...c, habilitado: v }))}
             onSave={() => save("gamificacion", { gamificacionConfig: g } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "gamificacion"} saved={savedKey === "gamificacion"} dirty={isDirty("gamificacion")}
           >
@@ -1799,7 +1867,7 @@ export function ConfigForm() {
             title="Rentabilidad (costo de fondeo)"
             desc="Costo del capital que prestás, para calcular la ganancia NETA en Reportes. Ingreso financiero (interés + cargos + mora cobrados) − este costo = rentabilidad neta. Apagá el switch para ver solo el margen bruto."
             ayuda={AYUDA.rentabilidad}
-            enabled={rent.habilitado} onToggle={(v) => setRent({ habilitado: v })}
+            enabled={rent.habilitado} onToggle={interruptor("rentabilidad", "Rentabilidad", "rentabilidadConfig", (c, v) => ({ ...defaultRentabilidad(), ...c, habilitado: v }))}
             onSave={() => save("rentabilidad", { rentabilidadConfig: rent } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "rentabilidad"} saved={savedKey === "rentabilidad"} dirty={isDirty("rentabilidad")}
           >
