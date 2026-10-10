@@ -116,30 +116,38 @@ if (VERCEL) {
 
 // Fer-Server: si el deploy no está configurado, el workflow termina en success sin publicar
 // (avisa con un notice). Se distingue mirando si la corrida llegó a conectarse.
+// Apagado a mano (`gh workflow disable desplegar.yml`) mientras Fer-Server no sea producción:
+// no hay corrida que esperar. Se prende con `gh workflow enable desplegar.yml` el día del corte.
+const estadoWorkflow = sh(`gh api "repos/:owner/:repo/actions/workflows/desplegar.yml" --jq .state`);
 let corrida = null;
-for (let i = 0; i < 80; i++) {
+for (let i = 0; i < 80 && estadoWorkflow === "active"; i++) {
   await dormir(15_000);
   const runs = JSON.parse(sh(`gh run list --workflow=desplegar.yml --commit ${sha} --json databaseId,status,conclusion`));
   corrida = runs[0] ?? null;
   if (corrida?.status === "completed") break;
 }
-if (!corrida) frenar("Fer-Server: no apareció la corrida de desplegar.yml para este commit.");
-if (corrida.status !== "completed") frenar("Fer-Server: el deploy no terminó en 20 minutos.");
-if (corrida.conclusion !== "success") frenar(`Fer-Server: el deploy terminó en "${corrida.conclusion}" (gh run view ${corrida.databaseId} --log).`);
-const log = sh(`gh run view ${corrida.databaseId} --log`);
-if (/##\[notice\]Deploy a Fer-Server sin configurar/.test(log)) { // el log también repite el script: mirar solo el aviso emitido
-  if (!VERCEL) frenar("Fer-Server: el deploy automático no está configurado y Vercel ya no existe.");
-  console.log("  ⚠ Fer-Server: deploy automático todavía sin configurar (no se publicó ahí).");
+if (estadoWorkflow !== "active") {
+  if (!VERCEL) frenar("Fer-Server: el deploy automático está apagado y Vercel ya no existe.");
+  console.log("  ⚠ Fer-Server: deploy automático apagado a propósito (gh workflow disable): no se publicó ahí.");
 } else {
-  try {
-    const http = (await fetch(`${FER}/auth`)).status;
-    if (http !== 200) frenar(`Fer-Server: el deploy salió bien pero /auth responde ${http}.`);
-  } catch (e) {
-    // El router de Fernando no resuelve sslip.io; con el dominio propio esto no pasa.
-    if (FER.includes("sslip.io")) console.log(`  ⚠ Fer-Server: no pude abrir ${FER} desde esta PC (DNS); el servidor ya chequeó la salud.`);
-    else frenar(`Fer-Server: no responde (${e.cause?.code ?? e.message}).`);
+  if (!corrida) frenar("Fer-Server: no apareció la corrida de desplegar.yml para este commit.");
+  if (corrida.status !== "completed") frenar("Fer-Server: el deploy no terminó en 20 minutos.");
+  if (corrida.conclusion !== "success") frenar(`Fer-Server: el deploy terminó en "${corrida.conclusion}" (gh run view ${corrida.databaseId} --log).`);
+  const log = sh(`gh run view ${corrida.databaseId} --log`);
+  if (/##\[notice\]Deploy a Fer-Server sin configurar/.test(log)) { // el log también repite el script: mirar solo el aviso emitido
+    if (!VERCEL) frenar("Fer-Server: el deploy automático no está configurado y Vercel ya no existe.");
+    console.log("  ⚠ Fer-Server: deploy automático todavía sin configurar (no se publicó ahí).");
+  } else {
+    try {
+      const http = (await fetch(`${FER}/auth`)).status;
+      if (http !== 200) frenar(`Fer-Server: el deploy salió bien pero /auth responde ${http}.`);
+    } catch (e) {
+      // El router de Fernando no resuelve sslip.io; con el dominio propio esto no pasa.
+      if (FER.includes("sslip.io")) console.log(`  ⚠ Fer-Server: no pude abrir ${FER} desde esta PC (DNS); el servidor ya chequeó la salud.`);
+      else frenar(`Fer-Server: no responde (${e.cause?.code ?? e.message}).`);
+    }
+    listos.push("Fer-Server");
   }
-  listos.push("Fer-Server");
 }
 
 rmSync(join(RAIZ, ".next"), { recursive: true, force: true }); // el dev arranca limpio
