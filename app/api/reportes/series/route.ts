@@ -10,6 +10,7 @@ import {
   type CreditoLedger,
   ingresoFinanciero,
   comisionesDeCaja,
+  esOperacionColocada,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
 import { inicioDiaAR, finDiaAR, mesAR, mesDeFecha, hoyComercial } from "@/lib/utils";
@@ -79,7 +80,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
-        estado: true, monto_original: true, es_refinanciacion: true,
+        estado: true, monto_original: true, es_refinanciacion: true, migrado: true,
         created_at: true, fecha_inicio: true, cronograma: true, recupero_at: true,
         cuotas: {
           select: {
@@ -150,7 +151,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     // Mismos descartes que `resumenOperaciones`: refinanciaciones (deuda mudada, no plata
     // nueva) y ANULADOS (la operación se deshizo y la caja se revirtió). Si la serie los
     // contara y el resumen no, las dos pestañas darían otorgamientos distintos.
-    if (c.es_refinanciacion || c.estado === "anulado") continue;
+    if (!esOperacionColocada(c)) continue;
     // `created_at` es TIMESTAMP: bordes y mes segun el dia ARGENTINO. Con UTC, un credito
     // otorgado despues de las 21:00 del ultimo dia del mes caia en el mes siguiente.
     /*

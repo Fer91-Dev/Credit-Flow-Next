@@ -69,6 +69,7 @@ for (const { tenant_id: t } of tenants) {
     select: {
       id: true, numero: true, estado: true, monto_original: true, saldo_pendiente: true,
       proximo_pago: true, es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
+      migrado: true, plazo_meses: true, cronograma: true,
       cuotas: { orderBy: { nro: "asc" } },
     },
     orderBy: { numero: "asc" },
@@ -200,6 +201,19 @@ for (const { tenant_id: t } of tenants) {
     for (const c of creditos) {
       if (c.cuotas.length === 0) continue;
       const capPlan = r2(c.cuotas.reduce((s, q) => s + q.capital, 0));
+      /*
+        Pasado desde la planilla vieja: solo se guardan las cuotas que FALTAN, así que el plan
+        amortiza menos que el monto (lo demás se pagó antes del sistema). Lo que sí tiene que
+        cumplir: menos capital que lo prestado, y todas las cuotas iguales a la de la planilla.
+      */
+      if (c.migrado) {
+        const cuotaPlanilla = c.cronograma?.migracion?.cuota;
+        const distintas = c.cuotas.filter((q) => r2(q.cuota_total) !== r2(cuotaPlanilla ?? -1));
+        if (capPlan > c.monto_original + EPS || distintas.length) {
+          malos.push(`${crd(c.numero)} (migrado): amortiza ${m$(capPlan)} de ${m$(c.monto_original)}; ${distintas.length} cuotas distintas a ${m$(cuotaPlanilla ?? 0)}`);
+        }
+        continue;
+      }
       // Tolerancia por cuota: el redondeo del sistema francés se reparte entre ellas.
       if (Math.abs(capPlan - c.monto_original) > Math.max(EPS, c.cuotas.length * 0.01)) {
         malos.push(`${crd(c.numero)}: prestó ${m$(c.monto_original)} y el plan amortiza ${m$(capPlan)}`);
@@ -301,7 +315,9 @@ for (const { tenant_id: t } of tenants) {
     const nroMal = [];
     for (const c of creditos) {
       const nros = c.cuotas.map((q) => q.nro).sort((a, b) => a - b);
-      const esperado = nros.map((_, i) => i + 1);
+      // Un migrado arranca después de las cuotas pagadas en el sistema anterior y llega a la última.
+      const desde = c.migrado ? (c.cronograma?.migracion?.cuotasPagadas ?? 0) + 1 : 1;
+      const esperado = c.migrado ? Array.from({ length: c.plazo_meses - desde + 1 }, (_, i) => desde + i) : nros.map((_, i) => i + 1);
       if (nros.join(",") !== esperado.join(",")) nroMal.push(`${crd(c.numero)}: ${nros.join(",")}`);
     }
     chequeo(nroMal.length === 0, "las cuotas de cada crédito van de 1 a N sin repetir", detalle(nroMal));

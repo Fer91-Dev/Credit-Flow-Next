@@ -41,7 +41,7 @@ for (const t of tenants) {
 
   const creditos = await prisma.creditos.findMany({
     where: { tenant_id: T },
-    select: { id: true, numero: true, estado: true, monto_original: true, producto_id: true, es_refinanciacion: true },
+    select: { id: true, numero: true, estado: true, monto_original: true, producto_id: true, es_refinanciacion: true, migrado: true },
   });
   const pagos = await prisma.pagos.findMany({ where: { tenant_id: T }, select: { id: true, credito_id: true, monto: true, anulado: true } });
   const porCredito = new Map(creditos.map((c) => [c.id, c]));
@@ -78,7 +78,8 @@ for (const t of tenants) {
    *  - es una REFINANCIACIÓN (la deuda se muda, no hay plata nueva).
    * Cualquier otro sin desembolso es plata que salió sin quedar asentada.
    */
-  const sinDesem = creditos.filter((c) => !c.producto_id && !c.es_refinanciacion && !cuenta[c.id]);
+  // Ni las refinanciaciones ni los pasados desde la planilla vieja desembolsan: la plata salió antes.
+  const sinDesem = creditos.filter((c) => !c.producto_id && !c.es_refinanciacion && !c.migrado && !cuenta[c.id]);
   chk(sinDesem.length === 0, "todo credito de efectivo tiene su desembolso",
     sinDesem.length ? `${sinDesem.length} sin asentar: ${sinDesem.slice(0, 8).map((c) => "CRD-" + String(c.numero).padStart(6, "0")).join(", ")}` : "");
 
@@ -141,7 +142,7 @@ for (const t of tenants) {
 
   // ── I6. Créditos anulados ───────────────────────────────────────────────
   console.log("\nI5. CREDITOS ANULADOS");
-  const credAnul = creditos.filter((c) => c.estado === "anulado" && !c.producto_id && !c.es_refinanciacion);
+  const credAnul = creditos.filter((c) => c.estado === "anulado" && !c.producto_id && !c.es_refinanciacion && !c.migrado);
   const rev = movs.filter((x) => x.tipo === "reversa_desembolso");
   chk(rev.length === credAnul.length, "una reversa por cada credito anulado de efectivo", `${rev.length} vs ${credAnul.length}`);
   const sr = rev.reduce((s, x) => s + x.monto, 0), so = credAnul.reduce((s, c) => s + c.monto_original, 0);

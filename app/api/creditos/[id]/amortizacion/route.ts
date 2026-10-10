@@ -15,6 +15,8 @@ import {
   resolverCargos,
   cargoColumnasActivas,
   convencionDelCredito,
+  migracionDelCredito,
+  planDeMigrado,
   type CronogramaConfig,
   type CargosConfig,
   type RedondeoModo,
@@ -84,7 +86,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const cargosDelCredito = resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos);
 
-  const plan = construirPlanAmortizacion(
+  /*
+    Un crédito PASADO desde el historial previo se arma con su propia función: la cuota es la de
+    la planilla y las fechas cuentan desde la próxima cuota que se cargó, no desde el
+    otorgamiento. Es la MISMA que generó las cuotas guardadas (`lib/pasar-a-credito.ts`).
+  */
+  const migracion = migracionDelCredito(credito.cronograma);
+  const plan = migracion
+    ? planDeMigrado(credito.monto_original, credito.tasa, credito.plazo_meses, frecuencia, migracion, convencion, catalogo)
+    : construirPlanAmortizacion(
     credito.monto_original,
     credito.tasa,
     credito.plazo_meses,

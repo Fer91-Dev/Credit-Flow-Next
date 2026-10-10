@@ -26,6 +26,7 @@ import { PlanDeCuotas } from "@/components/creditos/PlanDeCuotas";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
+import { PasarACreditoDialog } from "@/components/clientes/PasarACreditoDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
@@ -116,6 +117,8 @@ export function ClienteDetail({
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [anularPago, setAnularPago] = useState<PagoAAnular | null>(null);
   const [editarHist, setEditarHist] = useState(false);
+  // Fila del historial previo que se está pasando a crédito (índice en `historial_migrado.historial`).
+  const [pasarFila, setPasarFila] = useState<number | null>(null);
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
@@ -653,6 +656,7 @@ export function ClienteDetail({
                       <th className="py-1.5 px-2 text-center font-semibold" title="Cuotas pagadas / total">Cuotas</th>
                       <th className="py-1.5 px-2 font-semibold">Estado</th>
                       <th className="py-1.5 pl-2 text-right font-semibold">Saldo</th>
+                      <th className="py-1.5 pl-2 text-right font-semibold"><span className="sr-only">Crédito</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -668,7 +672,20 @@ export function ClienteDetail({
                             <span><span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}</span>
                           </td>
                           <td className="py-1.5 px-2"><StatusBadge label={b.l} variant={b.v} /></td>
-                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>{formatMonto(c.saldo)}</td>
+                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 && !c.credito_id ? "text-warning font-semibold" : "text-success"}`}>{formatMonto(c.saldo)}</td>
+                          <td className="py-1.5 pl-2 text-right whitespace-nowrap">
+                            {c.credito_id ? (
+                              <CreditoLink id={c.credito_id} numero={c.credito_numero ?? null} />
+                            ) : puedeAnular && c.cuotas_pendientes > 0 && c.estado !== "terminado" ? (
+                              <button
+                                type="button"
+                                onClick={() => setPasarFila(i)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-primary/[0.06] px-2 py-1 text-[11px] font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/10 hover:ring-primary/40"
+                              >
+                                Pasar a crédito
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
                       );
                     })}
@@ -966,6 +983,14 @@ export function ClienteDetail({
         onClose={() => { setEditarHist(false); mutate(); }}
       />
 
+      {/* Pasar a crédito una fila con saldo del historial previo (solo admin) */}
+      <PasarACreditoDialog
+        clienteId={cliente.id}
+        fila={pasarFila != null ? cliente.historial_migrado?.historial[pasarFila] ?? null : null}
+        indice={pasarFila ?? -1}
+        onClose={() => { setPasarFila(null); mutate(); }}
+      />
+
       {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro
           de una sección condicional: si vive en una rama que no se renderiza, no existe. */}
       <ContactarDialog clienteId={contactar ? cliente.id : null} onClose={() => setContactar(false)} />
@@ -1163,7 +1188,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   </span>
                 )}
                 <span className="text-xs capitalize text-muted-foreground">
-                  {c.tipo_credito} · {c.tasa}% · {c.plazo_meses} cuotas
+                  {c.tipo_credito} · {Number(c.tasa.toFixed(2))}% · {c.plazo_meses} cuotas
                 </span>
               </div>
 

@@ -123,7 +123,7 @@ export function CobranzaDetail({ credito, acciones }: {
           <p className="text-lg font-semibold text-foreground">{nombreCompleto(credito.cliente)}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             <CreditoLink id={credito.id} numero={credito.numero} numeroOrigen={credito.refinancia_a_numero} conIcono={false} />
-            {" · "}{credito.tipo_credito} · {credito.tasa}% · {credito.plazo_meses} cuotas
+            {" · "}{credito.tipo_credito} · {Number(credito.tasa.toFixed(2))}% · {credito.plazo_meses} cuotas
             {credito.cliente.telefono && <> · {credito.cliente.telefono}</>}
           </p>
         </div>

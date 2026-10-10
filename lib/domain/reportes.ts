@@ -307,6 +307,7 @@ export interface OperacionCredito {
   plazo_meses: number;
   tasa: number;
   es_refinanciacion: boolean;
+  migrado?: boolean;
   /** Hace falta para descartar los anulados (ver `resumenOperaciones`). */
   estado: string;
 }
@@ -348,8 +349,10 @@ export interface ResumenOperaciones {
  * salteaba solo las refinanciaciones — y las dos se separaron: el titular decia
  * 28.930.000 pesos y la tabla de abajo, en la misma pantalla, sumaba 33.070.000.
  */
-export function esOperacionColocada(c: { es_refinanciacion: boolean; estado: string }): boolean {
-  return !c.es_refinanciacion && c.estado !== "anulado";
+export function esOperacionColocada(c: { es_refinanciacion: boolean; estado: string; migrado?: boolean }): boolean {
+  // `migrado`: un crédito vivo de la planilla vieja pasado al sistema. Tampoco es plata nueva:
+  // salió de la caja en el sistema anterior.
+  return !c.es_refinanciacion && !c.migrado && c.estado !== "anulado";
 }
 
 export function resumenOperaciones(creditos: OperacionCredito[]): ResumenOperaciones {

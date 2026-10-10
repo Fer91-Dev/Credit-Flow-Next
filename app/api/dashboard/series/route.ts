@@ -4,7 +4,7 @@ import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import type { NextRequest } from "next/server";
 import { hoyComercial } from "@/lib/utils";
-import { cobrabilidadDeCuota } from "@/lib/domain";
+import { cobrabilidadDeCuota, esOperacionColocada } from "@/lib/domain";
 
 /**
  * GET /api/dashboard/series
@@ -72,7 +72,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
     prisma.creditos.findMany({
       where: { ...credFiltro, fecha_inicio: { gte: windowStart } } as never,
-      select: { fecha_inicio: true, monto_original: true, estado: true, es_refinanciacion: true },
+      select: { fecha_inicio: true, monto_original: true, estado: true, es_refinanciacion: true, migrado: true },
     }),
     prisma.cuotas.findMany({
       where: {
@@ -98,7 +98,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cobradoDeEso[i] += c.cobrado;
   }
   for (const c of creditos) {
-    if (c.estado === "anulado" || c.es_refinanciacion) continue; // no es plata nueva en la calle
+    if (!esOperacionColocada(c)) continue; // no es plata nueva en la calle
     const i = idxDe.get(keyDe(c.fecha_inicio));
     if (i !== undefined) prestado[i] += c.monto_original;
   }

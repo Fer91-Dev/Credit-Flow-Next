@@ -66,7 +66,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         id: true, estado: true, monto_original: true, saldo_pendiente: true,
         dias_mora: true, proximo_pago: true, tasa: true, plazo_meses: true,
         cronograma: true, // trae la mora congelada del crédito
-        fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
+        fecha_inicio: true, es_refinanciacion: true, migrado: true, tipo_credito: true,
       },
     }),
     getConfiguracion(tenantId),

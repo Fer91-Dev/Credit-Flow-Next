@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo, cobrabilidadDeCuota } from "@/lib/domain";
+import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo, cobrabilidadDeCuota, esOperacionColocada } from "@/lib/domain";
 import { getCobranzaConfig } from "@/lib/config";
 import { hoyComercial } from "@/lib/utils";
 import { nombrePropioFinanciera } from "@/lib/branding";
@@ -83,6 +83,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         proximo_pago: true,
         vendedor_id: true,
         es_refinanciacion: true,
+        migrado: true,
         // Para contar CUÁNTOS clientes están prestando ahora mismo. Sale de esta query, que ya
         // se hace: un cliente con tres créditos es UNO, así que un count no serviría.
         cliente_id: true,
@@ -311,9 +312,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           nombre: key === SIN_ASIGNAR ? nombreCasa : nombrePorId.get(key) ?? "—",
           // Otorgado: excluye anulados y refinanciaciones (no es plata nueva colocada).
           // Cartera y mora SÍ incluyen la refinanciación: es deuda viva real a cobrar.
-          creditos_otorgados: lista.filter((c) => c.estado !== "anulado" && !c.es_refinanciacion).length,
+          creditos_otorgados: lista.filter(esOperacionColocada).length,
           monto_otorgado: lista
-            .filter((c) => c.estado !== "anulado" && !c.es_refinanciacion)
+            .filter(esOperacionColocada)
             .reduce((s, c) => s + c.monto_original, 0),
           cartera,
           en_mora_monto: enMora,
