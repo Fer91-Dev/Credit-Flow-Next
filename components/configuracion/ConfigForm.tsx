@@ -386,11 +386,11 @@ const AYUDA: Record<string, AyudaBloque> = {
     titulo: "Redondeo de cuota",
     texto: "Ajusta la cuota FINAL (la que paga el cliente, ya con los cargos adentro) para que quede redonda.",
     puntos: [
-      "Apagado: la cuota exacta que calcula el motor, con centavos.",
-      "Al entero: sin centavos.",
-      "A múltiplo: redondea al múltiplo que definas (ej: de a $100).",
-      "Redondea al más cercano: puede subir o bajar la cuota.",
-      "La ÚLTIMA cuota absorbe la diferencia, así que no queda redonda.",
+      "Con el interruptor apagado: la cuota exacta que calcula el motor, con centavos.",
+      "Prendido, el selector tiene dos opciones. Al entero: $26.751,75 → $26.752.",
+      "A múltiplo: de a lo que definas. Con $100: $26.751,75 → $26.800.",
+      "En las dos se redondea al más cercano, así que la cuota puede subir o bajar.",
+      "La última cuota no se redondea: absorbe la diferencia para que el total cierre al centavo.",
     ],
   },
   cronograma: {
