@@ -26,8 +26,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const VERCEL = "https://credit-flow-next.vercel.app"; // null el día que se apague Vercel
-const FER = "https://creditflow.146-181-28-228.sslip.io"; // → https://DOMINIO en el corte
+const VERCEL = "https://credit-flow-next.vercel.app"; // redirige a FER desde el corte; null el día que se apague
+const FER = "https://creditzeroapp.com.ar"; // corte a Fer-Server, 10/10/2026
 const sh = (cmd, opts = {}) => execSync(cmd, { cwd: RAIZ, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }).trim();
 const git = (...a) => execFileSync("git", a, { cwd: RAIZ, encoding: "utf8" }).trim();
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));

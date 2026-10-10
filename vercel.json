@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "credit-flow-next.vercel.app" }],
+      "destination": "https://creditzeroapp.com.ar/$1",
+      "permanent": false
+    }
+  ]
 }
