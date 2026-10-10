@@ -1,7 +1,8 @@
 # Deploy a Fer-Server (Oracle, Santiago) — ver MIGRACION-FER-SERVER.md §7.
-#   push a main → proyecto creditflow (base de PRODUCCIÓN).
-# La rama preview NO se publica acá (decisión de Fernando 10/10/2026): el banco de pruebas
-# sigue siendo el preview de Vercel, y a Fer-Server llega solo lo aprobado.
+#   push a main    → proyecto creditflow         (base de PRODUCCIÓN) → https://creditzeroapp.com.ar
+#   push a preview → proyecto creditflow-preview (base de DESARROLLO) → https://preview.creditzeroapp.com.ar
+# Desde el 10/10/2026 (noche, decisión de Fernando) el banco de pruebas es el preview de
+# Fer-Server; Vercel sigue publicando su preview mientras exista.
 # La clave FER_SERVER_SSH_KEY entra como gh-deploy, cuyo authorized_keys fuerza el comando
 # /usr/local/sbin/desplegar-gh: solo acepta "<proyecto> <commit>" de esos dos proyectos.
 # Las compilaciones las encola el servidor (flock en `desplegar`): nunca dos a la vez.
@@ -9,7 +10,7 @@ name: Deploy Fer-Server
 
 on:
   push:
-    branches: [main]
+    branches: [main, preview]
   workflow_dispatch:
 
 # Por rama: un push nuevo reemplaza al pendiente de SU rama, nunca al de la otra.
