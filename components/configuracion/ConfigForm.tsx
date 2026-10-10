@@ -8,7 +8,7 @@ import { FeatureGate } from "@/components/providers/FeaturesProvider";
 import { FinancieraForm } from "@/components/configuracion/FinancieraForm";
 import { BackupsView } from "@/components/configuracion/BackupsView";
 import type { SimuladorConfig, CargosConfig, FrecuenciaOpcion, DocumentosConfig, ConvencionTasa, BureauConfigurable, BureauProveedorConfig, ModoInteresAcuerdo, RecuperoConfig } from "@/lib/domain";
-import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas, planDeAcuerdo, round2 } from "@/lib/domain";
+import { MODOS_INTERES_ACUERDO, MODO_INTERES_LABEL, BUREAUS_CONFIGURABLES, BUREAU_LABEL, BUREAU_REQUIERE_CREDENCIALES, resolverProveedoresBureau, DOCUMENTOS_DEFAULT, PLANTILLAS_CONTACTO_DEFAULT, revisarDocumentos, punitorioMensualDesdeDiaria, ORDEN_IMPUTACION, tasaDesdeCoeficiente, textoCuotas, planDeAcuerdo, round2, aplicarRedondeo } from "@/lib/domain";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Emoji } from "@/components/ui/Emoji";
 import { Field, Input, NumeroInput, Select, Textarea, SecretInput, TelInput } from "@/components/ui/field";
@@ -1172,7 +1172,9 @@ export function ConfigForm() {
             onSave={() => saveSim("redondeo")} saving={savingKey === "redondeo"} saved={savedKey === "redondeo"} dirty={isDirty("redondeo")}
             error={errorKey === "redondeo" ? saveError ?? undefined : undefined}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Redondea">
+              <Field label="Redondea" hint={<VistaRedondeo
+                modo={form.simulador.redondeoCuota.modo === "ninguno" ? (modoRedondeoPrevio.current || "multiplo") : form.simulador.redondeoCuota.modo}
+                multiplo={form.simulador.redondeoCuota.multiplo} />}>
                 <Select value={form.simulador.redondeoCuota.modo === "ninguno" ? (modoRedondeoPrevio.current || "multiplo") : form.simulador.redondeoCuota.modo}
                   onChange={e => setSim("redondeoCuota", { ...form.simulador.redondeoCuota, modo: e.target.value as SimuladorConfig["redondeoCuota"]["modo"] })}>
                   <option value="entero">Al entero (sin centavos)</option>
@@ -3202,6 +3204,25 @@ function EscaleraResumen({ r }: { r: RecuperoConfig }) {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Vista previa del redondeo: dos cuotas de ejemplo, una que sube y otra que baja, pasadas por
+ * `aplicarRedondeo` del motor (la misma función que arma el plan, no una copia). Muestra con
+ * números lo que la ayuda decía en palabras: redondea al más cercano.
+ */
+const EJEMPLOS_REDONDEO = [26751.75, 26731.25];
+function VistaRedondeo({ modo, multiplo }: { modo: "entero" | "multiplo"; multiplo: number }) {
+  if (modo === "multiplo" && !(multiplo >= 1)) return null;
+  return (
+    <span className="flex flex-wrap gap-x-4 gap-y-0.5 font-mono tabular-nums">
+      {EJEMPLOS_REDONDEO.map(v => (
+        <span key={v}>
+          {formatMonto(v)} → <span className="font-semibold text-foreground">{formatMonto(aplicarRedondeo(v, { modo, multiplo }), 0)}</span>
+        </span>
+      ))}
+    </span>
   );
 }
 

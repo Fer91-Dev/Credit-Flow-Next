@@ -57,8 +57,12 @@ export interface OpcionesPlan {
   cronograma?: CronogramaConfig;
 }
 
-/** Aplica el modo de redondeo configurado al valor de la cuota total. */
-function aplicarRedondeo(valor: number, redondeo?: OpcionesPlan["redondeo"]): number {
+/**
+ * Aplica el modo de redondeo configurado al valor de la cuota total.
+ * Exportada para la vista previa de Configuración → Redondeo de cuota: la pantalla muestra
+ * el resultado con ESTA función, no con una copia de la regla.
+ */
+export function aplicarRedondeo(valor: number, redondeo?: OpcionesPlan["redondeo"]): number {
   if (!redondeo || redondeo.modo === "ninguno") return round2(valor);
   if (redondeo.modo === "entero") return Math.round(valor);
   const m = redondeo.multiplo && redondeo.multiplo > 0 ? redondeo.multiplo : 1;
