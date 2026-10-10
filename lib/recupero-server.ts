@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { hoyComercial } from "@/lib/utils";
 import {
+  cobradoAntesDelSistema,
   etapaRecupero, puedeAcordar, puedeRefinanciar, puedeUsarTasa, puedeCobrar, diasMoraActual,
   type SenalesRecupero, type EtapaRecupero, type RecuperoConfig, type VeredictoEscalera,
 } from "@/lib/domain";
@@ -447,6 +448,7 @@ export async function plataDeLaCadenaLote(
         id: true,
         monto_original: true,
         refinancia_a: true,
+        cronograma: true,
         // Lo cobrado sale de las CUOTAS y no de `pagos`: un pago anulado se revierte en las
         // cuotas, así que sumarlo desde ahí contaría plata que se devolvió.
         cuotas: { select: { pagado_capital: true, pagado_interes: true, pagado_mora: true, pagado_cargos: true } },
@@ -469,7 +471,7 @@ export async function plataDeLaCadenaLote(
       e.recuperado += fila.cuotas.reduce(
         (a, q) => a + q.pagado_capital + q.pagado_interes + q.pagado_mora + q.pagado_cargos,
         0,
-      );
+      ) + cobradoAntesDelSistema(fila.cronograma); // lo cobrado antes del sistema (crédito anterior)
       // Solo el eslabón RAÍZ aporta capital prestado: los demás son deuda consolidada. Como se
       // sobrescribe en cada salto, al llegar al final queda el de la raíz.
       e.prestado = fila.monto_original;

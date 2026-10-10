@@ -2,7 +2,7 @@ import { requireAuth, requireRole, scopeCreditosVendedor, ApiError } from "@/lib
 import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, topeMoraPorFallecimiento, topeMoraMasTemprano, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, contactoBloqueado} from "@/lib/domain";
+import { puedeDarsePorIncobrableManual, round2, normalizarFrecuencia, resolverFrecuencia, sumarPeriodos, construirPlanAmortizacion, planACuotas, estadoCoherente, etiquetaCaja, esCuentaValida, validarParametrosOtorgamiento, diasMoraActual, buscarPlan, nombrePlan, tasaDesdeCoeficiente, cargosConPlan, CUENTA_LABEL, type Cuenta, ESTADOS_VIVOS, ESTADOS_COBRABLES, esCreditoVivo, esCreditoCobrable, topeMoraPorIncobrable, topeMoraPorFallecimiento, topeMoraMasTemprano, esRecuperoPostCastigo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, deudaEnRevision, esTipoCreditoValido, TIPOS_CREDITO, calcularDeudaConsolidada, puedeRefinanciar, puedeAcordar, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, contactoBloqueado, cobradoAntesDelSistema} from "@/lib/domain";
 import { siguienteNumeroComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { lockNumeroCreditoTx, TX_PLATA } from "@/lib/locks";
@@ -674,7 +674,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
      * `monto_original` sí es plata entregada.
      */
     const cadena = cadenas.get(c.id) ?? null;
-    const capital_en_riesgo = cadena ? cadena.enRiesgo : round2(Math.max(0, c.monto_original - cobrado));
+    // Un crédito anterior al sistema trae lo cobrado ANTES (cuota × pagadas), que también volvió.
+    const capital_en_riesgo = cadena ? cadena.enRiesgo : round2(Math.max(0, c.monto_original - cobrado - cobradoAntesDelSistema(c.cronograma)));
 
     // Estado reconciliado: defensa de lectura ante datos legacy.
     const estado = estadoCoherente(c.estado, c.saldo_pendiente);

@@ -28,7 +28,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatFechaHora, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, esCreditoIncobrable, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
+import { anteriorDelCredito, esCreditoVivo, esCreditoIncobrable, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
 
 /**
  * Un renglón de la cuenta del acuerdo: etiqueta a la izquierda, importe con signo a la
@@ -747,6 +747,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     viene de {formatCreditoNumero(credito.refinancia_a_numero ?? null)}
                   </Link>
                 )}
+                {anteriorDelCredito(credito.cronograma) && (
+                  <span
+                    className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-warning/25"
+                    title="Crédito dado antes de arrancar con el sistema: no movió caja y sus cuotas ya pagadas no figuran"
+                  >
+                    anterior al sistema
+                  </span>
+                )}
                 {credito.tipo_credito === "productos" && credito.producto && (
                   <span className="truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">
                     {credito.producto.nombre}{credito.producto_cantidad && credito.producto_cantidad > 1 ? ` x${credito.producto_cantidad}` : ""}
@@ -772,7 +780,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 de pagar en mes y medio. Se nombra con la frecuencia real.
               */}
               <p className="mt-2.5 flex flex-wrap items-baseline gap-x-2 border-t border-border/60 pt-2.5 text-xs">
-                <span className="font-mono font-semibold tabular-nums text-foreground">{credito.tasa}%</span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">{Number(credito.tasa.toFixed(2))}%</span>
                 <span className="text-muted-foreground">TNA</span>
                 <span className="text-muted-foreground/50">·</span>
                 <span className="font-semibold text-foreground">{credito.plazo_meses}</span>
@@ -898,7 +906,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           <Stat
             cargando={loadingCuotas}
             icon="chart-increasing"
-            label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas.length}` : cap(unidadCuota)}
+            // El total es el número de la ÚLTIMA cuota, no cuántas hay guardadas: un crédito anterior al
+            // sistema guarda solo las que faltan (de la 3 a la 6 de 6).
+            label={proximaCuota ? `${cap(unidadCuota)} ${proximaCuota.nro} de ${cuotas[cuotas.length - 1]?.nro ?? cuotas.length}` : cap(unidadCuota)}
             accent="primary"
             value={proximaCuota ? `$${n2(proximaCuota.total_cobrar ?? proximaCuota.cuota_total)}` : "—"}
             sub={

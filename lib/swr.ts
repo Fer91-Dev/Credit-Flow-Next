@@ -384,6 +384,8 @@ export interface Credito {
   cobros_vivos?: boolean;
   /** True si nació de una refinanciación (no es plata nueva otorgada). */
   es_refinanciacion?: boolean;
+  /** Snapshot del cronograma; `cronograma.anterior` marca un crédito anterior al sistema. */
+  cronograma?: unknown;
   /** (En el nuevo) crédito original que esta refinanciación reemplaza. */
   refinancia_a?: string | null;
   /** (En el viejo) refinanciación que reemplazó a este crédito. */

@@ -15,6 +15,8 @@ import {
   resolverCargos,
   cargoColumnasActivas,
   convencionDelCredito,
+  anteriorDelCredito,
+  planCreditoAnterior,
   type CronogramaConfig,
   type CargosConfig,
   type RedondeoModo,
@@ -84,7 +86,14 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   const cargosDelCredito = resolverCargos(credito.cargos as Partial<CargosConfig> | null, config.simulador.cargos);
 
-  const plan = construirPlanAmortizacion(
+  /*
+    Un crédito ANTERIOR AL SISTEMA se arma con su propia función: la cuota es la pactada con el
+    cliente y las fechas cuentan desde su 1er vencimiento. Es la MISMA que generó sus cuotas.
+  */
+  const anterior = anteriorDelCredito(credito.cronograma);
+  const plan = anterior
+    ? planCreditoAnterior(credito.monto_original, credito.tasa, credito.plazo_meses, frecuencia, anterior, convencion, catalogo)
+    : construirPlanAmortizacion(
     credito.monto_original,
     credito.tasa,
     credito.plazo_meses,

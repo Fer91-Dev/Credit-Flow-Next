@@ -1163,7 +1163,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   </span>
                 )}
                 <span className="text-xs capitalize text-muted-foreground">
-                  {c.tipo_credito} · {c.tasa}% · {c.plazo_meses} cuotas
+                  {c.tipo_credito} · {Number(c.tasa.toFixed(2))}% · {c.plazo_meses} cuotas
                 </span>
               </div>
 

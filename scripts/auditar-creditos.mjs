@@ -69,6 +69,7 @@ for (const { tenant_id: t } of tenants) {
     select: {
       id: true, numero: true, estado: true, monto_original: true, saldo_pendiente: true,
       proximo_pago: true, es_refinanciacion: true, refinancia_a: true, refinanciado_en: true,
+      plazo_meses: true, cronograma: true,
       cuotas: { orderBy: { nro: "asc" } },
     },
     orderBy: { numero: "asc" },
@@ -200,6 +201,19 @@ for (const { tenant_id: t } of tenants) {
     for (const c of creditos) {
       if (c.cuotas.length === 0) continue;
       const capPlan = r2(c.cuotas.reduce((s, q) => s + q.capital, 0));
+      /*
+        Crédito ANTERIOR AL SISTEMA: solo se guardan las cuotas que faltan, así que amortiza
+        menos que el monto (lo demás se pagó antes). Lo que sí tiene que cumplir: no más capital
+        que lo prestado, y todas las cuotas iguales a la pactada.
+      */
+      const ant = c.cronograma?.anterior;
+      if (ant) {
+        const distintas = c.cuotas.filter((q) => r2(q.cuota_total) !== r2(ant.cuota));
+        if (capPlan > c.monto_original + EPS || distintas.length) {
+          malos.push(`${crd(c.numero)} (anterior): amortiza ${m$(capPlan)} de ${m$(c.monto_original)}; ${distintas.length} cuotas distintas a ${m$(ant.cuota)}`);
+        }
+        continue;
+      }
       // Tolerancia por cuota: el redondeo del sistema francés se reparte entre ellas.
       if (Math.abs(capPlan - c.monto_original) > Math.max(EPS, c.cuotas.length * 0.01)) {
         malos.push(`${crd(c.numero)}: prestó ${m$(c.monto_original)} y el plan amortiza ${m$(capPlan)}`);
@@ -301,7 +315,11 @@ for (const { tenant_id: t } of tenants) {
     const nroMal = [];
     for (const c of creditos) {
       const nros = c.cuotas.map((q) => q.nro).sort((a, b) => a - b);
-      const esperado = nros.map((_, i) => i + 1);
+      // Un crédito anterior al sistema arranca después de las cuotas ya pagadas y llega a la última.
+      const ant = c.cronograma?.anterior;
+      const esperado = ant
+        ? Array.from({ length: c.plazo_meses - ant.cuotasPagadas }, (_, i) => ant.cuotasPagadas + 1 + i)
+        : nros.map((_, i) => i + 1);
       if (nros.join(",") !== esperado.join(",")) nroMal.push(`${crd(c.numero)}: ${nros.join(",")}`);
     }
     chequeo(nroMal.length === 0, "las cuotas de cada crédito van de 1 a N sin repetir", detalle(nroMal));
