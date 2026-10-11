@@ -160,7 +160,8 @@ export async function requireAuth(_request?: Request, opciones: OpcionesAuth = {
 }
 
 async function requireAuthSinFactor(): Promise<AuthContext> {
-  if (process.env.DEV_BYPASS_AUTH === "true") {
+  // Nunca en producción: si la variable quedara en "true" por error, el sistema se abriría sin login.
+  if (process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV !== "production") {
     // Sin sesión real no hay AAL que leer; se da por satisfecho el 2FA para no
     // bloquear el bypass de desarrollo (hoy está en false de forma permanente).
     return cargarContexto(DEV_USER_ID, null, { aal: "aal2", mfaEnrolado: true });

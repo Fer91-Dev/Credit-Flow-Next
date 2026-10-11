@@ -77,8 +77,8 @@ export async function middleware(request: NextRequest) {
   const passthrough = () =>
     conCSP(NextResponse.next({ request: { headers: requestHeaders } }));
 
-  // DEV_BYPASS_AUTH: omite la validación JWT, pero igual propaga el pathname.
-  if (process.env.DEV_BYPASS_AUTH === "true") {
+  // DEV_BYPASS_AUTH: omite la validación JWT, pero igual propaga el pathname. Nunca en producción.
+  if (process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV !== "production") {
     return passthrough();
   }
 
