@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertTriangle, Check, ChevronDown, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Eye, EyeOff, X } from "lucide-react";
 import { cn, soloDigitos, formatCuit } from "@/lib/utils";
 import { revisarPassword, cumplimientoPassword, MENSAJE_PASSWORD_INSEGURA, type ContextoPassword } from "@/lib/domain";
 
@@ -195,16 +195,41 @@ export const bloquearPortapapeles = {
   onDrop: (e: React.DragEvent) => e.preventDefault(),
 } as const;
 
-/** Input de contraseña: SIEMPRE enmascarado (puntos) y sin copiar/pegar. */
-export function PasswordInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
+/**
+ * Input de contraseña: enmascarado (puntos) y sin copiar/pegar.
+ *
+ * `mostrar` lo deja ver en claro. SOLO para la clave PROPIA (Mi perfil, recuperación): ahí ver lo
+ * que se tipea no expone nada a nadie. Donde un admin le pone la clave a otro, nunca: la vería.
+ * El ojito aparece únicamente en el campo que recibe `onMostrarChange`; el "repetir" recibe solo
+ * `mostrar` y lo sigue (un control para los dos).
+ */
+export function PasswordInput({
+  className, mostrar = false, onMostrarChange, ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { mostrar?: boolean; onMostrarChange?: (v: boolean) => void }) {
+  const input = (
     <input
-      type="password"
+      type={mostrar ? "text" : "password"}
       autoComplete="new-password"
-      className={cn(inputBase, className)}
+      className={cn(inputBase, onMostrarChange && "pr-10", className)}
       {...bloquearPortapapeles}
       {...props}
     />
+  );
+  if (!onMostrarChange) return input;
+  return (
+    <div className="relative">
+      {input}
+      <button
+        type="button"
+        onClick={() => onMostrarChange(!mostrar)}
+        tabIndex={-1}
+        aria-label={mostrar ? "Ocultar contraseña" : "Ver contraseña"}
+        aria-pressed={mostrar}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        {mostrar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
   );
 }
 

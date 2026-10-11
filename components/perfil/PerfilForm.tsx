@@ -167,6 +167,7 @@ export function PerfilForm({
   const [currentPass, setCurrentPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
+  const [verNueva, setVerNueva] = useState(false);
   const [savingPass, setSavingPass] = useState(false);
   const [savedPass, setSavedPass] = useState(false);
   const [errorPass, setErrorPass] = useState<string | null>(null);
@@ -495,6 +496,8 @@ export function PerfilForm({
               value={newPass}
               onChange={e => { setNewPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="••••••••"
+              mostrar={verNueva}
+              onMostrarChange={setVerNueva}
             />
           </Field>
           <ReglasPassword password={newPass} identidad={identidadPass} />
@@ -503,6 +506,7 @@ export function PerfilForm({
               value={confirmPass}
               onChange={e => { setConfirmPass(e.target.value); setSavedPass(false); setErrorPass(null); }}
               placeholder="Repetí la nueva contraseña"
+              mostrar={verNueva}
             />
           </Field>
           {errorPass && (
