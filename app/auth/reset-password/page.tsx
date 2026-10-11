@@ -56,6 +56,8 @@ export default function ResetPasswordPage() {
       body: JSON.stringify({ nueva: password }),
     });
     const json = await res.json().catch(() => null);
+    // Sesión del link sin el código de 2FA (p. ej. un link viejo): primero el código.
+    if (json?.code === "MFA_REQUERIDO") { router.replace("/auth/verificar?siguiente=reset"); return; }
     if (!res.ok || !json?.ok) { setError(json?.error ?? "No se pudo cambiar la contraseña"); setEstado("listo"); return; }
     // Seguridad: al cambiar la clave cerramos la sesión (scope global: también las otras
     // sesiones/dispositivos). Así el usuario vuelve a entrar con la clave nueva (confirma que la

@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type") as EmailOtpType | null;
 
   let ok = false;
+  let pideCodigo = false;
   if (token_hash && type) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash });
@@ -35,6 +36,11 @@ export async function GET(request: NextRequest) {
          conocer la actual (ver lib/recuperacion-sesion.ts). Solo para el tipo recuperación. */
       if (userId && type === "recovery") {
         (await cookies()).set(COOKIE_RECUPERACION, firmarRecuperacion(userId), opcionesCookieRecuperacion);
+        /* Con verificación en dos pasos, el link solo prueba el mail: la sesión queda en aal1 y
+           /api/perfil/password exige aal2. Antes de la clave nueva se pide el código (11/10/2026:
+           la pantalla decía "ingresá el código" sin dónde ponerlo). */
+        const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        pideCodigo = nivel?.nextLevel === "aal2" && nivel.currentLevel !== "aal2";
       }
       if (userId) {
         const prof = await prisma.profiles.findUnique({ where: { id: userId }, select: { tenant_id: true, email: true } });
@@ -52,5 +58,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  redirect(ok ? "/auth/reset-password" : "/auth/reset-password?error=expired");
+  redirect(!ok ? "/auth/reset-password?error=expired" : pideCodigo ? "/auth/verificar?siguiente=reset" : "/auth/reset-password");
 }

@@ -24,16 +24,22 @@ export default function VerificarPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [verificando, setVerificando] = useState(true);
+  const [destino, setDestino] = useState("/");
 
   // Si alguien entra de prepo sin sesión, o ya está en aal2, no tiene nada que hacer acá.
   useEffect(() => {
     let vivo = true;
+    /* Desde un link de recuperación se vuelve a la clave nueva. Valor cerrado (no una URL):
+       un parámetro libre sería una redirección abierta. */
+    const siguiente = new URLSearchParams(window.location.search).get("siguiente");
+    const ir = siguiente === "reset" ? "/auth/reset-password" : "/";
+    setDestino(ir);
     fetch("/api/me/mfa")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("sin sesión"))))
       .then((j) => {
         if (!vivo) return;
         if (!j.ok) return router.replace("/auth");
-        if (j.data.aal === "aal2") return router.replace("/");
+        if (j.data.aal === "aal2") return router.replace(ir);
         if (!j.data.enrolado) return router.replace("/perfil"); // todavía no lo configuró
         setVerificando(false);
       })
@@ -60,7 +66,7 @@ export default function VerificarPage() {
         return;
       }
       // La sesión quedó en aal2 (Supabase reescribió las cookies) → ya puede entrar.
-      router.replace("/");
+      router.replace(destino);
     } catch {
       setError("No se pudo conectar. Revisá tu conexión e intentá de nuevo.");
       setLoading(false);
