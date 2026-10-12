@@ -20,7 +20,7 @@ import { Emoji } from "@/components/ui/Emoji";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
 import { HelpHint, type AyudaBloque } from "@/components/configuracion/ConfigForm";
 import { Skeleton } from "@/components/ui/skeleton";
-import { esCreditoVivo, severidadMora } from "@/lib/domain";
+import { esCreditoVivo, severidadMora, estadoOperativo } from "@/lib/domain";
 
 const SEL =
   "h-10 rounded-lg border border-border bg-muted/40 pl-3 pr-8 text-sm text-foreground " +
@@ -28,7 +28,7 @@ const SEL =
   "appearance-none cursor-pointer [&>option]:bg-card [&>option]:text-foreground";
 
 // Nombre visible de cada filtro. Es lo que muestra el propio botón "Filtrar" cuando hay uno puesto.
-const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
+const ESTADO_FILTRO_LABEL: Record<string, string> = { activo: "Activos", atrasados: "Activos atrasados", pagado: "Pagados", refinanciado: "Refinanciados", anulado: "Anulados" };
 const TIPO_FILTRO_LABEL: Record<string, string> = { personal: "Personal", productos: "Producto" };
 const MORA_FILTRO_LABEL: Record<string, string> = { al_dia: "Al día", en_mora: "En mora", critica: "Mora crítica" };
 
@@ -189,6 +189,8 @@ export function CreditosTable({ role }: { role: Role }) {
     const vivos = creditos.filter(c => esCreditoVivo(c.estado));
     const criticos = creditos.filter(c => severidadMora(c.dias_mora, tramos) === "critica");
     const pagados = creditos.filter(c => c.estado === "pagado");
+    const atrasados = creditos.filter(c => esCreditoVivo(c.estado) &&
+      estadoOperativo(c.estado, c.dias_mora, diasLegales, c.acuerdo ? { alDia: c.acuerdo.al_dia } : null) === "atrasado");
     const cartera = vivos.reduce((s, c) => s + c.saldo_pendiente, 0);
     return {
       activos:       vivos.length,
@@ -203,9 +205,11 @@ export function CreditosTable({ role }: { role: Role }) {
       pagados:       pagados.length,
       // Capital que se prestó y volvió completo (los ya cancelados).
       montoPagado:   pagados.reduce((s, c) => s + c.monto_original, 0),
+      atrasados:     atrasados.length,
+      montoAtrasado: atrasados.reduce((s, c) => s + c.saldo_pendiente, 0),
       total:         creditos.length,
     };
-  }, [creditos, tramos]);
+  }, [creditos, tramos, diasLegales]);
   /* Manda el servidor. La cuenta local queda de respaldo para el primer render y por si la
      consulta falla: es la misma fórmula, solo que sobre la lista cargada. */
   const kpis = kpisServer ?? kpisLocales;
@@ -365,6 +369,7 @@ export function CreditosTable({ role }: { role: Role }) {
                           <select value={estadoFilter} onChange={e => setEstado(e.target.value)} className={SEL}>
                             <option value="all">Todos los estados</option>
                             <option value="activo">Activos</option>
+                            <option value="atrasados">Activos atrasados</option>
                             <option value="pagado">Pagados</option>
                             <option value="refinanciado">Refinanciados</option>
                             <option value="anulado">Anulados</option>
@@ -451,7 +456,7 @@ export function CreditosTable({ role }: { role: Role }) {
         <div className="space-y-5">
 
         {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/*
             Los KPI mueven los MISMOS filtros del panel de abajo, no unos propios: si no se
             hablaran, la tabla mostraría una cosa y los chips de filtro dirían otra.
@@ -476,6 +481,17 @@ export function CreditosTable({ role }: { role: Role }) {
             // De dónde sale el número: entre cuántos créditos se reparte. Dice si la cartera
             // son pocos grandes o muchos chicos, que es otro riesgo.
             sub={kpis.activos > 0 ? `${kpis.activos} créditos · promedio ${formatMonto(kpis.promedio)}` : "sin saldo por cobrar"}
+          />
+          {/* El badge "Activo atrasado" de la tabla, contado: en mora, antes de Legales y sin
+              acuerdo. Filtra por `estado=atrasados`, que usa la misma regla en el servidor. */}
+          <KpiCard
+            icon="alarm-clock" label="Activos atrasados" value={String(kpis.atrasados)}
+            accent={kpis.atrasados > 0 ? "warning" : "muted"}
+            sub={kpis.atrasados > 0
+              ? `${formatMonto(kpis.montoAtrasado)}${diasLegales > 0 ? ` · menos de ${formatDias(diasLegales)}` : ""}`
+              : "ninguno atrasado"}
+            onClick={kpis.atrasados > 0 ? () => { setEstado("atrasados"); setMora("all"); } : undefined}
+            active={estadoFilter === "atrasados" && moraFilter === "all"}
           />
           <KpiCard
             icon="warning" label="Mora crítica" value={String(kpis.moraCritica)}

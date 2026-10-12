@@ -18,7 +18,7 @@ import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { fechaDeCajaTx } from "@/lib/cierre-turno";
-import { rangoDeSeveridad, rangoEnMora, type SeveridadMora } from "@/lib/domain";
+import { rangoDeSeveridad, rangoEnMora, rangoAtrasado, type SeveridadMora } from "@/lib/domain";
 
 /**
  * GET /api/creditos
@@ -86,6 +86,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
    */
   if (estado === "vivos") where.estado = { in: [...ESTADOS_VIVOS] };
   else if (estado === "cobrables") where.estado = { in: [...ESTADOS_COBRABLES] };
+  else if (estado === "atrasados") where.estado = { in: [...ESTADOS_VIVOS] };
   else if (estado) where.estado = estado;
   if (clienteId) where.cliente_id = clienteId;
 
@@ -158,6 +159,20 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         ? { OR: [{ proximo_pago: porFecha }, { proximo_pago: null }] }
         : { proximo_pago: porFecha },
     );
+  }
+
+  /**
+   * `estado=atrasados` = el badge "Activo atrasado" (`estadoOperativo`): vivo, en mora, sin
+   * llegar a Legales y SIN acuerdo vigente (con acuerdo el badge dice "En acuerdo" o "Acuerdo
+   * atrasado"). El rango de fechas sale de `rangoAtrasado`, al lado de la regla.
+   */
+  if (estado === "atrasados") {
+    const { recupero } = await getCobranzaConfig(tenantId);
+    const rango = rangoAtrasado(recupero.dias_min_mora_acuerdo, hoyComercial());
+    condiciones.push({
+      proximo_pago: { ...(rango.desde ? { gte: rango.desde } : {}), lt: rango.hasta! },
+      acuerdos: { none: { estado: "vigente" } },
+    });
   }
 
   if (tipo && tipo !== "all") where.tipo_credito = tipo;

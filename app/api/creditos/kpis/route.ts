@@ -3,7 +3,8 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { getCobranzaConfig } from "@/lib/config";
-import { esCreditoVivo, diasMoraActual, severidadMora, round2 } from "@/lib/domain";
+import { esCreditoVivo, diasMoraActual, severidadMora, estadoOperativo, round2 } from "@/lib/domain";
+import { creditosConAcuerdoVigente } from "@/lib/acuerdos";
 import { hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -26,13 +27,15 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const ctx = await requireAuth(req);
   const { tenantId } = ctx;
 
-  const { tramos_mora } = await getCobranzaConfig(tenantId);
+  const { tramos_mora, recupero } = await getCobranzaConfig(tenantId);
   const hoy = hoyComercial();
+  // Para "Activos atrasados": con acuerdo vigente el badge ya no dice "Activo atrasado".
+  const conAcuerdo = await creditosConAcuerdoVigente(tenantId);
 
   const filas = await prisma.creditos.findMany({
     where: { ...withTenant(tenantId), ...scopeCreditosVendedor(ctx) },
     select: {
-      estado: true, proximo_pago: true, saldo_pendiente: true, monto_original: true,
+      id: true, estado: true, proximo_pago: true, saldo_pendiente: true, monto_original: true,
       // Una columna más, ninguna consulta más: con esto salen también los KPI de la pestaña
       // Refinanciados en la misma pasada.
       es_refinanciacion: true,
@@ -42,6 +45,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let activos = 0, alDia = 0, enMora = 0, cartera = 0;
   let moraCritica = 0, montoCritico = 0;
   let pagados = 0, montoPagado = 0;
+  let atrasados = 0, montoAtrasado = 0;
 
   /**
    * 🔴 LOS NÚMEROS DE LA PESTAÑA REFINANCIADOS, SOBRE EL HISTORIAL ENTERO.
@@ -81,6 +85,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cartera += c.saldo_pendiente;
     if (dias > 0) enMora++;
     else alDia++;
+    /* "Activo atrasado" con la MISMA función que dibuja el badge. Sin refinanciaciones: el
+       KPI filtra la pestaña Créditos, que no las lista, y el número tiene que dar las filas. */
+    if (!c.es_refinanciacion &&
+        estadoOperativo(c.estado, dias, recupero.dias_min_mora_acuerdo, conAcuerdo.has(c.id) ? { alDia: true } : null) === "atrasado") {
+      atrasados++;
+      montoAtrasado += c.saldo_pendiente;
+    }
   }
 
   return successResponse({
@@ -96,6 +107,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     pagados,
     // Capital que se prestó y volvió completo (los ya cancelados).
     montoPagado: round2(montoPagado),
+    atrasados,
+    montoAtrasado: round2(montoAtrasado),
     total: filas.length,
     /* Pestaña Refinanciados. `tasaRecupero` es el número que decide si reestructurar sirve o
        solo patea el problema: de cada 100 refinanciaciones, cuántas se están pagando. */

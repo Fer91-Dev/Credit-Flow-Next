@@ -407,6 +407,21 @@ export function rangoEnMora(hoy: Date = new Date()): RangoSeveridad {
   return { desde: null, hasta: new Date(base), incluyeSinFecha: false };
 }
 
+/**
+ * El rango de atraso de un "Activo atrasado": en mora pero todavía sin llegar a Legales.
+ * Es `estadoOperativo(...) === "atrasado"` mirado como fechas (1 ≤ dias < diasLegales →
+ * hoy − (L−1) ≤ vencimiento < hoy). Con `diasLegales` en 0 la etapa está apagada: no hay piso.
+ * El acuerdo vigente NO entra acá (no es una fecha): quien filtre lo excluye aparte.
+ */
+export function rangoAtrasado(diasLegales: number, hoy: Date = new Date()): RangoSeveridad {
+  const base = Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate());
+  return {
+    desde: diasLegales > 0 ? new Date(base - (diasLegales - 1) * 86_400_000) : null,
+    hasta: new Date(base),
+    incluyeSinFecha: false,
+  };
+}
+
 export interface EstadoMora {
   dias: number;
   severidad: SeveridadMora;
