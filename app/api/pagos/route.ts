@@ -769,7 +769,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         destino: etiquetaCaja(role === "vendedor", cuentaCobro),
         serie: "REC",
         numero: numComp,
-        descripcion: `Cobro ${formatCreditoNumero(credito.numero, origenRefNum)} · ${nombreCompleto(credito.cliente)}`,
+        // La entrega de una refinanciación se rotula por su nombre: en la caja no tiene que
+        // leerse como un cobro común de cuota (Fernando, 12/10/2026).
+        descripcion: `${body.entrega_de === "refinanciacion" ? "Entrega refinanciación" : "Cobro"} ${formatCreditoNumero(credito.numero, origenRefNum)} · ${nombreCompleto(credito.cliente)}`,
       },
     });
 
