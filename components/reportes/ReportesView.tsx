@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, useReporteProductos, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza, type ReporteProductos } from "@/lib/swr";
@@ -15,6 +15,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
 import { Nota } from "@/components/ui/Nota";
+import { DetalleCobros } from "./DetalleCobros";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -241,10 +242,14 @@ function imprimirReporte(
 
 // ─── Vista principal ─────────────────────────────────────────────────────────
 
-export function ReportesView() {
+/**
+ * `periodo="hoy"`: se entra con el día de hoy puesto. Es por donde llega la píldora "HOY" del
+ * Home (Fernando, 12/10/2026): tocar lo cobrado hoy abre el reporte de hoy, no el del año.
+ */
+export function ReportesView({ periodoInicial }: { periodoInicial?: string } = {}) {
   const today = new Date();
   const firstOfYear = new Date(today.getFullYear(), 0, 1);
-  const [desde, setDesde] = useState(ymd(firstOfYear));
+  const [desde, setDesde] = useState(ymd(periodoInicial === "hoy" ? today : firstOfYear));
   const [hasta, setHasta] = useState(ymd(today));
   const [tab, setTab] = useState<TabId>("resumen");
   // La cápsula animada del tab activo (framer-motion) solo tras montar, para no saltar en SSR.
@@ -398,12 +403,22 @@ export function ReportesView() {
 
 function TabResumen({ r }: { r: Reporte }) {
   const moraPct = r.cartera.saldo_activo_total > 0 ? (r.morosidad.saldo_expuesto / r.cartera.saldo_activo_total) * 100 : 0;
+  /* "Cobrado" se abre en el detalle de cada cobro (Fernando, 12/10/2026: "que me detalle
+     qué fueron esos 2 pagos"). Al abrirlo se lleva la vista hasta la lista. */
+  const [verCobros, setVerCobros] = useState(false);
+  const refCobros = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (verCobros) refCobros.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [verCobros]);
+  const cobros = r.detalle_cobros ?? [];
+  const anulados = cobros.filter((c) => c.anulado).length;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n2(r.operaciones.ticket_promedio)}`} />
         <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
-        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`} />
+        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`}
+          onClick={cobros.length > 0 ? () => setVerCobros((v) => !v) : undefined} active={verCobros} />
         <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_total)}`} accent="warning" mono sub={r.rentabilidad.comisiones_cobradas !== 0 ? `incluye $${n2(r.rentabilidad.comisiones_cobradas)} de comisión de otorgamiento` : "interés + cargos + mora"} />
         <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n2(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
         <KpiCard icon="chart-increasing" label="Cartera activa" value={`$${n2(r.cartera.saldo_activo_total)}`} accent="primary" mono />
@@ -414,6 +429,20 @@ function TabResumen({ r }: { r: Reporte }) {
           barra={{ pct: moraPct }}
         />
       </div>
+
+      {verCobros && (
+        <div ref={refCobros} className="scroll-mt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Emoji name="receipt" className="h-4 w-4" />
+            <h3 className="text-sm font-semibold text-foreground">Cobros del período</h3>
+            <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {r.cobranzas.cantidad} {r.cobranzas.cantidad === 1 ? "cobro" : "cobros"} · ${n2(r.cobranzas.total_cobrado)}
+              {anulados > 0 && ` · ${anulados} ${anulados === 1 ? "anulado" : "anulados"}`}
+            </span>
+          </div>
+          <DetalleCobros cobros={cobros} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Cobranzas por método" icon="money-bag">

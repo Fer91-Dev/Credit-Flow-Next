@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
 import { Target } from "lucide-react";
 import { useDashboard, type DashboardData, type DashboardFiltros } from "@/lib/swr";
@@ -128,7 +129,11 @@ export function DashboardKpis({ data }: { data: DashboardData }) {
  * nueva ni una fórmula paralela — es la resta de los dos que están arriba, así que no puede
  * discrepar con ellos.
  */
-export function DashboardDinero({ data, acciones, actualizado }: { data: DashboardData; acciones?: React.ReactNode; actualizado?: Date | null }) {
+/**
+ * `hrefHoy`: a dónde lleva la píldora "HOY". Al reporte del día con el detalle de cada cobro
+ * (Fernando, 12/10/2026). Sin él (vendedor: Reportes es solo de admin), la píldora no navega.
+ */
+export function DashboardDinero({ data, acciones, actualizado, hrefHoy }: { data: DashboardData; acciones?: React.ReactNode; actualizado?: Date | null; hrefHoy?: string }) {
   const { resumen } = data;
   const prestado = resumen.capital_en_calle ?? resumen.cartera_total;
   // El dato que acompaña a cada cifra, no una frase que la explique (regla: datos, no
@@ -174,7 +179,7 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
 
       {/* Arriba: el pulso del día a la izquierda, los filtros a la derecha. */}
       <div className="relative flex flex-wrap items-center gap-2 sm:gap-3">
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1 ring-inset ${
+        <Pildora href={hrefHoy} className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs ring-1 ring-inset ${
           hubo ? "bg-success/10 text-success ring-success/25" : "bg-background/40 text-muted-foreground ring-border/60"
         }`}>
           <span className="relative flex h-2 w-2">
@@ -188,7 +193,7 @@ export function DashboardDinero({ data, acciones, actualizado }: { data: Dashboa
           <span className="text-muted-foreground">
             en {hoy.cobros} {hoy.cobros === 1 ? "cobro" : "cobros"}
           </span>
-        </span>
+        </Pildora>
         {actualizado && (
           <span className="hidden text-[11px] tabular-nums text-muted-foreground/70 sm:inline">
             actualizado {actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
@@ -467,5 +472,15 @@ function MoraRow({
         </div>
       )}
     </div>
+  );
+}
+
+/** La píldora "HOY": link al reporte del día si hay a dónde ir; si no, un dato quieto. */
+function Pildora({ href, className, children }: { href?: string; className: string; children: React.ReactNode }) {
+  if (!href) return <span className={className}>{children}</span>;
+  return (
+    <Link href={href} title="Ver los cobros de hoy uno por uno" className={`${className} transition-colors hover:brightness-125`}>
+      {children}
+    </Link>
   );
 }

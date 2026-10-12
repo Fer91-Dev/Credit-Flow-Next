@@ -926,6 +926,32 @@ export interface Reporte {
     excedente: number;
     metodo: string;
   }[];
+  /** Cada cobro del período, uno por uno (anulados incluidos, marcados). Ver `/api/reportes`. */
+  detalle_cobros: DetalleCobro[];
+}
+
+export interface DetalleCobro {
+  id: string;
+  fecha: string;
+  /** Instante en que se registró (la `fecha` es solo el día). */
+  hora: string;
+  credito: { id: string; numero: number | null; numero_origen: number | null };
+  cliente: string;
+  cliente_id: string;
+  tipo: "cuota" | "entrega_refinanciacion" | "entrega_acuerdo" | "cuota_acuerdo";
+  concepto: string;
+  credito_nuevo: number | null;
+  monto: number;
+  aplicado_capital: number;
+  aplicado_interes: number;
+  aplicado_cargos: number;
+  aplicado_mora: number;
+  excedente: number;
+  metodo: string;
+  recibo: string | null;
+  caja: string | null;
+  anulado: boolean;
+  anulado_motivo: string | null;
 }
 
 export type CuentaCaja = "efectivo" | "banco" | "dolares";

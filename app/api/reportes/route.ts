@@ -6,6 +6,9 @@ import { congelamientoPorCredito } from "@/lib/acuerdos";
 import { nombreCompleto, hoyComercial, inicioDiaAR, finDiaAR } from "@/lib/utils";
 import { round2, costoFondeo, ingresoFinanciero, comisionesDeCaja, resumenOperaciones, esOperacionColocada, diasMoraActual, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, severidadMora, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/lib/config";
+import { numerosRefinanciados } from "@/lib/creditos-numero";
+import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
+import { frasePago } from "@/lib/pago-concepto";
 import type { NextRequest } from "next/server";
 
 const MS_DIA = 86_400_000;
@@ -18,6 +21,21 @@ const MS_DIA = 86_400_000;
  *  - Morosidad (snapshot actual, interés calculado por el motor de dominio)
  *  - Detalle de pagos del período (para exportar)
  */
+/**
+ * Lo que necesita cada renglón del detalle de cobros: el crédito (para el link y el REF-),
+ * contra qué cuotas se imputó (para decir si saldó la cuota o fue a cuenta) y si fue la
+ * entrega o una cuota de un acuerdo.
+ */
+const INCLUDE_DETALLE = {
+  credito: { select: { id: true, numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { id: true, nombre: true, apellido: true } } } },
+  aplicaciones: {
+    select: { aplicado_capital: true, aplicado_interes: true, aplicado_cargos: true, aplicado_mora: true, cuota: { select: { nro: true, cuota_total: true } } },
+    orderBy: { cuota: { nro: "asc" as const } },
+  },
+  acuerdo_entrega: { select: { id: true } },
+  acuerdo_cuota: { select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } } },
+};
+
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Reportes financieros: solo admin.
   const { tenantId } = await requireRole(["admin"], req);
@@ -45,8 +63,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [pagos, creditos, config, cfgRent, cobranzaCfg, gastosMov, comisionesMov] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), fecha: { gte: desde, lte: hasta }, anulado: false },
-      include: { credito: { select: { cliente: { select: { nombre: true, apellido: true } } } } },
-      orderBy: { fecha: "desc" },
+      include: INCLUDE_DETALLE,
+      orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
     }),
     /**
      * 🔴 LA CARTERA ENTERA, PERO SIN LAS CUOTAS.
@@ -363,6 +381,76 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     metodo: p.metodo,
   }));
 
+  /**
+   * ── DETALLE DE COBROS, UNO POR UNO (Fernando, 12/10/2026) ──
+   *
+   * La tarjeta "Cobrado" decía "$144.000,00 · 2 pagos" y no había forma de ver cuáles. Acá
+   * va cada cobro con su recibo, el crédito, QUÉ fue (cuota, a cuenta, entrega de
+   * refinanciación o de acuerdo) y cómo se imputó — que es lo que explica cuánto bajó la mora.
+   *
+   * 🔴 LOS ANULADOS TAMBIÉN, pero aparte de la suma: un pago anulado del período (o anulado
+   * en el período) no es plata que entró, pero esconderlo deja un hueco sin explicación entre
+   * el recibo que tiene el cliente y la caja.
+   */
+  const anulados = await prisma.pagos.findMany({
+    where: {
+      ...withTenant(tenantId), anulado: true,
+      OR: [{ fecha: { gte: desde, lte: hasta } }, { anulado_at: { gte: desdeTs, lte: hastaTs } }],
+    },
+    include: INCLUDE_DETALLE,
+    orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
+  });
+  const todos = [...pagos, ...anulados];
+  const [origenesRefi, entregasRefi, recibos] = await Promise.all([
+    numerosRefinanciados(tenantId, todos.map((p) => p.credito)),
+    entregasDeRefinanciacion(tenantId, todos.map((p) => p.id)),
+    // El recibo y la caja a la que entró: el movimiento `cobro` que generó cada pago.
+    prisma.movimientos_caja.findMany({
+      where: { ...withTenant(tenantId), tipo: "cobro", pago_id: { in: todos.map((p) => p.id) } },
+      select: { pago_id: true, serie: true, numero: true, vendedor: { select: { nombre: true } } },
+    }),
+  ]);
+  const reciboDe = new Map(recibos.map((m) => [m.pago_id, m]));
+  const detalle_cobros = todos.map((p) => {
+    const entrega = entregasRefi.get(p.id);
+    const tipo = entrega ? "entrega_refinanciacion"
+      : p.acuerdo_entrega ? "entrega_acuerdo"
+      : p.acuerdo_cuota ? "cuota_acuerdo"
+      : "cuota";
+    const concepto = entrega ? "Entrega para refinanciar el crédito"
+      : p.acuerdo_entrega ? "Entrega con la que se armó el acuerdo de pago"
+      : p.acuerdo_cuota ? `Cuota ${p.acuerdo_cuota.numero} de ${p.acuerdo_cuota.acuerdo._count.cuotas} del acuerdo de pago`
+      : frasePago(p.aplicaciones);
+    const mov = reciboDe.get(p.id);
+    return {
+      id: p.id,
+      fecha: p.fecha,
+      hora: p.created_at,
+      credito: {
+        id: p.credito.id,
+        numero: p.credito.numero,
+        numero_origen: p.credito.es_refinanciacion && p.credito.refinancia_a ? origenesRefi.get(p.credito.refinancia_a) ?? null : null,
+      },
+      cliente: nombreCompleto(p.credito.cliente),
+      cliente_id: p.credito.cliente.id,
+      tipo,
+      concepto,
+      // El crédito que nació con esta entrega (REF-<origen>), para decir a dónde fue la deuda.
+      credito_nuevo: entrega?.credito_nuevo ?? null,
+      monto: p.monto,
+      aplicado_capital: p.aplicado_capital,
+      aplicado_interes: p.aplicado_interes,
+      aplicado_cargos: p.aplicado_cargos,
+      aplicado_mora: p.aplicado_mora,
+      excedente: p.excedente,
+      metodo: p.metodo,
+      recibo: mov?.serie && mov.numero != null ? `${mov.serie}-${mov.numero}` : null,
+      caja: mov ? (mov.vendedor?.nombre ?? "Caja principal") : null,
+      anulado: p.anulado,
+      anulado_motivo: p.anulado_motivo,
+    };
+  });
+
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },
     moneda: config.moneda,
@@ -375,5 +463,6 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cartera: { por_estado: cartera_por_estado, saldo_activo_total },
     morosidad,
     detalle_pagos,
+    detalle_cobros,
   });
 });

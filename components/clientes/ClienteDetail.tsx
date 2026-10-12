@@ -22,6 +22,7 @@ import { IconBadge } from "@/components/ui/IconBadge";
 import { ObservacionesPanel } from "@/components/clientes/ObservacionesPanel";
 import { LibreDeudaDialog } from "@/components/creditos/LibreDeudaDialog";
 import { PagoForm } from "@/components/pagos/PagoForm";
+import { frasePago } from "@/lib/pago-concepto";
 import { PlanDeCuotas } from "@/components/creditos/PlanDeCuotas";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
@@ -1350,6 +1351,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                       </p>
                       <PagosInline
                         pagos={pagosDelCredito}
+                        numeroCredito={c.numero ?? null}
                         puedeAnular={puedeAnular}
                         reciboBusy={reciboBusy}
                         onRecibo={onRecibo}
@@ -1436,50 +1438,6 @@ function FragmentRow({ children }: { children: React.ReactNode }) {
  * importe exacto y abre el cobro con esa cuota puesta, igual que en Créditos.
  */
 /**
- * QUÉ DICE EL RENGLÓN DE UN COBRO.
- *
- * 🔴 Decía "a cuenta de la cuota 3" SIEMPRE, incluso cuando el cliente había pagado la cuota
- * entera. "A cuenta" significa que entregó algo y quedó debiendo: es exactamente lo contrario
- * de lo que hizo, y el que lee la ficha se queda con que el cliente dejó un saldo abierto.
- * Fernando, sobre el cobro de $75.678,86 de CRD-000004 que saldó la cuota 3 completa.
- *
- * Ahora el renglón distingue los dos hechos, que son distintos:
- *   · el cobro CUBRIÓ la cuota  →  "Pago de la cuota 3"
- *   · cubrió una parte          →  "Entrega a cuenta de la cuota 3"
- *   · varias, mezcladas         →  "Pago de la cuota 1 · a cuenta de la cuota 2"
- *
- * Se compara lo aplicado AL PLAN (capital + interés + cargos) contra el valor de la cuota.
- * Los punitorios quedan afuera de la comparación a propósito: son el precio del atraso, no
- * parte de la cuota, y sumarlos haría que un cobro de mora sola pareciera saldarla.
- *
- * Si el dato no viaja —una respuesta vieja en el caché de SWR— no se afirma ninguna de las
- * dos cosas: se dice a qué cuota se imputó y nada más. Es preferible decir menos que decir
- * algo que puede ser falso.
- */
-function frasePago(aplicaciones: NonNullable<PagoImputado["aplicaciones"]>): string {
-  if (aplicaciones.length === 0) return "Cobro registrado";
-  const lista = (ns: number[]) =>
-    ns.length === 1 ? `${ns[0]}` : `${ns.slice(0, -1).join(", ")} y ${ns[ns.length - 1]}`;
-  const tramo = (verbo: string, ns: number[]) =>
-    ns.length === 1 ? `${verbo} la cuota ${ns[0]}` : `${verbo} las cuotas ${lista(ns)}`;
-
-  const nros = aplicaciones.map((a) => a.cuota.nro);
-  if (aplicaciones.some((a) => a.cuota.cuota_total == null)) return tramo("Imputado a", nros);
-
-  const cubrio = (a: (typeof aplicaciones)[number]) => {
-    const alPlan = round2((a.aplicado_capital ?? 0) + (a.aplicado_interes ?? 0) + (a.aplicado_cargos ?? 0));
-    return alPlan >= round2(a.cuota.cuota_total!) - 0.01;
-  };
-  const saldadas = aplicaciones.filter(cubrio).map((a) => a.cuota.nro);
-  const parciales = aplicaciones.filter((a) => !cubrio(a)).map((a) => a.cuota.nro);
-
-  const partes: string[] = [];
-  if (saldadas.length > 0) partes.push(tramo("Pago de", saldadas));
-  if (parciales.length > 0) partes.push(tramo(partes.length > 0 ? "a cuenta de" : "Entrega a cuenta de", parciales));
-  return partes.join(" · ");
-}
-
-/**
  * LOS COBROS DE UN CRÉDITO — línea de tiempo, adentro de su propia tarjeta.
  *
  * 🔴 Antes vivía como una sección suelta al pie de la ficha, con TODOS los pagos del cliente
@@ -1496,8 +1454,10 @@ function frasePago(aplicaciones: NonNullable<PagoImputado["aplicaciones"]>): str
  *
  * El PAGO ANULADO se muestra, no se esconde: el hueco en la caja queda a la vista con su motivo.
  */
-function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
+function PagosInline({ pagos, numeroCredito, puedeAnular, reciboBusy, onRecibo, onAnular }: {
   pagos: PagoImputado[];
+  /** El número de ESTE crédito: el que nace de refinanciarlo se llama REF-<este número>. */
+  numeroCredito: number | null;
   puedeAnular?: boolean;
   reciboBusy?: string | null;
   onRecibo?: (pagoId: string) => void;
@@ -1532,7 +1492,7 @@ function PagosInline({ pagos, puedeAnular, reciboBusy, onRecibo, onAnular }: {
                   </p>
                   <p className="text-sm font-medium text-foreground/90">
                     {p.entrega_refinanciacion
-                      ? <>Entrega para refinanciar el crédito{p.entrega_refinanciacion.credito_nuevo != null && <> · sigue en <span className="font-mono text-warning">{formatCreditoNumero(p.entrega_refinanciacion.credito_nuevo, null)}</span></>}</>
+                      ? <>Entrega para refinanciar el crédito{p.entrega_refinanciacion.credito_nuevo != null && <> · sigue en <span className="font-mono text-warning">{formatCreditoNumero(p.entrega_refinanciacion.credito_nuevo, numeroCredito)}</span></>}</>
                       : frasePago(cuotas)}
                   </p>
                 </div>

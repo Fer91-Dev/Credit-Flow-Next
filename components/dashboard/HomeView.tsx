@@ -120,7 +120,7 @@ export function HomeView({ role }: { role: Role }) {
       ) : (
         <div className={`space-y-6 transition-opacity duration-300 ${isLoading ? "opacity-60" : "opacity-100"}`} aria-busy={isLoading}>
           {/* El pulso del día (lo único que cambia con el panel abierto) va DENTRO de la banda. */}
-          <DashboardDinero data={data} acciones={controlFiltros} actualizado={actualizado} />
+          <DashboardDinero data={data} acciones={controlFiltros} actualizado={actualizado} hrefHoy={esAdmin ? "/reportes?periodo=hoy" : undefined} />
         </div>
       )}
 
