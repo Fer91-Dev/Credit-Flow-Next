@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, X, Lightbulb } from "lucide-react";
+import { HelpCircle, X, Lightbulb, MousePointerClick } from "lucide-react";
 import type { HelpDoc, HelpBlock } from "@/lib/help/content";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
@@ -160,6 +160,36 @@ function Block({ block }: { block: HelpBlock }) {
               </div>
             ))}
           </dl>
+          {block.nota && (
+            <p className="mt-3 border-t border-border pt-2.5 text-xs leading-relaxed text-muted-foreground/80">{block.nota}</p>
+          )}
+        </div>
+      );
+
+    /*
+      LAS TARJETAS DE LA PANTALLA. El nombre va en la misma píldora que tiene la tarjeta, para
+      que se encuentre barriendo la columna con lo que se acaba de ver; si se puede tocar, dice
+      qué pasa al tocarla.
+    */
+    case "tarjetas":
+      return (
+        <div>
+          <SectionTitle>{block.titulo}</SectionTitle>
+          <ul className="space-y-2">
+            {block.items.map((it, i) => (
+              <li key={i} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                <span className="inline-flex rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {it.nombre}
+                </span>
+                <p className="mt-1.5 text-sm leading-relaxed text-foreground/90">{it.muestra}</p>
+                {it.alTocar && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-primary">
+                    <MousePointerClick className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> {it.alTocar}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
           {block.nota && (
             <p className="mt-3 border-t border-border pt-2.5 text-xs leading-relaxed text-muted-foreground/80">{block.nota}</p>
           )}

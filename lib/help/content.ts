@@ -23,7 +23,13 @@ export type HelpBlock =
    * la ayuda es literalmente el color de la pantalla. Una leyenda que describe los colores con
    * palabras se desincroniza el día que alguien cambia una variante y nadie se entera.
    */
-  | { kind: "estados"; titulo: string; nota?: string; items: { label: string; variant: BadgeVariant; desc: string }[] };
+  | { kind: "estados"; titulo: string; nota?: string; items: { label: string; variant: BadgeVariant; desc: string }[] }
+  /**
+   * LAS TARJETAS DE ARRIBA de una pantalla (Fernando, 12/10/2026: "donde también se explique
+   * qué muestra cada una de las tarjetas"). `nombre` es el rótulo tal cual se ve en la tarjeta;
+   * `muestra`, de dónde sale el número; `alTocar`, solo si la tarjeta se puede tocar.
+   */
+  | { kind: "tarjetas"; titulo: string; nota?: string; items: { nombre: string; muestra: string; alTocar?: string }[] };
 
 export interface HelpDoc {
   /** Título del panel (suele coincidir con el nombre de la sección). */
@@ -46,18 +52,42 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Cómo se usa",
         pasos: [
           "El botón «Filtrar», en la esquina de la tarjeta de dinero, acota el período, la zona y —si sos admin— el empleado. Con algo puesto, el botón dice qué está filtrando; todo el tablero se recalcula.",
-          "Revisá los KPIs: clientes, créditos, cartera activa y mora.",
-          "Bajá al avance de cobranzas y a la exposición de mora para ver dónde poner el foco.",
+          "Arriba, la banda de dinero: lo que entró hoy, lo prestado y lo que falta cobrar. La píldora «Hoy» lleva (admin) al detalle de cada cobro del día en Reportes.",
+          "Debajo, las tarjetas de la cartera y, más abajo, el avance de cobranzas, la tendencia mensual y la mora por tramos.",
           "Si sos admin, la tabla \"Rendimiento por vendedor\" compara la performance de cada uno.",
         ],
       },
       {
-        kind: "definiciones",
-        titulo: "Qué mira cada tarjeta",
+        kind: "tarjetas",
+        titulo: "La banda de dinero (arriba)",
+        nota: "Todo el panel se recalcula con el botón «Filtrar» (período, zona y, si sos admin, empleado).",
         items: [
-          { term: "Cartera activa", desc: "Capital que todavía está prestado y esperás cobrar." },
-          { term: "Mora", desc: "Cuánto de esa cartera está vencido e impago, y qué tan crítico es." },
-          { term: "Cotización del dólar", desc: "Referencia en vivo (blue como principal); clic para ver los otros tipos de cambio." },
+          { nombre: "Hoy", muestra: "Lo que entró HOY y en cuántos cobros: cuotas, pagos parciales y entregas de refinanciación o de acuerdo. Se actualiza solo.", alTocar: "Si sos admin, abre Reportes con el período «Hoy», donde cada cobro se ve uno por uno." },
+          { nombre: "Prestado", muestra: "El capital que está en la calle: lo que se prestó en los créditos vivos y todavía no volvió. Abajo, en cuántos créditos y a cuántos clientes." },
+          { nombre: "Deuda total", muestra: "Todo lo que falta cobrar de los créditos vivos: capital + interés + cargos. NO incluye punitorios, que tienen su propio bloque. Abajo, en cuántas cuotas está repartida." },
+          { nombre: "El círculo", muestra: "La deuda total partida en dos: qué parte es capital (la plata que vuelve) y qué parte es interés y cargos (lo que se gana)." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de la cartera",
+        items: [
+          { nombre: "Clientes activos", muestra: "Las fichas de clientes vigentes. Abajo, cuántos tienen hoy un crédito vivo, y la barra es ese porcentaje." },
+          { nombre: "Créditos activos", muestra: "Los créditos vivos (al día o atrasados). Abajo, cuántos ya se terminaron de pagar." },
+          { nombre: "Mora crítica", muestra: "Los créditos vivos con más días de atraso que el corte de «crítica» (Configuración → Cobranza → tramos de mora). La barra es qué parte de los activos son." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Los paneles de abajo",
+        items: [
+          { nombre: "Avance de cobranzas", muestra: "De las cuotas que vencen en el período: cuánto se esperaba cobrar, cuánto entró y cuánto falta. Mide la cuota (capital + interés + cargos); los punitorios no suman acá." },
+          { nombre: "Cobrabilidad / Flujo", muestra: "El gráfico mes a mes. «Cobrabilidad»: lo que vencía cada mes contra lo que se cobró de eso. «Flujo»: lo que se prestó contra todo lo que entró." },
+          { nombre: "Rendimiento por vendedor", muestra: "Solo admin. Por cada agente: lo otorgado, su cartera, su mora y cuánto cobró de lo que le vencía." },
+          { nombre: "Cobranza del día", muestra: "La agenda de Cobranzas resumida: a quién hay que contactar hoy." },
+          { nombre: "Distribución de mora", muestra: "Cuántos créditos atrasados hay en cada tramo (media, alta, crítica), con los cortes que fijó la financiera." },
+          { nombre: "Exposición en mora", muestra: "El capital de los créditos atrasados, y cuánto de eso está en mora crítica." },
+          { nombre: "Cotización del dólar", muestra: "Referencia en vivo, con el blue como principal.", alTocar: "Muestra los otros tipos de cambio." },
         ],
       },
       {
@@ -88,6 +118,16 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Clientes", muestra: "Todas las fichas del padrón." },
+          { nombre: "Sin movimiento", muestra: "Clientes que hace más de 90 días no pagan ni piden un crédito: los que se están enfriando. La barra es qué parte del padrón son.", alTocar: "Filtra la lista a esos clientes. Tocala de nuevo para volver a ver todos." },
+          { nombre: "Calificación C o D", muestra: "Clientes con score interno C o D: los que pagaron mal en esta financiera. Conviene mirarlos antes de prestarles otra vez.", alTocar: "Filtra la lista a esos clientes." },
+          { nombre: "Cargados este mes", muestra: "Clientes dados de alta en el mes en curso.", alTocar: "Filtra la lista a los nuevos." },
+        ],
+      },
+      {
         kind: "definiciones",
         titulo: "Puntos importantes",
         items: [
@@ -115,6 +155,28 @@ const HELP: Record<string, HelpDoc> = {
           "Clic en una fila abre el detalle: cronograma de cuotas, pagos e info del crédito.",
           "Para uno nuevo, entrá a \"Nuevo crédito\" (el simulador).",
           "La pestaña \"Refinanciados\" muestra las reestructuraciones de deuda.",
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de la pestaña Créditos",
+        nota: "Cuentan sobre TODA la cartera, no sobre lo que está filtrado: el recorte se ve en el número al lado del título de la tabla.",
+        items: [
+          { nombre: "Créditos activos", muestra: "Los créditos vivos (activos y vencidos). Abajo, cuántos están al día y cuántos en mora; la barra es el porcentaje al día.", alTocar: "Filtra la tabla a los activos." },
+          { nombre: "Cartera activa", muestra: "El saldo que falta cobrar de los créditos vivos. Abajo, entre cuántos créditos se reparte y el promedio por crédito." },
+          { nombre: "Activos atrasados", muestra: "Los que la tabla marca «Activo atrasado»: vivos, con alguna cuota vencida, que todavía no llegaron a Legales y no tienen un acuerdo de pago vigente. Abajo, su saldo y el corte de Legales.", alTocar: "Filtra la tabla a esos créditos (también está en Filtrar → Estado)." },
+          { nombre: "Mora crítica", muestra: "Los créditos con más días de atraso que el corte de «crítica» (Configuración → Cobranza). Abajo, la plata que tienen pendiente.", alTocar: "Filtra la tabla a la mora crítica." },
+          { nombre: "Créditos pagados", muestra: "Los que se terminaron de pagar. Abajo, cuánto se les había prestado y sobre cuántos créditos en total.", alTocar: "Filtra la tabla a los pagados." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de la pestaña Refinanciados",
+        items: [
+          { nombre: "Refinanciaciones", muestra: "Cuántas refinanciaciones se hicieron, y qué parte de todos los créditos otorgados representan.", alTocar: "Muestra todas en el historial." },
+          { nombre: "Capital consolidado", muestra: "La deuda que se pasó a créditos nuevos al refinanciar, sumada, con el promedio por operación." },
+          { nombre: "Al día (recuperados)", muestra: "Refinanciaciones que se están pagando bien. Abajo, lo que falta cobrar de ellas; la barra es la tasa de recupero.", alTocar: "Filtra el historial a esas." },
+          { nombre: "Volvieron a mora", muestra: "Refinanciaciones que otra vez tienen cuotas vencidas. Abajo, el saldo que vuelve a estar en riesgo.", alTocar: "Filtra el historial a esas." },
         ],
       },
       {
@@ -315,6 +377,16 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Los recuadros de arriba",
+        items: [
+          { nombre: "Cobrado hoy", muestra: "Lo que entró hoy entre todos los cobros, de todas las cajas." },
+          { nombre: "Pagos hoy", muestra: "Cuántos cobros se registraron hoy.", alTocar: "Muestra la lista de los cobros de hoy. Tocalo de nuevo para volver a «Últimos pagos»." },
+          { nombre: "Efectivo / Transferencia", muestra: "Lo cobrado hoy, partido por cómo pagaron." },
+          { nombre: "Anulados (30 días)", muestra: "Cobros anulados en los últimos 30 días.", alTocar: "Muestra la lista de anulados, con su motivo." },
+        ],
+      },
+      {
         kind: "definiciones",
         titulo: "Cómo se imputa",
         items: [
@@ -349,10 +421,89 @@ const HELP: Record<string, HelpDoc> = {
         titulo: "Las pestañas",
         items: [
           { term: "Hoy (agenda)", desc: "Cola priorizada de a quién contactar, en seis grupos por urgencia: acuerdos con cuota vencida (todavía vigentes: se pueden salvar) → promesas vencidas → acuerdos rotos sin gestionar → contactos agendados → «les venció otra cuota» (ya se los contactó, pero después les cayó una cuota nueva) → morosos sin gestión reciente. Scopeada al vendedor. Arriba dice además cuántos morosos con acuerdo al día NO se llaman. Cada renglón tiene «Gestionar» y dos íconos: WhatsApp y SMS." },
+          { term: "Vencimientos", desc: "Las cuotas que vencen en un rango de fechas (hoy, 7, 15 o 30 días), para avisar antes de que se atrasen. Incluye las cuotas de los acuerdos de pago." },
           { term: "Morosos", desc: "Créditos en mora con días e interés moratorio. Desde acá registrás gestiones (llamada, WhatsApp, visita…). Si el cliente promete pagar, la promesa queda anotada en esa misma gestión: se concilia sola al cobrar, el cron rompe las vencidas y la vas a ver en la agenda del día." },
           { term: "Acuerdos", desc: "Los planes de pago vigentes, cumplidos y rotos. El sistema los evalúa solo: no hay que marcarlos a mano." },
+          { term: "Planillas", desc: "Los recorridos del cobrador de calle: se arman por zona, se imprimen, se cargan los cobros a la vuelta y se rinden." },
+          { term: "Incobrables", desc: "Los créditos dados por perdidos: cuánto se prestó, cuánto se recuperó después del castigo, y el cierre del caso." },
           { term: "Campañas", desc: "Envíos masivos a un grupo de morosos (WhatsApp / Email / SMS) con descuento de interés opcional. Si entre los elegidos hay créditos cuyo plan ya venció, la pantalla separa dos audiencias: a unos se les reclama el pago y a los otros se los invita a refinanciar, porque a esos ya no se les puede cobrar." },
       { term: "No contactar", desc: "Si el cliente pide que no lo llamen, se registra desde su ficha. Deja de recibir mensajes y sale de la agenda, pero la deuda sigue viva y se le puede cobrar. Levantarlo solo lo puede hacer un admin." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Hoy",
+        nota: "Las seis primeras son los grupos de la agenda, en orden de urgencia. Las que laten tienen casos esperando.",
+        items: [
+          { nombre: "Acuerdos con cuota vencida", muestra: "Tienen un acuerdo de pago y dejaron de cumplirlo. Todavía se puede salvar.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Promesas por cobrar", muestra: "Prometieron pagar y la fecha ya llegó o pasó.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Acuerdos rotos", muestra: "El acuerdo se cayó y nadie los contactó desde entonces.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Contactos agendados", muestra: "Quedó pactado volver a contactarlos hoy.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Les venció otra cuota", muestra: "Ya se los contactó, pero desde entonces les venció otra cuota.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Sin gestión reciente", muestra: "Morosos que hace más días que el umbral de Configuración → Cobranza que nadie contacta.", alTocar: "Deja en la cola solo ese grupo." },
+          { nombre: "Vencido en la cola", muestra: "Cuánta plata vencida suman los que están en la cola: cuotas impagas + punitorios. Con un grupo elegido, suma solo ese grupo.", alTocar: "Con un grupo elegido, vuelve a toda la cola." },
+          { nombre: "Contactados hoy", muestra: "A cuántos clientes ya se gestionó hoy, y cuántas gestiones fueron.", alTocar: "Muestra la lista de los contactados hoy." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Vencimientos",
+        items: [
+          { nombre: "Vencen en el rango", muestra: "Cuotas que vencen entre las dos fechas elegidas (incluye las cuotas de los acuerdos de pago)." },
+          { nombre: "Vencen hoy", muestra: "De esas, cuántas vencen hoy." },
+          { nombre: "A cobrar en el rango", muestra: "La plata de esas cuotas." },
+          { nombre: "Sin forma de contacto", muestra: "Clientes sin teléfono ni email cargado: a ellos no les llega ningún aviso ni campaña." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Morosos",
+        items: [
+          { nombre: "Total en gestión", muestra: "Créditos vivos con al menos una cuota vencida.", alTocar: "Muestra todos los tramos." },
+          { nombre: "Saldo expuesto", muestra: "El saldo entero de esos créditos: lo que se debería si ninguno vuelve a pagar." },
+          { nombre: "Mora crítica", muestra: "Los que pasaron el corte de «crítica» (Configuración → Cobranza). La barra es qué parte de los morosos son.", alTocar: "Filtra la lista a ese tramo." },
+          { nombre: "Mora alta", muestra: "Los que están en el tramo alto, entre el corte de media y el de crítica.", alTocar: "Filtra la lista a ese tramo." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Acuerdos",
+        items: [
+          { nombre: "Acuerdos vigentes", muestra: "Acuerdos de pago que se están cumpliendo.", alTocar: "Filtra a los vigentes." },
+          { nombre: "En esta vista", muestra: "Cuántos acuerdos hay en la lista que estás viendo. Los dos importes de al lado suman estos." },
+          { nombre: "Acordado", muestra: "Lo que se pactó pagar en esos acuerdos." },
+          { nombre: "Recuperado", muestra: "Lo que ya entró de lo acordado; la barra es el porcentaje cobrado." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Planillas",
+        items: [
+          { nombre: "En la calle", muestra: "Planillas que salieron y todavía no se rindieron.", alTocar: "Filtra a esas planillas." },
+          { nombre: "Sin cobrar de esos recorridos", muestra: "Lo que salió a cobrar en esas planillas y todavía no se cargó como cobrado." },
+          { nombre: "Rendidas", muestra: "Planillas ya cerradas con su rendición.", alTocar: "Filtra a las rendidas." },
+          { nombre: "Rendidas con diferencia", muestra: "Rendiciones donde lo que entregó el cobrador no coincide con lo cargado en el sistema." },
+          { nombre: "Dentro de una planilla", muestra: "«Salió a cobrar»: el total del recorrido. «Cargado en el sistema»: lo cobrado ya registrado. «Sin cobrar»: la diferencia. «Entregó el cobrador»: el efectivo de la rendición, con el sobrante o faltante." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Campañas",
+        items: [
+          { nombre: "Activas", muestra: "Campañas que ya salieron o están saliendo.", alTocar: "Filtra a esas campañas." },
+          { nombre: "En borrador", muestra: "Armadas, sin activar.", alTocar: "Filtra a esas campañas." },
+          { nombre: "Finalizadas", muestra: "Cerradas a mano o con la oferta vencida.", alTocar: "Filtra a esas campañas." },
+          { nombre: "Recuperado", muestra: "Lo cobrado a los clientes de todas las campañas, contra lo que se les reclamó." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · pestaña Incobrables",
+        items: [
+          { nombre: "Casos", muestra: "Créditos dados por incobrables. Abajo, cuántos pagaron algo después del castigo (la mejor señal para recuperar)." },
+          { nombre: "Capital prestado", muestra: "Lo que se les había prestado a esos créditos." },
+          { nombre: "Ya recuperado", muestra: "Lo que entró de esos casos; la barra es el porcentaje sobre lo prestado." },
+          { nombre: "Capital en riesgo", muestra: "Lo prestado que todavía no volvió." },
         ],
       },
       {
@@ -542,6 +693,26 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba (administrador)",
+        items: [
+          { nombre: "Saldo caja principal", muestra: "La plata de la tesorería hoy: efectivo + banco. Los dólares van aparte, en U$S." },
+          { nombre: "En poder de agentes", muestra: "La plata que está en las cajas de los vendedores, persona por persona: lo que cobraron o les entregaste y todavía no rindieron." },
+          { nombre: "Ingresos del período", muestra: "Todo lo que entró a la caja principal en el período elegido: cobros, rendiciones, aportes, reversas." },
+          { nombre: "Egresos del período", muestra: "Todo lo que salió de la caja principal en el período: desembolsos, entregas a vendedores, gastos, retiros." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba (vendedor)",
+        items: [
+          { nombre: "Saldo de mi caja", muestra: "Lo que tenés en tu caja: la suma de tus cuentas." },
+          { nombre: "Ingresos", muestra: "Lo que entró a tu caja: tus cobros y lo que te entregó la caja principal." },
+          { nombre: "Egresos", muestra: "Lo que salió de tu caja: desembolsos de tus créditos y lo que rendiste." },
+          { nombre: "Neto", muestra: "Ingresos menos egresos." },
+        ],
+      },
+      {
         // Los cinco botones de "Acciones de caja". El texto vive acá y NO adentro del botón:
         // un botón se lee de un vistazo, y cinco párrafos en fila lo convertían en una ficha.
         // Van en el mismo orden que en pantalla, que es el orden real de uso.
@@ -639,6 +810,7 @@ const HELP: Record<string, HelpDoc> = {
           "El buscador encuentra por comprobante, cliente, detalle o monto; «Filtrar», adentro, recorta por tipo y cuenta y dice qué está filtrando. «Limpiar filtros» (F3) vuelve a este mes sin nada puesto.",
           "Cada renglón abre su detalle: comprobante, fecha contable y de carga, origen, destino y el crédito (el número es un link). Desde ahí se imprime el comprobante.",
           "Exportar CSV se lleva lo que estás viendo, con el período aplicado.",
+          "El libro del administrador es el de la CAJA PRINCIPAL: lo que cobra un vendedor entra a su propia caja y no aparece acá hasta que lo rinde. Para ver todos los cobros juntos, de todas las cajas, está Reportes → Resumen → «Cobrado».",
         ],
       },
     ],
@@ -691,6 +863,17 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        nota: "Todas son del período elegido.",
+        items: [
+          { nombre: "A liquidar", muestra: "La comisión que todavía no se pagó, y a cuántos agentes." },
+          { nombre: "Ya liquidado", muestra: "Lo que ya se pagó; la barra es qué parte de la comisión del período está liquidada." },
+          { nombre: "Otorgado", muestra: "Lo que colocaron los agentes en el período: la base sobre la que se calcula la comisión." },
+          { nombre: "Agentes", muestra: "Cuántos agentes activos entran en la liquidación." },
+        ],
+      },
+      {
         kind: "definiciones",
         titulo: "Qué significa cada columna",
         items: [
@@ -725,7 +908,7 @@ const HELP: Record<string, HelpDoc> = {
         kind: "definiciones",
         titulo: "Las pestañas",
         items: [
-          { term: "Resumen", desc: "KPIs del período: otorgado, cobrado, ingreso financiero, cartera y morosidad; cobranzas por método y cartera por estado." },
+          { term: "Resumen", desc: "Las cifras del período, el detalle de cada cobro (tocando «Cobrado»), las cobranzas por método y la cartera por estado en dos bloques: «Se deben» (activos, vencidos e incobrables, con su saldo) y «Cerrados» (pagados, refinanciados, anulados y cancelados, con lo que se les prestó: ya no deben nada)." },
           { term: "Operaciones", desc: "Evolución mensual de lo otorgado y ticket promedio." },
           { term: "Productos", desc: "Qué se vende del catálogo: unidades, capital financiado y los dos tickets —por operación (cuánto se financia por venta) y por unidad (cuánto vale la cosa promedio); si difieren, es que se llevan varias cosas por vez—. El ranking se ordena por plata o por unidades, que casi nunca dan el mismo producto. Una venta cuenta el día en que se OTORGA el crédito, que es cuando el producto sale del depósito, y no cuenta si el crédito se anuló." },
           { term: "Rentabilidad", desc: "Ingreso financiero − costo de fondeo − gastos registrados = rentabilidad neta. El costo de fondeo se configura en Configuración → Rentabilidad; los gastos son los que se cargaron en Caja." },
@@ -737,12 +920,41 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Tarjetas · Resumen",
+        nota: "Las del período cuentan entre las dos fechas. «Cartera activa», «Saldo en mora» y «Morosidad» son una foto de HOY: no cambian con el período.",
+        items: [
+          { nombre: "Operaciones", muestra: "Créditos otorgados en el período (sin refinanciaciones ni anulados). Abajo, el ticket promedio." },
+          { nombre: "Monto otorgado", muestra: "La plata nueva que se prestó en el período." },
+          { nombre: "Cobrado", muestra: "Todo lo que entró en el período —cuotas, pagos parciales, entregas— y en cuántos pagos. Los anulados no suman.", alTocar: "Abre «Cobros del período»: cada cobro con su recibo, el crédito, qué fue y a qué se imputó (capital, interés, cargos o punitorios). Los anulados aparecen tachados." },
+          { nombre: "Ingreso financiero", muestra: "Lo que se ganó de lo cobrado: interés + cargos + punitorios (y la comisión de otorgamiento, si hay). El capital que vuelve no es ganancia." },
+          { nombre: "Rentab. (bruta) / Rentabilidad neta", muestra: "Bruta: el ingreso financiero, porque no hay costo de fondeo configurado. Neta: ingreso menos costo de fondeo, gastos y comisiones pagadas (Configuración → Rentabilidad)." },
+          { nombre: "Cartera activa", muestra: "El saldo que falta cobrar de los créditos vivos (activos y vencidos). No incluye incobrables." },
+          { nombre: "Saldo en mora", muestra: "El saldo ENTERO de los créditos vivos que tienen alguna cuota vencida —no solo lo vencido—, y cuántos son." },
+          { nombre: "Morosidad", muestra: "Saldo en mora dividido cartera activa: qué parte de lo que está en la calle pertenece a créditos atrasados." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Tarjetas · otras pestañas",
+        items: [
+          { nombre: "Operaciones", muestra: "Cantidad otorgada, monto otorgado, ticket promedio y plazo/tasa promedio de lo otorgado en el período." },
+          { nombre: "Productos", muestra: "Unidades vendidas, capital financiado en productos (sale del depósito, no de la caja), ticket por operación y precio promedio por unidad." },
+          { nombre: "Rentabilidad", muestra: "Ingreso financiero, costo de fondeo, gastos y comisiones pagadas, la rentabilidad neta que queda y el margen sobre el ingreso." },
+          { nombre: "Gastos", muestra: "Total gastado en el período (y en dólares aparte), cuántos gastos con su promedio, y cuánto salió de la caja principal y cuánto de las cajas de los agentes." },
+          { nombre: "Morosidad", muestra: "Créditos en mora, su saldo expuesto, los punitorios que llevan acumulados y cuántos están en mora crítica." },
+          { nombre: "Cobranza", muestra: "Gestiones hechas y cuántas lograron contacto (tasa de contacto), promesas de pago con su porcentaje de cumplimiento, y cuántos punitorios se cobraron." },
+          { nombre: "Medios de pago", muestra: "El medio que más se usa (por cantidad de pagos) y el que más plata mueve (por monto)." },
+        ],
+      },
+      {
         kind: "tips",
         titulo: "El período y las salidas",
         items: [
           "El botón «Período» aplica a TODAS las pestañas: atajos (hoy, esta semana, este mes, mes pasado, este año, últimos 12 meses, año pasado) o dos fechas. La leyenda de al lado dice el rango exacto.",
           "Los gráficos muestran su valor al pasar el mouse por cada barra (también con el teclado, con Tab).",
-          "«Imprimir» arma el reporte financiero del período (resumen, evolución mensual, cartera por estado y cobranzas por método). Cada pestaña exporta a CSV su propio detalle.",
+          "«Imprimir» arma el reporte financiero del período en una hoja A4, con el logo de la financiera: las cifras del resumen, cada cobro del período con su imputación, la cartera (se deben / cerrados), las cobranzas por método y la evolución mensual. Cada pestaña exporta a CSV su propio detalle.",
+          "Desde el Home, la píldora «Hoy» abre este reporte con el período «Hoy» puesto: es la forma rápida de ver al final del día qué entró, cobro por cobro.",
           "Todos los importes llevan centavos, también en el impreso.",
         ],
       },
@@ -762,6 +974,16 @@ const HELP: Record<string, HelpDoc> = {
           "Cargá productos con su foto, categoría, precio y stock (más su stock mínimo para la alerta).",
           "Al otorgar un crédito de tipo \"Productos\", el precio del producto es el capital.",
           "Otorgar descuenta stock; anular o eliminar el crédito lo repone.",
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Productos", muestra: "Cuántos productos tiene el catálogo." },
+          { nombre: "Unidades en stock", muestra: "La suma del stock de todos los productos." },
+          { nombre: "Valor de inventario", muestra: "Precio × stock de cada producto, sumado: lo que vale lo que hay en el depósito." },
+          { nombre: "Bajo / sin stock", muestra: "Productos que están en su stock mínimo o por debajo.", alTocar: "Filtra la lista a esos productos." },
         ],
       },
       {
@@ -798,6 +1020,15 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Movimientos", muestra: "Cuántos movimientos de stock hay con los filtros puestos." },
+          { nombre: "Entradas", muestra: "Unidades que entraron: altas, reposiciones, devoluciones y ajustes en más." },
+          { nombre: "Salidas", muestra: "Unidades que salieron: ventas a crédito y ajustes en menos." },
+        ],
+      },
+      {
         kind: "tips",
         titulo: "Buscar y filtrar",
         items: [
@@ -821,6 +1052,16 @@ const HELP: Record<string, HelpDoc> = {
         pasos: [
           "Dá de alta un proveedor con sus datos de contacto.",
           "Registrá sus movimientos (compras y pagos) para llevar el saldo.",
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Proveedores", muestra: "Cuántos hay cargados, y cuántos están activos." },
+          { nombre: "Deuda total", muestra: "Lo que se les debe a todos: compras menos pagos." },
+          { nombre: "Con saldo pendiente", muestra: "A cuántos proveedores se les debe algo." },
+          { nombre: "Activos", muestra: "Proveedores dados de alta como activos." },
         ],
       },
       {
@@ -848,6 +1089,27 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Cuenta de acceso", desc: "Si puede entrar al sistema, con qué rol y si está activa. Es la llave." },
           { term: "Ficha del agente", desc: "A quién se le atribuye cada crédito, su comisión, su meta y su caja. Es el historial." },
           { term: "Por qué van separados", desc: "Si un empleado se va y le cerrás el acceso, sus créditos y comisiones tienen que seguir existiendo. Por eso la ficha sobrevive a la cuenta." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Personas", muestra: "Todas las personas de la financiera, y cuántas tienen ficha de agente." },
+          { nombre: "Otorgado (total)", muestra: "Todo lo que colocó el equipo, en toda su historia." },
+          { nombre: "Comisiones", muestra: "La comisión a liquidar del período, incluido el plus por recupero si lo hay." },
+          { nombre: "Requieren atención", muestra: "Personas sin cuenta de acceso o con el acceso desactivado." },
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de la ficha de un agente",
+        items: [
+          { nombre: "Créditos otorgados", muestra: "Los créditos que colocó, en toda su historia." },
+          { nombre: "Vendido", muestra: "La plata que colocó, acumulada." },
+          { nombre: "Comisión del período / acumulada", muestra: "Lo que le corresponde de comisión, con el plus de recupero si lo tiene." },
+          { nombre: "Avance de meta", muestra: "Qué porcentaje de su meta vigente lleva cumplido." },
+          { nombre: "Saldo de su caja", muestra: "La plata que tiene en su caja, y abajo cuenta por cuenta." },
         ],
       },
       {
@@ -964,6 +1226,16 @@ const HELP: Record<string, HelpDoc> = {
         ],
       },
       {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Eventos totales", muestra: "Todos los eventos registrados en la traza." },
+          { nombre: "Hoy", muestra: "Eventos de hoy.", alTocar: "Recorta la traza a hoy." },
+          { nombre: "Últimos 7 días", muestra: "Eventos de la última semana.", alTocar: "Recorta la traza a esos días." },
+          { nombre: "Pagos registrados", muestra: "Eventos de cobros registrados.", alTocar: "Recorta la traza a los cobros." },
+        ],
+      },
+      {
         kind: "tips",
         titulo: "Buscar y filtrar",
         items: [
@@ -1004,6 +1276,16 @@ const HELP: Record<string, HelpDoc> = {
           "Mirá los KPIs: total de financieras, en Pro, por vencer y suspendidas.",
           "Clic en una financiera abre su ficha: plan, vencimiento, monto mensual, notas e historial.",
           "Desde la ficha cambiás el plan (Pro/Free), suspendés/reactivás y editás el monto/notas.",
+        ],
+      },
+      {
+        kind: "tarjetas",
+        titulo: "Las tarjetas de arriba",
+        items: [
+          { nombre: "Financieras", muestra: "Cuántas financieras usan el sistema." },
+          { nombre: "En plan Pro", muestra: "Cuántas pagan el plan Pro." },
+          { nombre: "Por vencer (≤7 días)", muestra: "Suscripciones que vencen en la próxima semana. Late si hay alguna." },
+          { nombre: "Suspendidas", muestra: "Financieras con el acceso suspendido." },
         ],
       },
     ],
