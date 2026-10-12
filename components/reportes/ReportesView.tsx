@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Download, Printer } from "lucide-react";
 import { useReportes, useReporteSerie, useReporteCobranza, useReporteProductos, useFinanciera, type Reporte, type ReporteSerie, type PuntoMensual, type ReporteCobranza, type ReporteProductos } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
-import { formatFecha, formatDias, pctDe } from "@/lib/utils";
+import { formatFecha, formatDias, pctDe, formatCreditoNumero } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
@@ -15,7 +15,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
 import { Nota } from "@/components/ui/Nota";
-import { DetalleCobros } from "./DetalleCobros";
+import { DetalleCobros, tipoDeCobro, horaAR } from "./DetalleCobros";
+import { imgLogoImpreso } from "@/lib/logo-papel";
 import { ESTADOS_COBRABLES } from "@/lib/domain";
 
 function n2(x: number) {
@@ -152,76 +153,149 @@ function imprimirReporte(
   // Co-branding: el reporte sale con el nombre (y logo) de la financiera, no "CreditFlow".
   const marca = (financiera?.nombre ?? "").trim() || "CreditFlow";
   const logo = (financiera?.logo_url ?? "").trim();
+  const vacio = (cols: number, txt: string) => `<tr><td colspan="${cols}" class="vac">${txt}</td></tr>`;
 
-  const kpis: [string, string][] = [
-    ["Operaciones", String(r.operaciones.cantidad)],
-    ["Monto otorgado", $(r.operaciones.monto_otorgado)],
-    ["Ticket promedio", $(r.operaciones.ticket_promedio)],
-    ["Cobrado", $(r.cobranzas.total_cobrado)],
-    ["Ingreso financiero", $(r.rentabilidad.ingreso_total)],
-    [r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)", $(r.rentabilidad.rentabilidad_neta)],
-    ["Cartera activa", $(r.cartera.saldo_activo_total)],
-    ["Morosidad", n1(moraPct) + "%"],
+  /*
+    🔴 MISMO LENGUAJE QUE EL RESTO DE LOS IMPRESOS (estado de cuenta, plan, acta de cierre):
+    encabezado con el logo PARA PAPEL, banda de cifras, tablas con cabecera oscura. Fernando
+    (12/10/2026): "el logo tiene el fondo negro detrás… se ve todo mal ordenado". El logo
+    usaba el original —pensado para fondo oscuro— y no la versión que se genera al subirlo.
+  */
+  const kpis: { l: string; v: string; cls?: string }[] = [
+    { l: "Operaciones", v: String(r.operaciones.cantidad) },
+    { l: "Monto otorgado", v: $(r.operaciones.monto_otorgado) },
+    { l: "Ticket promedio", v: $(r.operaciones.ticket_promedio) },
+    { l: "Cobrado", v: $(r.cobranzas.total_cobrado), cls: "ok" },
+    { l: "Ingreso financiero", v: $(r.rentabilidad.ingreso_total) },
+    { l: r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)", v: $(r.rentabilidad.rentabilidad_neta), cls: r.rentabilidad.rentabilidad_neta >= 0 ? "ok" : "bad" },
+    { l: "Cartera activa", v: $(r.cartera.saldo_activo_total) },
+    { l: "Morosidad", v: n1(moraPct) + "%", cls: moraPct > 0 ? "bad" : "ok" },
   ];
-  const kpiHtml = kpis.map(([l, v]) => `<div class="kpi"><span class="kl">${esc(l)}</span><span class="kv">${esc(v)}</span></div>`).join("");
+  const kpiHtml = kpis.map((k) => `<div class="kpi"><span class="kl">${esc(k.l)}</span><span class="kv ${k.cls ?? ""}">${esc(k.v)}</span></div>`).join("");
 
-  const serieHtml = (s?.serie ?? []).map((p) => `<tr>
-    <td>${mesCorto(p.mes)}</td><td class="r">${p.otorgado_cantidad}</td><td class="r">${$(p.otorgado_monto)}</td>
-    <td class="r">${$(p.cobrado_total)}</td><td class="r">${$(p.ingreso_financiero)}</td>
-    <td class="r">${$(p.rentabilidad_neta)}</td><td class="r">${n1(p.mora_pct)}%</td></tr>`).join("");
+  // El detalle de cada cobro: lo que se mira al final del día o de la semana.
+  const cobros = r.detalle_cobros ?? [];
+  const validos = cobros.filter((c) => !c.anulado);
+  const cobrosHtml = cobros.map((c, i) => {
+    const partes: [string, number][] = [["Capital", c.aplicado_capital], ["Interés", c.aplicado_interes], ["Cargos", c.aplicado_cargos], ["Punitorios", c.aplicado_mora]];
+    const imp = partes.filter(([, v]) => v > 0.004).map(([k, v]) => `${k} ${$(v)}`).join("<br>");
+    const nuevo = c.credito_nuevo != null ? ` · sigue en <span class="nw">${formatCreditoNumero(c.credito_nuevo, c.credito.numero)}</span>` : "";
+    const motivo = c.anulado && c.anulado_motivo ? " · " + esc(c.anulado_motivo) : "";
+    return `<tr class="${i % 2 ? "ev" : ""}${c.anulado ? " anu" : ""}">
+      <td class="nw">${fmtDate(c.fecha)}<span class="sub">${horaAR(c.hora)}</span></td>
+      <td class="mn">${esc(c.recibo ?? "—")}</td>
+      <td><strong>${esc(c.cliente)}</strong><span class="sub mn">${esc(formatCreditoNumero(c.credito.numero, c.credito.numero_origen))}</span></td>
+      <td><strong>${esc(tipoDeCobro(c).label)}</strong><span class="sub">${esc(c.concepto)}${nuevo}${motivo}</span></td>
+      <td class="imp">${imp || "—"}</td>
+      <td class="r mn fw">${$(c.monto)}</td></tr>`;
+  }).join("");
+  const totalCobros = validos.reduce((acc, c) => acc + c.monto, 0);
+  const anuladosCnt = cobros.length - validos.length;
 
   const { seDeben, cerrados } = partirCartera(r);
-  const carteraHtml =
-    `<tr><th colspan="3">Se deben</th></tr>` +
-    seDeben.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.saldo_pendiente)}</td></tr>`).join("") +
-    `<tr><td><strong>Saldo activo</strong> (sin incobrables)</td><td></td><td class="r"><strong>${$(r.cartera.saldo_activo_total)}</strong></td></tr>` +
-    `<tr><th colspan="3">Cerrados · otorgado</th></tr>` +
-    cerrados.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.monto_original)}</td></tr>`).join("");
-  const metodoHtml = r.cobranzas_por_metodo.map((m) => `<tr><td>${esc(metodoLabel[m.metodo] ?? m.metodo)}</td><td class="r">${m.cantidad}</td><td class="r">${$(m.monto)}</td></tr>`).join("");
+  const fila = (cells: string[], i: number) => `<tr class="${i % 2 ? "ev" : ""}">${cells.join("")}</tr>`;
+  const deberHtml = seDeben.map((e, i) => fila([`<td>${esc(estadoLabel[e.estado] ?? e.estado)}</td>`, `<td class="r">${e.cantidad}</td>`, `<td class="r mn">${$(e.saldo_pendiente)}</td>`], i)).join("");
+  const cerradosHtml = cerrados.map((e, i) => fila([`<td>${esc(estadoLabel[e.estado] ?? e.estado)}</td>`, `<td class="r">${e.cantidad}</td>`, `<td class="r mn">${$(e.monto_original)}</td>`], i)).join("");
+  const incob = seDeben.find((e) => e.estado === "incobrable");
+  const metodoHtml = r.cobranzas_por_metodo.map((m, i) => fila([`<td>${esc(metodoLabel[m.metodo] ?? m.metodo)}</td>`, `<td class="r">${m.cantidad}</td>`, `<td class="r mn">${$(m.monto)}</td>`], i)).join("");
+  const serieHtml = (s?.serie ?? []).map((p, i) => fila([
+    `<td>${mesCorto(p.mes)}</td>`, `<td class="r">${p.otorgado_cantidad}</td>`, `<td class="r mn">${$(p.otorgado_monto)}</td>`,
+    `<td class="r mn">${$(p.cobrado_total)}</td>`, `<td class="r mn">${$(p.ingreso_financiero)}</td>`,
+    `<td class="r mn">${$(p.rentabilidad_neta)}</td>`, `<td class="r">${n1(p.mora_pct)}%</td>`], i)).join("");
 
-  const brandHtml = logo
-    ? `<div class="brandrow"><img class="logo" src="${esc(logo)}" alt=""><div><div class="brand">${esc(marca)}</div><div class="subttl">Reporte financiero</div></div></div>`
-    : `<div><div class="brand">${esc(marca)}</div><div class="subttl">Reporte financiero</div></div>`;
+  // El nombre escrito solo va si no hay logo: el logo ya lo trae (mismo criterio que el estado de cuenta).
+  const brandHtml = logo ? imgLogoImpreso(logo, 'class="logo"') : `<span class="bname">${esc(marca)}</span>`;
+  const periodoTxt = r.periodo.desde === r.periodo.hasta
+    ? fmtDate(r.periodo.desde)
+    : `${fmtDate(r.periodo.desde)} – ${fmtDate(r.periodo.hasta)}`;
+  const cntCobros = `${validos.length} ${validos.length === 1 ? "cobro" : "cobros"}${anuladosCnt > 0 ? ` · ${anuladosCnt} anulado(s), no suman` : ""}`;
 
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <title>Reporte ${esc(r.periodo.desde)} a ${esc(r.periodo.hasta)}</title>
 <style>
-  @page { margin: 16mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 0; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 16px; }
-  .brandrow { display: flex; align-items: center; gap: 10px; }
-  .logo { height: 34px; width: auto; object-fit: contain; }
-  .brand { font-size: 20px; font-weight: 800; background: linear-gradient(135deg,#6366F1,#818CF8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-  .subttl { font-size: 12px; color: #374151; margin-top: 2px; }
-  .meta { text-align: right; font-size: 11px; color: #374151; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #374151; margin: 20px 0 8px; }
+  @page { size: A4 portrait; margin: 12mm; }
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, -apple-system, Arial, sans-serif; color: #111827; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 14px; border-bottom: 2px solid #111827; }
+  .logo { height: 52px; width: auto; max-width: 220px; object-fit: contain; display: block; }
+  .bname { font-size: 20px; font-weight: 800; color: #4F46E5; letter-spacing: -.4px; }
+  .doc { margin-top: 8px; font-size: 20px; font-weight: 800; letter-spacing: -.3px; }
+  .per { text-align: right; }
+  .pl { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #4B5563; }
+  .pv { font-size: 15px; font-weight: 800; font-family: 'Courier New', Courier, monospace; margin-top: 2px; }
+  .em { font-size: 10px; color: #6B7280; margin-top: 4px; }
+  .sec { margin-top: 20px; }
+  .keep { break-inside: avoid-page; }
+  .ttl { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+  .ttl .cnt { font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; color: #6B7280; }
   .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; }
-  .kl { display: block; font-size: 10px; color: #6b7280; }
-  .kv { display: block; font-size: 16px; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-  th { text-transform: uppercase; font-size: 9px; letter-spacing: .05em; color: #6b7280; }
-  td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .foot { margin-top: 24px; font-size: 9px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+  .kpi { border: 1px solid #E5E7EB; border-radius: 10px; padding: 9px 12px; background: #F9FAFB; }
+  .kl { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #4B5563; }
+  .kv { display: block; margin-top: 3px; font-size: 15px; font-weight: 800; font-family: 'Courier New', Courier, monospace; }
+  .kv.ok { color: #15803D; } .kv.bad { color: #B91C1C; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid #E5E7EB; border-radius: 10px; overflow: hidden; font-size: 10.5px; }
+  thead th { background: #111827; color: #fff; padding: 8px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; text-align: left; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #F0F0F0; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.ev { background: #F9FAFB; }
+  tbody tr { break-inside: avoid; }
+  tr.anu td { color: #9CA3AF; } tr.anu td.fw { text-decoration: line-through; }
+  tfoot td { background: #111827; color: #fff; padding: 9px 10px; font-weight: 700; }
+  .fl { font-size: 9px; text-transform: uppercase; letter-spacing: .8px; color: rgba(255,255,255,.6); }
+  .r, th.r { text-align: right; } .mn { font-family: 'Courier New', Courier, monospace; white-space: nowrap; } .fw { font-weight: 700; } .nw { white-space: nowrap; }
+  .sub { display: block; font-size: 9.5px; color: #6B7280; font-weight: 400; margin-top: 1px; }
+  .imp { font-size: 9.5px; color: #374151; line-height: 1.45; white-space: nowrap; font-family: 'Courier New', Courier, monospace; }
+  .vac { text-align: center; color: #9CA3AF; padding: 14px; }
+  .note { margin-top: 6px; font-size: 9.5px; color: #4B5563; padding: 6px 10px; border: 1px solid #E5E7EB; border-radius: 8px; background: #F9FAFB; }
+  .foot { margin-top: 22px; padding-top: 8px; border-top: 1px solid #E5E7EB; font-size: 9px; color: #9CA3AF; }
 </style></head><body>
-  <div class="head">
-    ${brandHtml}
-    <div class="meta">Período: <strong>${fmtDate(r.periodo.desde)} – ${fmtDate(r.periodo.hasta)}</strong><br>Emitido: ${fmtDate(new Date().toISOString())}</div>
+  <div class="hd">
+    <div>${brandHtml}<div class="doc">Reporte financiero</div></div>
+    <div class="per">
+      <div class="pl">Período</div>
+      <div class="pv">${periodoTxt}</div>
+      <div class="em">Emitido el ${fmtDate(new Date().toISOString())}</div>
+    </div>
   </div>
 
-  <h2>Resumen</h2>
-  <div class="kpis">${kpiHtml}</div>
+  <div class="sec keep"><div class="ttl">Resumen</div><div class="kpis">${kpiHtml}</div></div>
 
-  <h2>Evolución mensual</h2>
-  <table><thead><tr><th>Mes</th><th class="r">Operaciones</th><th class="r">Otorgado</th><th class="r">Cobrado</th><th class="r">Ingreso financiero</th><th class="r">Rentab. neta</th><th class="r">Mora %</th></tr></thead>
-  <tbody>${serieHtml || '<tr><td colspan="7" style="text-align:center;color:#9ca3af">Sin datos</td></tr>'}</tbody></table>
+  <div class="sec">
+    <div class="ttl">Cobros del período <span class="cnt">${cntCobros}</span></div>
+    <table><thead><tr><th>Fecha</th><th>Recibo</th><th>Cliente / crédito</th><th>Operación</th><th>Imputado a</th><th class="r">Monto</th></tr></thead>
+    <tbody>${cobrosHtml || vacio(6, "Sin cobros en el período")}</tbody>
+    ${validos.length > 0 ? `<tfoot><tr><td colspan="5"><span class="fl">Total cobrado</span></td><td class="r mn">${$(totalCobros)}</td></tr></tfoot>` : ""}</table>
+  </div>
 
-  <div class="two">
-    <div><h2>Cartera por estado</h2><table><thead><tr><th>Estado</th><th class="r">Créditos</th><th class="r">Saldo</th></tr></thead><tbody>${carteraHtml}</tbody></table></div>
-    <div><h2>Cobranzas por método</h2><table><thead><tr><th>Método</th><th class="r">Pagos</th><th class="r">Monto</th></tr></thead><tbody>${metodoHtml || '<tr><td colspan="3" style="text-align:center;color:#9ca3af">Sin pagos</td></tr>'}</tbody></table></div>
+  <div class="sec two keep">
+    <div>
+      <div class="ttl">Cartera · se deben</div>
+      <table><thead><tr><th>Estado</th><th class="r">Créditos</th><th class="r">Saldo</th></tr></thead>
+      <tbody>${deberHtml || vacio(3, "Ningún crédito con deuda")}</tbody>
+      <tfoot><tr><td colspan="2"><span class="fl">Saldo activo</span></td><td class="r mn">${$(r.cartera.saldo_activo_total)}</td></tr></tfoot></table>
+      ${incob && incob.saldo_pendiente > 0 ? `<div class="note">El saldo activo no incluye los ${$(incob.saldo_pendiente)} de incobrables.</div>` : ""}
+    </div>
+    <div>
+      <div class="ttl">Cartera · cerrados</div>
+      <table><thead><tr><th>Estado</th><th class="r">Créditos</th><th class="r">Otorgado</th></tr></thead>
+      <tbody>${cerradosHtml || vacio(3, "Ninguno")}</tbody></table>
+    </div>
+  </div>
+
+  <div class="sec two keep">
+    <div>
+      <div class="ttl">Cobranzas por método</div>
+      <table><thead><tr><th>Método</th><th class="r">Pagos</th><th class="r">Monto</th></tr></thead>
+      <tbody>${metodoHtml || vacio(3, "Sin pagos")}</tbody></table>
+    </div>
+    <div></div>
+  </div>
+
+  <div class="sec keep">
+    <div class="ttl">Evolución mensual</div>
+    <table><thead><tr><th>Mes</th><th class="r">Operaciones</th><th class="r">Otorgado</th><th class="r">Cobrado</th><th class="r">Ingreso fin.</th><th class="r">Rentab. neta</th><th class="r">Mora %</th></tr></thead>
+    <tbody>${serieHtml || vacio(7, "Sin datos")}</tbody></table>
   </div>
 
   <div class="foot">Resumen informativo generado por ${esc(marca)}. No constituye un documento contable ni fiscal.</div>

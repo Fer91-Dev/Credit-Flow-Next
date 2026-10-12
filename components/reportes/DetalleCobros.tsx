@@ -15,7 +15,7 @@ const METODO: Record<string, string> = { efectivo: "Efectivo", transferencia: "T
  * cuota 3", "Entrega a cuenta de la cuota 2"); el badge lo resume para recorrer la lista.
  * "Pago parcial" sale de la misma regla que la ficha (`frasePago`): si quedó algo "a cuenta".
  */
-function tipoDeCobro(c: DetalleCobro): { label: string; variant: BadgeVariant } {
+export function tipoDeCobro(c: DetalleCobro): { label: string; variant: BadgeVariant } {
   if (c.anulado) return { label: "Anulado", variant: "destructive" };
   if (c.tipo === "entrega_refinanciacion") return { label: "Entrega refinanciación", variant: "warning" };
   if (c.tipo === "entrega_acuerdo") return { label: "Entrega acuerdo", variant: "primary" };
@@ -25,7 +25,7 @@ function tipoDeCobro(c: DetalleCobro): { label: string; variant: BadgeVariant } 
 }
 
 /** La hora del registro, en hora argentina (la `fecha` es solo el día). */
-const horaAR = (iso: string) =>
+export const horaAR = (iso: string) =>
   new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
 
 /**
