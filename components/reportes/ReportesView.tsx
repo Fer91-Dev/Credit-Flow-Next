@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
 import { Nota } from "@/components/ui/Nota";
 import { DetalleCobros } from "./DetalleCobros";
+import { ESTADOS_COBRABLES } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -169,7 +170,13 @@ function imprimirReporte(
     <td class="r">${$(p.cobrado_total)}</td><td class="r">${$(p.ingreso_financiero)}</td>
     <td class="r">${$(p.rentabilidad_neta)}</td><td class="r">${n1(p.mora_pct)}%</td></tr>`).join("");
 
-  const carteraHtml = r.cartera.por_estado.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.saldo_pendiente)}</td></tr>`).join("");
+  const { seDeben, cerrados } = partirCartera(r);
+  const carteraHtml =
+    `<tr><th colspan="3">Se deben</th></tr>` +
+    seDeben.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.saldo_pendiente)}</td></tr>`).join("") +
+    `<tr><td><strong>Saldo activo</strong> (sin incobrables)</td><td></td><td class="r"><strong>${$(r.cartera.saldo_activo_total)}</strong></td></tr>` +
+    `<tr><th colspan="3">Cerrados · otorgado</th></tr>` +
+    cerrados.map((e) => `<tr><td>${esc(estadoLabel[e.estado] ?? e.estado)}</td><td class="r">${e.cantidad}</td><td class="r">${$(e.monto_original)}</td></tr>`).join("");
   const metodoHtml = r.cobranzas_por_metodo.map((m) => `<tr><td>${esc(metodoLabel[m.metodo] ?? m.metodo)}</td><td class="r">${m.cantidad}</td><td class="r">${$(m.monto)}</td></tr>`).join("");
 
   const brandHtml = logo
@@ -452,9 +459,7 @@ function TabResumen({ r }: { r: Reporte }) {
           )}
         </Section>
         <Section title="Cartera por estado" icon="chart-increasing">
-          <SimpleTable head={["Estado", "Créditos", "Saldo"]}
-            rows={r.cartera.por_estado.map((e) => [<span key="e" className="capitalize">{estadoLabel[e.estado] ?? e.estado}</span>, e.cantidad, <span key="s" className="font-mono font-semibold text-foreground">${n2(e.saldo_pendiente)}</span>])}
-            foot={["Saldo activo", "", <span key="f" className="font-mono font-bold text-warning">${n2(r.cartera.saldo_activo_total)}</span>]} />
+          <CarteraPorEstado r={r} />
         </Section>
       </div>
     </div>
@@ -1218,6 +1223,57 @@ function Section({ title, icon, children }: { title: string; icon: string; child
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       {children}
+    </div>
+  );
+}
+
+/**
+ * LA CARTERA EN DOS BLOQUES (Fernando, 12/10/2026: "no entiendo por qué dice saldo 0 en
+ * pagados, refinanciados…"). Una sola tabla con "Saldo" mostraba cuatro filas en $0,00 —que
+ * es correcto: no deben nada— y parecía un error; y los incobrables quedaban arriba del
+ * "Saldo activo" como si sumaran, cuando no suman.
+ *
+ * "Se deben" son los estados a los que todavía puede entrar plata (`ESTADOS_COBRABLES`), con
+ * su saldo. "Cerrados" es todo lo demás, con lo que se les prestó: ahí el saldo no dice nada.
+ */
+function partirCartera(r: Reporte) {
+  const cobrables = ESTADOS_COBRABLES as readonly string[];
+  const seDeben = cobrables
+    .map((est) => r.cartera.por_estado.find((e) => e.estado === est))
+    .filter((e): e is Reporte["cartera"]["por_estado"][number] => !!e);
+  const cerrados = r.cartera.por_estado
+    .filter((e) => !cobrables.includes(e.estado))
+    .sort((a, b) => b.monto_original - a.monto_original);
+  return { seDeben, cerrados };
+}
+
+function CarteraPorEstado({ r }: { r: Reporte }) {
+  const { seDeben, cerrados } = partirCartera(r);
+  const incobrable = seDeben.find((e) => e.estado === "incobrable");
+  const rotulo = (t: string) => <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t}</p>;
+  const estado = (e: { estado: string }) => <span key="e" className="capitalize">{estadoLabel[e.estado] ?? e.estado}</span>;
+  return (
+    <div className="space-y-5">
+      <div>
+        {rotulo("Se deben")}
+        {seDeben.length === 0 ? <Empty>Ningún crédito con deuda.</Empty> : (
+          <SimpleTable head={["Estado", "Créditos", "Saldo"]}
+            rows={seDeben.map((e) => [estado(e), e.cantidad, <span key="s" className="font-mono font-semibold text-foreground">${n2(e.saldo_pendiente)}</span>])}
+            foot={["Saldo activo", "", <span key="f" className="font-mono font-bold text-warning">${n2(r.cartera.saldo_activo_total)}</span>]} />
+        )}
+        {incobrable && incobrable.saldo_pendiente > 0 && (
+          <Nota compacta className="mt-2">
+            El saldo activo no incluye los ${n2(incobrable.saldo_pendiente)} de incobrables: se gestionan desde Recupero.
+          </Nota>
+        )}
+      </div>
+      {cerrados.length > 0 && (
+        <div>
+          {rotulo("Cerrados")}
+          <SimpleTable head={["Estado", "Créditos", "Otorgado"]}
+            rows={cerrados.map((e) => [estado(e), e.cantidad, <span key="o" className="font-mono font-semibold text-muted-foreground">${n2(e.monto_original)}</span>])} />
+        </div>
+      )}
     </div>
   );
 }
