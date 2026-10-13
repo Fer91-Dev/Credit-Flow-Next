@@ -6,8 +6,9 @@ import { useLibreDeuda } from "@/lib/swr";
 import { Emoji } from "@/components/ui/Emoji";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { formatCreditoNumero, formatFechaHora } from "@/lib/utils";
+import { formatCreditoNumero, formatFecha, formatFechaHora } from "@/lib/utils";
 import { libreDeudaTexto } from "@/lib/libre-deuda-texto";
+import { detalleAbonado } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -112,7 +113,7 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                      * que el capital que se llevó — la diferencia es el interés pactado y los
                      * punitorios.
                      */
-                    ["Total abonado", `$${n2(ld.totales.total_pagado)} en ${ld.totales.pagos} pago${ld.totales.pagos === 1 ? "" : "s"}`],
+                    ["Total abonado", `$${n2(ld.totales.total_pagado)} ${detalleAbonado(ld.totales.pagos, ld.totales.cuotas_antes ?? 0)}`],
                     ["· Capital", `$${n2(ld.totales.capital)}`],
                     ["· Interés", `$${n2(ld.totales.interes)}`],
                     ...(ld.totales.cargos > 0 ? ([["· Cargos", `$${n2(ld.totales.cargos)}`]] as [string, string][]) : []),
@@ -148,7 +149,10 @@ export function LibreDeudaDialog({ creditoId, onClose }: { creditoId: string | n
                           ],
                         ] as [string, string][])
                       : []),
-                    ["Fecha de cancelación", ld.totales.fecha_cancelacion ? formatFechaHora(ld.totales.fecha_cancelacion) : "—"],
+                    ["Fecha de cancelación", !ld.totales.fecha_cancelacion ? "—"
+                      // Día pelado (pagada antes del sistema, sin hora): solo la fecha.
+                      : new Date(ld.totales.fecha_cancelacion).getTime() % 86_400_000 === 0 ? formatFecha(ld.totales.fecha_cancelacion)
+                      : formatFechaHora(ld.totales.fecha_cancelacion)],
                   ] as [string, string][]).map(([k, v], i) => (
                     <tr key={k} className={i % 2 === 1 ? "bg-muted/5" : ""}>
                       <td className="px-3 py-2 text-muted-foreground border-b border-border/40">{k}</td>

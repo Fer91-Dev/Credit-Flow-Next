@@ -17,7 +17,7 @@
  */
 import { bytesLogoImpreso } from "@/lib/logo-papel";
 import { formatCreditoNumero } from "@/lib/utils";
-import { round2 } from "@/lib/domain";
+import { round2, detalleAbonado } from "@/lib/domain";
 import { libreDeudaTexto } from "@/lib/libre-deuda-texto";
 import type { DatosLibreDeuda } from "@/lib/libre-deuda-datos";
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
@@ -72,12 +72,17 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
    * `formatFechaHora` — que es lo que ya usa la pantalla, y por eso la pantalla decía bien
    * la hora mientras el PDF decía otra.
    */
-  const fmtStamp = (d: Date | string | null) =>
-    d
-      ? new Intl.DateTimeFormat(locale || "es-AR", {
-          dateStyle: "long", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires",
-        }).format(typeof d === "string" ? new Date(d) : d)
-      : "—";
+  const fmtStamp = (v: Date | string | null) => {
+    if (!v) return "—";
+    const d = typeof v === "string" ? new Date(v) : v;
+    // Un día pelado (cuota pagada antes del sistema, sin hora) llega a medianoche UTC: en hora
+    // argentina sería las 21:00 del día ANTERIOR. Va solo la fecha, leída en UTC.
+    const soloDia = d.getTime() % 86_400_000 === 0;
+    return new Intl.DateTimeFormat(locale || "es-AR", soloDia
+      ? { dateStyle: "long", timeZone: "UTC" }
+      : { dateStyle: "long", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" },
+    ).format(d);
+  };
 
   const numeroCredito = formatCreditoNumero(credito.numero, credito.refinancia_a_numero);
 
@@ -181,7 +186,7 @@ export async function generarLibreDeudaPDF(data: LibreDeudaPDFData): Promise<Uin
    * diferencia es el interés pactado y los punitorios.
    */
   fila(
-    `Total abonado en ${totales.pagos} pago${totales.pagos === 1 ? "" : "s"}`,
+    `Total abonado ${detalleAbonado(totales.pagos, totales.cuotas_antes ?? 0)}`,
     fmtMoney(totales.total_pagado),
     { fuerte: true },
   );

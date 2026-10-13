@@ -766,7 +766,9 @@ export interface CuotaPersistida {
   total_cobrar?: number;
   /** Recibos que imputaron a la cuota (comprobante REC + fecha/hora del pago + monto aplicado). */
   comprobantes?: {
-    comprobante: string | null; pago_id: string; fecha: string; fecha_hora: string;
+    /** `pago_id`/`fecha_hora` null = cuota pagada ANTES del sistema (sin recibo; `fecha` = día de pago, si se sabe). */
+    comprobante: string | null; pago_id: string | null; fecha: string | null; fecha_hora: string | null;
+    sin_recibo?: boolean;
     /** Si ese cobro fue la entrega con la que se refinanció el crédito. */
     entrega_refinanciacion?: boolean;
     /** Lo que de ESE cobro se imputó a ESTA cuota. */
@@ -2191,6 +2193,8 @@ export interface LibreDeuda {
     condonado: number;
     /** Cuántos cobros lo formaron. */
     pagos: number;
+    /** Cuotas pagadas ANTES del sistema (crédito anterior), sin pago ni recibo. */
+    cuotas_antes?: number;
     cuotas: number;
     fecha_cancelacion: string | null;
   };

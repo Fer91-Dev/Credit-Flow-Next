@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota, anteriorDelCredito } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
@@ -202,6 +202,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   /** Punitorios condonados por la promo, para poder decirlo y no solo mostrarlo más chico. */
   let ahorroPromo = 0;
 
+  // Crédito anterior al sistema: sus cuotas pagadas están saldadas SIN pago (la plata entró a
+  // la caja vieja). Para que el plan diga cuándo y cuánto, van como un "comprobante" sin recibo.
+  const pagosAnteriores = new Map((anteriorDelCredito(credito.cronograma)?.pagos ?? []).map((p) => [p.nro, p.fecha]));
+
   const cuotas = credito.cuotas.map((c) => {
     /**
      * 🔴 UNA CUOTA CONDONADA NO SE VUELVE A EVALUAR.
@@ -273,7 +277,10 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       : round2(Math.max(0, c.cuota_total - (c.pagado_capital + c.pagado_interes + c.pagado_cargos)));
 
     // Recibos (comprobantes) que imputaron a esta cuota.
-    const comprobantes = c.aplicaciones
+    const comprobantes: {
+      comprobante: string | null; pago_id: string | null; fecha: Date | null; fecha_hora: Date | null;
+      monto: number; monto_pago: number; entrega_refinanciacion: boolean; sin_recibo?: boolean;
+    }[] = c.aplicaciones
       .map((a) => {
         // El COBRO, no "el primero con número": desde que la anulación también apunta al
         // pago, `movimientos` trae el ingreso y su reversa, y el recibo de una cuota es
@@ -302,6 +309,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         };
       })
       .filter((x) => x.monto > 0);
+    if (pagosAnteriores.has(c.nro) && c.aplicaciones.length === 0) {
+      const fecha = pagosAnteriores.get(c.nro) ?? null;
+      comprobantes.push({
+        comprobante: "Antes del sistema", pago_id: null, fecha: fecha ? new Date(`${fecha}T00:00:00.000Z`) : null,
+        fecha_hora: null, monto: round2(c.pagado), monto_pago: round2(c.pagado), entrega_refinanciacion: false, sin_recibo: true,
+      });
+    }
     return {
       nro: c.nro,
       fecha_vencimiento: c.fecha_vencimiento,

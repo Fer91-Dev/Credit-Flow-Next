@@ -13,7 +13,7 @@ import { scopeCreditosVendedor, type AuthContext } from "@/lib/auth";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
-import { round2 } from "@/lib/domain";
+import { round2, anteriorDelCredito } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 
 /** Motivo por el que no se puede emitir, para que cada ruta arme su propia respuesta. */
@@ -45,6 +45,8 @@ export interface DatosLibreDeuda {
      */
     condonado: number;
     pagos: number;
+    /** Cuotas pagadas ANTES del sistema (crédito anterior): saldadas sin pago ni recibo. */
+    cuotas_antes: number;
     cuotas: number;
     fecha_cancelacion: Date | null;
   };
@@ -67,7 +69,7 @@ export async function datosLibreDeuda(
     select: {
       id: true, numero: true, tipo_credito: true, monto_original: true, tasa: true,
       plazo_meses: true, frecuencia: true, fecha_inicio: true, created_at: true, estado: true,
-      es_refinanciacion: true, refinancia_a: true,
+      es_refinanciacion: true, refinancia_a: true, cronograma: true,
       cliente: { select: { nombre: true, apellido: true, documento: true } },
     },
   });
@@ -90,11 +92,22 @@ export async function datosLibreDeuda(
     }),
     prisma.cuotas.findMany({
       where: { ...withTenant(tenantId), credito_id: creditoId },
-      select: { condonado: true },
+      select: { nro: true, condonado: true, pagado_capital: true, pagado_interes: true, pagado_cargos: true },
     }),
   ]);
 
-  const total_pagado = round2(pagos.reduce((s, p) => s + p.monto, 0));
+  /*
+    Crédito ANTERIOR AL SISTEMA: las cuotas que pagó antes no tienen pago (la plata entró a la
+    caja vieja) pero están saldadas en `cuotas`. Sin sumarlas, el certificado de alguien que
+    canceló todo antes de la carga decía "abonó $0,00".
+  */
+  const anterior = anteriorDelCredito(credito.cronograma);
+  const nrosAntes = new Set((anterior?.pagos ?? []).map((p) => p.nro));
+  const antes = cuotas.filter((q) => nrosAntes.has(q.nro));
+  const antesCapital = round2(antes.reduce((s, q) => s + q.pagado_capital, 0));
+  const antesInteres = round2(antes.reduce((s, q) => s + q.pagado_interes, 0));
+  const antesCargos = round2(antes.reduce((s, q) => s + q.pagado_cargos, 0));
+  const total_pagado = round2(pagos.reduce((s, p) => s + p.monto, 0) + antesCapital + antesInteres + antesCargos);
   /**
    * 🔴 LO CONDONADO TIENE QUE ESTAR, O EL CERTIFICADO NO CIERRA.
    *
@@ -114,17 +127,18 @@ export async function datosLibreDeuda(
    * llevó: la diferencia es el interés pactado (que es la ganancia) y los punitorios.
    */
   const desglose = {
-    capital: round2(pagos.reduce((s, p) => s + p.aplicado_capital, 0)),
-    interes: round2(pagos.reduce((s, p) => s + p.aplicado_interes, 0)),
+    capital: round2(pagos.reduce((s, p) => s + p.aplicado_capital, 0) + antesCapital),
+    interes: round2(pagos.reduce((s, p) => s + p.aplicado_interes, 0) + antesInteres),
     mora: round2(pagos.reduce((s, p) => s + p.aplicado_mora, 0)),
-    cargos: round2(pagos.reduce((s, p) => s + p.aplicado_cargos, 0)),
+    cargos: round2(pagos.reduce((s, p) => s + p.aplicado_cargos, 0) + antesCargos),
     condonado,
     pagos: pagos.length,
+    cuotas_antes: antes.length,
   };
-  const fecha_cancelacion = pagos.reduce<Date | null>(
-    (acc, p) => (acc && acc > p.created_at ? acc : p.created_at),
-    null,
-  );
+  const fecha_cancelacion = [
+    ...pagos.map((p) => p.created_at),
+    ...(anterior?.pagos ?? []).flatMap((p) => (p.fecha ? [new Date(`${p.fecha}T00:00:00.000Z`)] : [])),
+  ].reduce<Date | null>((acc, f) => (acc && acc > f ? acc : f), null);
 
   return {
     error: null,

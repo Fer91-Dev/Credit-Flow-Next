@@ -566,6 +566,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
     termina arreglando en vez de la viva.
   */
   const totalCobrado = pagos.filter(p => !p.anulado).reduce((s, p) => s + p.monto, 0);
+  // Crédito anterior al sistema: lo que el cliente pagó antes (sin recibo; entró a la caja vieja).
+  const cobradoAntes = anteriorDelCredito(credito.cronograma)?.cobradoAntes ?? 0;
   const pagosVivos = pagos.filter(p => !p.anulado).length;
   const pagosAnulados = pagos.length - pagosVivos;
   const hayCargos = pagos.some(p => p.aplicado_cargos > 0);
@@ -924,8 +926,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           {/* El conteo excluye los anulados: decía "1 pago" con "$0 cobrado" al lado. */}
           <Stat icon="chart-increasing" label="Total cobrado" accent="success" cargando={loadingPagos}
             tag={DEL_CREDITO}
-            value={`$${n2(totalCobrado)}`}
-            sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}`} />
+            value={`$${n2(totalCobrado + cobradoAntes)}`}
+            sub={`${pagosVivos} pago${pagosVivos !== 1 ? "s" : ""}${pagosAnulados > 0 ? ` · ${pagosAnulados} anulado${pagosAnulados !== 1 ? "s" : ""}` : ""}${cobradoAntes > 0 ? ` · $${n2(cobradoAntes)} antes del sistema` : ""}`} />
           {/*
             🔴 "EN MORA · 61 DÍAS" EN ROJO SOBRE ALGUIEN QUE ESTÁ CUMPLIENDO SU ARREGLO.
 
@@ -2062,6 +2064,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 <p className="text-[10px] font-bold uppercase tracking-widest text-success">Crédito cancelado</p>
                 <p className="font-mono text-xs tabular-nums text-muted-foreground">
                   {pagosVivos} pago{pagosVivos !== 1 ? "s" : ""} · ${n2(totalCobrado)}
+                  {cobradoAntes > 0 && ` · $${n2(cobradoAntes)} antes del sistema`}
                 </p>
               </div>
               <button

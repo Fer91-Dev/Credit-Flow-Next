@@ -324,7 +324,7 @@ export function PlanDeCuotas({
               const moraDev = moraDevengadaDeCuota(q);
               const conPagos = tienePagos(q);
               // En el orden en que se cobraron: un historial se lee del primero al último.
-              const comps = [...(q.comprobantes ?? [])].sort((a, c) => a.fecha_hora.localeCompare(c.fecha_hora));
+              const comps = [...(q.comprobantes ?? [])].sort((a, c) => (a.fecha_hora ?? "").localeCompare(c.fecha_hora ?? ""));
               const esProxima = nroAPagar === q.nro;
               const pagada = q.estado === "pagada";
               /*
@@ -583,10 +583,15 @@ export function PlanDeCuotas({
                   <td className={`${celda} whitespace-nowrap`}>
                     {comps.length > 0 ? (
                       <div className="flex flex-col items-start gap-1">
-                        {comps.map((c) => (
+                        {comps.map((c) => c.pago_id == null ? (
+                          // Pagada antes del sistema: no hay recibo que abrir.
+                          <span key="anterior" className="inline-flex h-7 items-center rounded-md border border-dashed border-border px-2 text-[11px] text-muted-foreground">
+                            {c.comprobante}
+                          </span>
+                        ) : (
                           <button
                             key={c.pago_id}
-                            onClick={() => abrirRecibo(c.pago_id)}
+                            onClick={() => abrirRecibo(c.pago_id!)}
                             title="Recibo en PDF"
                             className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
@@ -611,8 +616,8 @@ export function PlanDeCuotas({
                     {comps.length > 0 ? (
                       <div className="flex flex-col items-start gap-1">
                         {comps.map((c) => (
-                          <span key={c.pago_id} className="flex h-7 items-center font-mono text-[11px] tabular-nums text-foreground/80">
-                            {formatFechaHora(c.fecha_hora)}
+                          <span key={c.pago_id ?? "anterior"} className="flex h-7 items-center font-mono text-[11px] tabular-nums text-foreground/80">
+                            {c.fecha_hora ? formatFechaHora(c.fecha_hora) : c.fecha ? formatFecha(c.fecha) : "—"}
                           </span>
                         ))}
                       </div>
@@ -634,7 +639,7 @@ export function PlanDeCuotas({
                     {comps.length > 0 ? (
                       <div className="flex flex-col items-end gap-1">
                         {comps.map((c) => (
-                          <span key={c.pago_id} className="flex h-7 flex-col items-end justify-center font-mono text-[11px] tabular-nums leading-tight">
+                          <span key={c.pago_id ?? "anterior"} className="flex h-7 flex-col items-end justify-center font-mono text-[11px] tabular-nums leading-tight">
                             <span className="text-success">${n2(c.monto)}</span>
                             {c.monto_pago != null && Math.abs(c.monto_pago - c.monto) > 0.01 && (
                               <span className="text-[10px] text-muted-foreground/50">de ${n2(c.monto_pago)}</span>

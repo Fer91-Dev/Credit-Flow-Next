@@ -5,8 +5,9 @@
  * Manda la CUOTA que el cliente ya tiene pactada, no la tasa: la tasa se despeja de monto +
  * cuota + cuotas, igual que un plan con coeficiente (`cuota = monto × coeficiente`). Con esa
  * tasa el motor de siempre arma el plan entero, sin cargos ni redondeo (la cuota ya es lo que
- * paga el cliente), fechado desde el vencimiento de la 1ª cuota. Se persisten solo las cuotas
- * que FALTAN; las ya pagadas quedan como `cobradoAntes`.
+ * paga el cliente), fechado desde el vencimiento de la 1ª cuota. Se persisten TODAS las cuotas:
+ * las ya pagadas quedan saldadas (sin recibo ni caja) con su fecha de pago en `pagos`, para que
+ * el plan las muestre como pagadas (Fernando, 13/10/2026).
  *
  * Es la única definición del plan de estos créditos: la usan el alta (`lib/credito-anterior.ts`)
  * y la reimpresión (`/api/creditos/[id]/amortizacion`), así el papel y el cobro coinciden.
@@ -28,6 +29,12 @@ export interface CreditoAnterior {
   cuota: number;
   /** Lo cobrado antes del sistema (cuota × pagadas): entra en "lo recuperado". */
   cobradoAntes: number;
+  /**
+   * Las cuotas pagadas, guardadas SALDADAS en `cuotas` (sin pago ni recibo: la plata entró a la
+   * caja vieja). `fecha` = día en que se pagó, si se sabe. Ausente = carga vieja que no guardaba
+   * las pagadas: ahí lo cobrado vive solo en `cobradoAntes`.
+   */
+  pagos?: { nro: number; fecha: string | null }[];
 }
 
 export interface DatosCreditoAnterior {
@@ -38,6 +45,8 @@ export interface DatosCreditoAnterior {
   fechaOtorgamiento: Date;
   primerVencimiento: Date;
   frecuencia: Frecuencia;
+  /** Día en que se pagó cada cuota pagada, por número (opcional: si no se sabe, va sin fecha). */
+  fechasPago?: Record<number, Date>;
 }
 
 /** Snapshot de cargos completo y apagado (`resolverCargos` no lo rellena con la config vigente). */
@@ -61,9 +70,20 @@ export function anteriorDelCredito(cronograma: unknown): CreditoAnterior | null 
   return a && typeof a.primerVencimiento === "string" && Number.isFinite(a.cuota) ? a : null;
 }
 
-/** Lo cobrado antes del sistema (0 en un crédito común). */
+/**
+ * Lo cobrado antes del sistema que NO está en las cuotas (0 en un crédito común). Si las pagadas
+ * se guardaron saldadas (`pagos`), su `pagado_*` ya lo cuenta: sumarlo de nuevo lo duplicaría.
+ */
+/** "en 3 pagos", "en 2 cuotas antes del sistema", o las dos cosas: de qué se compone lo abonado. */
+export function detalleAbonado(pagos: number, cuotasAntes: number): string {
+  const p = pagos > 0 || cuotasAntes === 0 ? `${pagos} pago${pagos === 1 ? "" : "s"}` : "";
+  const a = cuotasAntes > 0 ? `${cuotasAntes} cuota${cuotasAntes === 1 ? "" : "s"} antes del sistema` : "";
+  return `en ${[p, a].filter(Boolean).join(" + ")}`;
+}
+
 export function cobradoAntesDelSistema(cronograma: unknown): number {
-  return anteriorDelCredito(cronograma)?.cobradoAntes ?? 0;
+  const a = anteriorDelCredito(cronograma);
+  return a && !a.pagos ? a.cobradoAntes : 0;
 }
 
 /** Valida los datos. Devuelve el mensaje para el operador, o null si está bien. */
@@ -73,13 +93,21 @@ export function validarCreditoAnterior(d: DatosCreditoAnterior, hoy: Date): stri
   if (!ok(d.cuota) || d.cuota <= 0) return "La cuota tiene que ser mayor a cero.";
   if (!Number.isInteger(d.cuotas) || d.cuotas < 1) return "La cantidad de cuotas tiene que ser al menos 1.";
   if (!Number.isInteger(d.cuotasPagadas) || d.cuotasPagadas < 0) return "Las cuotas pagadas no pueden ser negativas.";
-  if (d.cuotasPagadas >= d.cuotas) return "No quedan cuotas por pagar: el crédito ya está terminado.";
+  // Igual a `cuotas` = crédito ya CANCELADO: entra como pagado, con todas sus cuotas saldadas.
+  if (d.cuotasPagadas > d.cuotas) return `No puede tener ${d.cuotasPagadas} cuotas pagadas de ${d.cuotas}.`;
   if (round2(d.cuota * d.cuotas) < round2(d.monto)) return `${d.cuotas} cuotas de ${d.cuota} no devuelven el monto de ${d.monto}.`;
   if (Number.isNaN(d.fechaOtorgamiento.getTime())) return "Falta la fecha de otorgamiento.";
   if (Number.isNaN(d.primerVencimiento.getTime())) return "Falta el vencimiento de la 1ª cuota.";
   if (d.fechaOtorgamiento.getTime() > hoy.getTime()) return "La fecha de otorgamiento no puede ser futura.";
   if (d.fechaOtorgamiento.getUTCFullYear() < 2000) return "La fecha de otorgamiento parece equivocada: revisá el año.";
   if (d.primerVencimiento.getTime() <= d.fechaOtorgamiento.getTime()) return "La 1ª cuota tiene que vencer después del otorgamiento.";
+  for (const [nro, f] of Object.entries(d.fechasPago ?? {})) {
+    const n = Number(nro);
+    if (!Number.isInteger(n) || n < 1 || n > d.cuotasPagadas) return `La fecha de pago de la cuota ${nro} no corresponde: hay ${d.cuotasPagadas} pagadas.`;
+    if (Number.isNaN(f.getTime())) return `La fecha de pago de la cuota ${nro} es inválida.`;
+    if (f.getTime() > hoy.getTime()) return `La fecha de pago de la cuota ${nro} no puede ser futura.`;
+    if (f.getTime() < d.fechaOtorgamiento.getTime()) return `La cuota ${nro} no puede pagarse antes del otorgamiento.`;
+  }
   return null;
 }
 
@@ -125,6 +153,8 @@ export function planCreditoAnterior(
 export interface CreditoAnteriorArmado {
   tasa: number;
   plan: PlanAmortizacion;
+  /** Las que el cliente ya pagó: se guardan saldadas. */
+  pagadas: CuotaPlan[];
   pendientes: CuotaPlan[];
   saldoCapital: number;
   totalACobrar: number;
@@ -144,11 +174,16 @@ export function armarCreditoAnterior(
     cuotasPagadas: d.cuotasPagadas,
     cuota: round2(d.cuota),
     cobradoAntes: round2(d.cuota * d.cuotasPagadas),
+    pagos: Array.from({ length: d.cuotasPagadas }, (_, i) => {
+      const f = d.fechasPago?.[i + 1];
+      return { nro: i + 1, fecha: f ? ymdUTC(f) : null };
+    }),
   };
   const plan = planCreditoAnterior(d.monto, tasa, d.cuotas, d.frecuencia, anterior, convencion, catalogo);
+  const pagadas = plan.cuotas.filter((c) => c.nro <= d.cuotasPagadas);
   const pendientes = plan.cuotas.filter((c) => c.nro > d.cuotasPagadas);
   return {
-    tasa, plan, pendientes, anterior,
+    tasa, plan, pagadas, pendientes, anterior,
     saldoCapital: round2(pendientes.reduce((s, c) => s + c.capital, 0)),
     totalACobrar: round2(pendientes.reduce((s, c) => s + c.cuotaTotal, 0)),
   };

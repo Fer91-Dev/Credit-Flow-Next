@@ -301,12 +301,18 @@ export function CobranzaDetail({ credito, acciones }: {
                           <div className="flex flex-col items-end gap-1">
                             <span className="font-mono tabular-nums text-success">{formatMonto(pagado)}</span>
                             {[...(c.comprobantes ?? [])]
-                              .sort((a, b2) => a.fecha_hora.localeCompare(b2.fecha_hora))
-                              .map((comp) => (
+                              .sort((a, b2) => (a.fecha_hora ?? "").localeCompare(b2.fecha_hora ?? ""))
+                              .map((comp) => comp.pago_id == null ? (
+                                // Pagada antes del sistema: no hay recibo que abrir.
+                                <span key="anterior" className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                  {comp.comprobante}{comp.fecha && ` · ${formatFecha(comp.fecha)}`}
+                                  <span className="font-mono tabular-nums text-muted-foreground/60">{formatMonto(comp.monto)}</span>
+                                </span>
+                              ) : (
                                 <button
                                   key={comp.pago_id}
-                                  onClick={() => abrirRecibo(comp.pago_id)}
-                                  title={`Recibo en PDF · ${formatFechaHora(comp.fecha_hora)}`}
+                                  onClick={() => abrirRecibo(comp.pago_id!)}
+                                  title={`Recibo en PDF · ${formatFechaHora(comp.fecha_hora!)}`}
                                   className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                 >
                                   <Printer className="h-2.5 w-2.5 shrink-0" />

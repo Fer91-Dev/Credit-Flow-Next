@@ -32,6 +32,8 @@ export interface EntradaCreditoAnterior {
   fechaOtorgamiento: string;
   /** "YYYY-MM-DD" — vencimiento de la cuota 1. */
   primerVencimiento: string;
+  /** Día en que se pagó cada cuota pagada: { "1": "YYYY-MM-DD" }. Opcional. */
+  fechasPago?: Record<string, string>;
   frecuencia: string;
   /** Para la auditoría: de dónde salió el dato ("dictado por Fernando 10/10"). */
   nota: string;
@@ -53,8 +55,10 @@ export async function prepararCreditoAnterior(e: Omit<EntradaCreditoAnterior, "c
     monto: Number(e.monto), cuota: Number(e.cuota), cuotas: Math.trunc(Number(e.cuotas)),
     cuotasPagadas: Math.trunc(Number(e.cuotasPagadas)),
     fechaOtorgamiento: fechaYmd(e.fechaOtorgamiento), primerVencimiento: fechaYmd(e.primerVencimiento), frecuencia,
+    fechasPago: Object.fromEntries(Object.entries(e.fechasPago ?? {}).map(([n, f]) => [Number(n), fechaYmd(f)])),
   }, hoy, config.convencionTasa, catalogo);
-  return { ...armado, frecuencia, diasMora: diasMoraActual(armado.pendientes[0].fecha, hoy) };
+  const proxima = armado.pendientes[0]?.fecha;
+  return { ...armado, frecuencia, diasMora: proxima ? diasMoraActual(proxima, hoy) : 0 };
 }
 
 export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<{ id: string; numero: number }> {
@@ -98,17 +102,19 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
         cargos: CARGOS_APAGADOS as object,
         cronograma: cronograma as object,
         fecha_inicio: fechaYmd(e.fechaOtorgamiento),
-        proximo_pago: a.pendientes[0].fecha,
+        // Sin cuotas pendientes = ya cancelado antes del sistema.
+        proximo_pago: a.pendientes[0]?.fecha ?? null,
         dias_mora: a.diasMora,
-        estado: a.diasMora > 0 ? "vencido" : "activo",
+        estado: a.pendientes.length === 0 ? "pagado" : a.diasMora > 0 ? "vencido" : "activo",
         vendedor_id: null,
         otorgado_por: null,
         otorgado_por_nombre: "Carga de créditos anteriores",
       },
     });
-    // Solo las cuotas que faltan, con su número real (la 3 de 6 sigue siendo la 3).
+    // TODAS las cuotas. Las ya pagadas van SALDADAS, sin pago ni recibo: esa plata entró a la
+    // caja vieja, no a ésta (su fecha de pago queda en `cronograma.anterior.pagos`).
     await tx.cuotas.createMany({
-      data: planACuotas({ ...a.plan, cuotas: a.pendientes }).map((f) => ({
+      data: planACuotas(a.plan).map((f) => ({
         ...withTenant(tenantId),
         credito_id: c.id,
         nro: f.nro,
@@ -121,6 +127,12 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
         gastos: f.gastos,
         honorarios: f.honorarios,
         cuota_total: f.cuota_total,
+        ...(f.nro <= a.anterior.cuotasPagadas && {
+          estado: "pagada",
+          pagado: f.cuota_total,
+          pagado_capital: f.capital,
+          pagado_interes: f.interes,
+        }),
       })),
     });
     return { id: c.id, numero, cliente };
@@ -136,7 +148,7 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
     meta: {
       numero: credito.numero, anterior_al_sistema: true, monto: Number(e.monto), cuota: a.anterior.cuota,
       cuotas: Math.trunc(Number(e.cuotas)), cuotas_pagadas: a.anterior.cuotasPagadas,
-      fecha_otorgamiento: e.fechaOtorgamiento, primer_vencimiento: a.anterior.primerVencimiento,
+      fecha_otorgamiento: e.fechaOtorgamiento, primer_vencimiento: a.anterior.primerVencimiento, pagos: a.anterior.pagos,
       frecuencia: a.frecuencia, tasa_despejada: a.tasa, saldo_capital: a.saldoCapital, total_a_cobrar: a.totalACobrar,
       nota: e.nota,
     },

@@ -41,7 +41,7 @@ export function pagadoDeCuota(cuota: CuotaPersistida): number {
 export function ultimoComprobante(cuota: CuotaPersistida) {
   const comps = cuota.comprobantes ?? [];
   if (comps.length === 0) return null;
-  return comps.reduce((a, c) => (a.fecha_hora > c.fecha_hora ? a : c));
+  return comps.reduce((a, c) => ((a.fecha_hora ?? a.fecha ?? "") > (c.fecha_hora ?? c.fecha ?? "") ? a : c));
 }
 
 /** Fecha y hora del último cobro imputado a la cuota (null si no hubo). */
