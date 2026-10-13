@@ -11,6 +11,7 @@
  * lote.json — una entrada por crédito:
  *   [{ "cliente": "Matias Palacios",          // nombre y apellido como figuran, o el id
  *      "crear_cliente": false,                 // true = crearlo si no existe (nombre/apellido de "cliente")
+ *      "dni": "37725392",                      // opcional: si viene, el cliente se busca PRIMERO por DNI
  *      "monto": 200000, "cuota": 147000, "cuotas": 2,
  *      "pagadas": 0,                           // cuotas ya cobradas antes del sistema
  *      "otorgado": "2026-09-10",
@@ -48,13 +49,23 @@ const config = await getConfiguracion(tenantId);
 const fmt = (n) => `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fd = (d) => d.toISOString().slice(0, 10).split("-").reverse().join("/");
 const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-const clientes = await prisma.clientes.findMany({ where: { tenant_id: tenantId }, select: { id: true, nombre: true, apellido: true, estado: true } });
+const clientes = await prisma.clientes.findMany({ where: { tenant_id: tenantId }, select: { id: true, nombre: true, apellido: true, estado: true, documento: true } });
+const digitos = (s) => String(s ?? "").replace(/\D/g, "");
 
 const filas = [];
 let errores = 0;
+// La planilla se recarga ENTERA cada vez que crece: lo ya cargado (misma nota) se saltea.
+const yaCargadas = new Set((await prisma.auditoria.findMany({
+  where: { tenant_id: tenantId, entidad: "creditos", accion: "crear" }, select: { meta: true },
+})).filter((a) => a.meta?.anterior_al_sistema).map((a) => a.meta.nota));
+let salteadas = 0;
 for (const [k, e] of lote.entries()) {
   const etiqueta = `#${k + 1} ${e.cliente}`;
-  const cands = clientes.filter((c) => c.id === e.cliente || norm(`${c.nombre} ${c.apellido ?? ""}`) === norm(e.cliente) || norm(`${c.apellido ?? ""} ${c.nombre}`) === norm(e.cliente));
+  if (e.nota && yaCargadas.has(e.nota)) { salteadas++; continue; }
+  // Por DNI primero: el nombre de la planilla puede no ser el de la ficha ("Aida Ponce" vs
+  // "Aida del Valle Ponce"), el documento sí.
+  const porDni = digitos(e.dni).length >= 7 ? clientes.filter((c) => digitos(c.documento) === digitos(e.dni)) : [];
+  const cands = porDni.length ? porDni : clientes.filter((c) => c.id === e.cliente || norm(`${c.nombre} ${c.apellido ?? ""}`) === norm(e.cliente) || norm(`${c.apellido ?? ""} ${c.nombre}`) === norm(e.cliente));
   if (cands.length > 1) { console.log(`✗ ${etiqueta}: hay ${cands.length} clientes con ese nombre (usá el id)`); errores++; continue; }
   // Un cliente NUEVO con varios créditos en el lote: alcanza con "crear_cliente" en uno de ellos.
   const nuevoEnLote = cands.length === 0 && lote.some((o) => o.crear_cliente && norm(o.cliente) === norm(e.cliente));
@@ -79,6 +90,7 @@ for (const f of filas) {
   ].join(" | "));
 }
 const total = filas.reduce((s, f) => s + f.a.totalACobrar, 0);
+if (salteadas) console.log(`\n${salteadas} ya estaban cargados (misma nota): se saltean.`);
 console.log(`\n${filas.length} créditos · a cobrar ${fmt(total)} · ${errores} con error`);
 
 if (!confirmar) { await prisma.$disconnect(); process.exit(errores ? 1 : 0); }
@@ -91,7 +103,7 @@ for (const f of filas) {
   let clienteId = f.cliente?.id ?? creados.get(norm(f.e.cliente));
   if (!clienteId) {
     const [nombre, ...resto] = String(f.e.cliente).trim().split(/\s+/);
-    const c = await prisma.clientes.create({ data: { tenant_id: tenantId, nombre, apellido: resto.join(" ") || null, estado: "activo" }, select: { id: true } });
+    const c = await prisma.clientes.create({ data: { tenant_id: tenantId, nombre, apellido: resto.join(" ") || null, documento: digitos(f.e.dni).length >= 7 ? digitos(f.e.dni) : null, estado: "activo" }, select: { id: true } });
     clienteId = c.id;
     creados.set(norm(f.e.cliente), c.id);
     console.log(`  + cliente creado: ${f.e.cliente}`);
