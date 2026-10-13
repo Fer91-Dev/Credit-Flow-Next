@@ -121,16 +121,18 @@ const HELP: Record<string, HelpDoc> = {
         kind: "tarjetas",
         titulo: "Las tarjetas de arriba",
         items: [
-          { nombre: "Clientes", muestra: "Todas las fichas del padrón." },
+          { nombre: "Clientes", muestra: "Todas las fichas del padrón, sin los dados de baja." },
           { nombre: "Sin movimiento", muestra: "Clientes que hace más de 90 días no pagan ni piden un crédito: los que se están enfriando. La barra es qué parte del padrón son.", alTocar: "Filtra la lista a esos clientes. Tocala de nuevo para volver a ver todos." },
           { nombre: "Calificación C o D", muestra: "Clientes con score interno C o D: los que pagaron mal en esta financiera. Conviene mirarlos antes de prestarles otra vez.", alTocar: "Filtra la lista a esos clientes." },
           { nombre: "Cargados este mes", muestra: "Clientes dados de alta en el mes en curso.", alTocar: "Filtra la lista a los nuevos." },
+          { nombre: "Dados de baja", muestra: "Clientes que ya no operan pero tienen créditos cerrados: no aparecen en la búsqueda ni en la lista.", alTocar: "Muestra solo esos clientes, para revisarlos o reactivarlos." },
         ],
       },
       {
         kind: "definiciones",
         titulo: "Puntos importantes",
         items: [
+          { term: "Eliminar / Dar de baja", desc: "Un cliente sin ningún crédito se elimina del todo (por ejemplo, uno cargado por error o repetido). Si tiene créditos cerrados, el botón dice Dar de baja: sus créditos se conservan y el cliente pasa a Dados de baja. Con un crédito activo no se puede ninguna de las dos." },
           { term: "Ingreso / sueldo", desc: "Es obligatorio: el motor de riesgo calcula con él la capacidad de pago y el monto máximo sugerido." },
           { term: "Candado del sueldo", desc: "Un vendedor puede editar el sueldo un número limitado de veces (se configura en Configuración → Riesgo). Agotado, solo un admin lo resetea." },
           { term: "Domicilio", desc: "Provincia y localidad se eligen encadenadas; si es departamento aparecen piso y depto. Al guardar, el domicilio se UBICA en el mapa (OpenStreetMap): la ficha muestra el barrio y las coordenadas, un mapa en miniatura con el marcador, y el botón «Ubicar» para volver a intentarlo si el mapa no lo encontró o se corrigió la dirección. Si el mapa la puso mal (pasa: OpenStreetMap tiene calles de Tucumán con la numeración corrida), «Corregir» acepta las coordenadas pegadas desde Google Maps —clic derecho en el lugar → copiar— y esa ubicación queda por encima del mapa: no se pisa aunque se edite el domicilio; solo «Reubicar» vuelve al mapa." },

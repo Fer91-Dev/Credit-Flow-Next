@@ -158,6 +158,8 @@ export type KpisClientes = {
   enfriados: number;
   riesgo: number;
   nuevos: number;
+  /** Clientes dados de baja (`inactivo`): fuera de los otros cuatro, se ven aparte. */
+  bajas: number;
   /** El corte de inactividad vigente, para que la pantalla lo escriba sin repetirlo. */
   dias_inactividad: number;
 };
@@ -175,10 +177,14 @@ export type KpisClientes = {
  * clickearlo, se convierta en el filtro de la lista.
  */
 export async function kpisClientes(tenantId: string): Promise<KpisClientes & { ids: Record<"enfriados" | "riesgo" | "nuevos", string[]> }> {
-  const rows = await prisma.clientes.findMany({
-    where: { ...withTenant(tenantId) },
-    select: { id: true, created_at: true },
-  });
+  // Los dados de baja no cuentan como cartera: si no, la lista los escondía y el KPI los sumaba.
+  const [rows, bajas] = await Promise.all([
+    prisma.clientes.findMany({
+      where: { ...withTenant(tenantId), estado: { not: "inactivo" } },
+      select: { id: true, created_at: true },
+    }),
+    prisma.clientes.count({ where: { ...withTenant(tenantId), estado: "inactivo" } }),
+  ]);
 
   const agg = await agregarClientes(tenantId, rows);
   /**
@@ -232,6 +238,7 @@ export async function kpisClientes(tenantId: string): Promise<KpisClientes & { i
     enfriados: ids.enfriados.length,
     riesgo: ids.riesgo.length,
     nuevos: ids.nuevos.length,
+    bajas,
     dias_inactividad: DIAS_INACTIVIDAD_COMERCIAL,
     ids,
   };

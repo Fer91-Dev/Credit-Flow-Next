@@ -1514,6 +1514,8 @@ export interface KpisClientes {
   enfriados: number;
   riesgo: number;
   nuevos: number;
+  /** Dados de baja: fuera de los otros cuatro y de la lista, salvo con su propio recorte. */
+  bajas: number;
   /** El corte de inactividad vigente (días), para escribirlo sin repetir el número. */
   dias_inactividad: number;
 }
@@ -1527,8 +1529,9 @@ export function useKpisClientes() {
   return { kpis: data, error, isLoading, mutate };
 }
 
-export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number; filtro?: string | null; orden?: "alfabetico" | null }) {
+export function useClientes(opts?: { scored?: boolean; q?: string; limit?: number; filtro?: string | null; orden?: "alfabetico" | null; sinBajas?: boolean }) {
   const params = new URLSearchParams();
+  if (opts?.sinBajas) params.set("bajas", "excluir");
   if (opts?.scored) params.set("scored", "true");
   if (opts?.q) params.set("q", opts.q);
   if (opts?.limit) params.set("limit", String(opts.limit));

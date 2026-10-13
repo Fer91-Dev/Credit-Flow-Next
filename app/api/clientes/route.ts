@@ -15,7 +15,8 @@ import { ubicarCliente } from "@/lib/geo-clientes";
  * Query params opcionales:
  * - ?q=perez — BUSCA por nombre, apellido o documento (ver abajo)
  * - ?estado=activo — filtrar por estado
- * - ?filtro=enfriados|riesgo|nuevos — los recortes que encienden los KPI de la pantalla
+ * - ?filtro=enfriados|riesgo|nuevos|bajas — los recortes que encienden los KPI de la pantalla
+ * - ?bajas=excluir — sin los dados de baja (la pantalla de Clientes; los pickers ya los filtran)
  * - ?limit=10 — paginación (defecto 100)
  * - ?offset=0 — paginación
  */
@@ -33,6 +34,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const filtroRaw = url.searchParams.get("filtro");
   const filtro: FiltroClientes =
     filtroRaw === "enfriados" || filtroRaw === "riesgo" || filtroRaw === "nuevos" ? filtroRaw : null;
+  const soloBajas = filtroRaw === "bajas";
 
   const where: Record<string, any> = { ...withTenant(tenantId) };
   if (estado) {
@@ -84,6 +86,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const { ids } = await kpisClientes(tenantId);
     where.id = { in: ids[filtro] };
   }
+  // Dado de baja = fuera de la cartera: la pantalla de Clientes los pide aparte (KPI "Dados de baja").
+  if (soloBajas) where.estado = "inactivo";
+  else if (!estado && url.searchParams.get("bajas") === "excluir") where.estado = { not: "inactivo" };
 
   /**
    * 🔴 EL ORDEN ALFABÉTICO TIENE QUE HACERLO LA BASE.

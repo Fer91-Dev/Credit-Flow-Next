@@ -22,10 +22,12 @@ import { useToast } from "@/components/ui/toast";
 type Sel = { id: string; nombre: string };
 
 /** Qué lista se está viendo cuando un KPI está prendido. El título lo dice el recorte. */
-const TITULO_RECORTE: Record<"enfriados" | "riesgo" | "nuevos", string> = {
+type Recorte = "enfriados" | "riesgo" | "nuevos" | "bajas";
+const TITULO_RECORTE: Record<Recorte, string> = {
   enfriados: "Clientes sin movimiento",
   riesgo: "Clientes con calificación C o D",
   nuevos: "Clientes cargados este mes",
+  bajas: "Clientes dados de baja",
 };
 
 /**
@@ -53,18 +55,19 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
    * Nadie abre un desplegable para descubrir que tiene clientes enfriados; ver "14" sí lleva
    * a hacer algo.
    */
-  const [recorte, setRecorte] = useState<"enfriados" | "riesgo" | "nuevos" | null>(null);
+  const [recorte, setRecorte] = useState<Recorte | null>(null);
   const [verTodos, setVerTodos] = useState(false); // F3 en el buscador: lista completa A→Z
   /* `orden: "alfabetico"` cuando se pide la lista completa (F3): así el recorte que llega es
      de verdad el principio del abecedario y no los clientes más nuevos ordenados entre sí. */
   const { clientes, total, isLoading, mutate } = useClientes({
-    scored: true, q: qServidor, limit: 1000, filtro: recorte,
+    // Los dados de baja quedan fuera de la búsqueda y de la lista: se ven con su KPI.
+    scored: true, q: qServidor, limit: 1000, filtro: recorte, sinBajas: recorte !== "bajas",
     orden: verTodos && !qServidor && !recorte ? "alfabetico" : null,
   });
   /* El tope es 1.000: pasado eso la lista muestra una parte y hay que decirlo. */
   const { kpis } = useKpisClientes();
   /** Un KPI prendido se apaga al volver a clickearlo. */
-  const alternar = (r: "enfriados" | "riesgo" | "nuevos") => setRecorte((prev) => (prev === r ? null : r));
+  const alternar = (r: Recorte) => setRecorte((prev) => (prev === r ? null : r));
   /** A cuántos días de atraso un crédito pasa a Legales (Configuración → Cobranza). */
   const diasLegales = useDiasLegales();
   const { mutate: globalMutate } = useSWRConfig();
@@ -124,17 +127,25 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
     if (creado) setSelected({ id: creado.id, nombre: nombreCompleto(creado) }); // saltar a la ficha del nuevo
   };
 
-  const handleDelete = async (id: string, nombre: string) => {
+  /**
+   * Sin ningún crédito se BORRA (un alta por error o un repetido); con créditos cerrados se da
+   * de baja y su historial se conserva. El servidor decide igual; esto es lo que se pregunta.
+   */
+  const handleDelete = async (id: string, nombre: string, creditos: number, migrado: boolean) => {
+    const borra = creditos === 0;
     const ok = await confirm({
-      title: "¿Eliminar cliente?",
-      description: `Se marcará a ${nombre} como inactivo. Sus créditos asociados se conservan.`,
-      confirmLabel: "Eliminar",
+      title: borra ? "¿Eliminar cliente?" : "¿Dar de baja al cliente?",
+      description: borra
+        ? `Se borra a ${nombre} definitivamente, con sus datos y observaciones${migrado ? " y su historia clínica" : ""}. No se puede deshacer.`
+        : `${nombre} tiene ${creditos} crédito${creditos !== 1 ? "s" : ""} cerrado${creditos !== 1 ? "s" : ""}: se conservan. Deja de aparecer en la lista y se ve en "Dados de baja".`,
+      confirmLabel: borra ? "Eliminar" : "Dar de baja",
       tone: "danger",
     });
     if (!ok) return;
 
     let fallo = false;
     let motivo: string | null = null;
+    let modo: "eliminado" | "baja" = borra ? "eliminado" : "baja";
     await mutate(
       async (current) => {
         const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" });
@@ -144,6 +155,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           motivo = (await res.json().catch(() => null))?.error ?? null;
           throw new Error("delete failed");
         }
+        modo = (await res.json().catch(() => null))?.data?.modo ?? modo;
         // Se descuenta también del total: si no, el conteo sigue diciendo el número viejo
         // hasta que revalide, y el operador ve una lista con uno menos y un total que no cambió.
         const restantes = (current?.clientes ?? []).filter((c) => c.id !== id);
@@ -153,7 +165,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
     ).catch(() => {});
     if (fallo) { toast.error(motivo ?? "No se pudo eliminar el cliente"); return; }
     globalMutate(KEYS.dashboard); globalMutate(KEYS.clientesKpis);
-    toast.success(`Cliente ${nombre} eliminado`);
+    toast.success(modo === "eliminado" ? `Cliente ${nombre} eliminado` : `${nombre} quedó dado de baja`);
     setSelected(null);
   };
 
@@ -196,7 +208,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
               variant="full"
               role={role}
               onEditar={() => openEdit(selected.id)}
-              onEliminar={() => handleDelete(selected.id, selected.nombre)}
+              onEliminar={(creditos, migrado) => handleDelete(selected.id, selected.nombre, creditos, migrado)}
             />
           </div>
         </div>
@@ -248,7 +260,7 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
         de la página disfrazado de total, y un KPI que dice 14 cuando son 40 es peor que no
         tenerlo, porque se actúa sobre él.
       */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard cargando={!kpis} icon="busts-in-silhouette" label="Clientes" value={String(kpis?.total ?? 0)} accent="primary" />
         <KpiCard cargando={!kpis}
           icon="hourglass-done"
@@ -281,6 +293,15 @@ export function ClientesTable({ role }: { role?: Role } = {}) {
           accent={(kpis?.nuevos ?? 0) > 0 ? "success" : "muted"}
           onClick={(kpis?.nuevos ?? 0) > 0 ? () => alternar("nuevos") : undefined}
           active={recorte === "nuevos"}
+        />
+        <KpiCard cargando={!kpis}
+          icon="outbox-tray"
+          label="Dados de baja"
+          value={String(kpis?.bajas ?? 0)}
+          accent="muted"
+          sub="fuera de la cartera"
+          onClick={(kpis?.bajas ?? 0) > 0 ? () => alternar("bajas") : undefined}
+          active={recorte === "bajas"}
         />
       </div>
 

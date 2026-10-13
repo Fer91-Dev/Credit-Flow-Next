@@ -882,36 +882,57 @@ export const DELETE = withErrorHandler(async (req: NextRequest, { params }: Rout
     return errorResponse(SIN_PERMISO_CLIENTE, "FORBIDDEN", 403);
   }
 
-  // Guard: no inactivar un cliente que todavía tiene créditos vivos (activo/vencido).
-  // Quedarían créditos operativos colgando de un cliente "inactivo" (incoherente y confuso
-  // en reportes). Mismo patrón que el guard de productos con créditos.
-  const creditosVivos = await prisma.creditos.count({
-    where: { ...withTenant(tenantId), cliente_id: id, estado: { in: ["activo", "vencido"] } },
-  });
+  /*
+    🔴 ELIMINAR BORRA DE VERDAD SOLO SI NUNCA TUVO UN CRÉDITO (Fernando, 13/10/2026).
+
+    Antes marcaba `inactivo` siempre y la lista los seguía mostrando: el operador veía
+    "Cliente eliminado", la fila se iba y a los dos segundos volvía. Ahora:
+      - sin ningún crédito (un alta por error, un repetido) → se borra la fila, con sus
+        observaciones, solicitudes y consultas de bureau (cascada);
+      - con créditos vivos → no se toca (409), como antes;
+      - con créditos cerrados → se DA DE BAJA (`inactivo`): ese historial de plata no se pierde,
+        y el cliente sale de la lista (se ve con el KPI "Dados de baja").
+  */
+  const [creditos, creditosVivos] = await Promise.all([
+    prisma.creditos.count({ where: { ...withTenant(tenantId), cliente_id: id } }),
+    prisma.creditos.count({
+      where: { ...withTenant(tenantId), cliente_id: id, estado: { in: ["activo", "vencido"] } },
+    }),
+  ]);
   if (creditosVivos > 0) {
     return errorResponse(
-      `El cliente tiene ${creditosVivos} crédito(s) activo(s). Resolvelos (saldar, anular o refinanciar) antes de inactivarlo.`,
+      `El cliente tiene ${creditosVivos} crédito(s) activo(s). Resolvelos (saldar, anular o refinanciar) antes de darlo de baja.`,
       "CONFLICT",
       409,
     );
   }
 
-  // Soft delete: marcar como inactivo en lugar de borrar
-  await prisma.clientes.update({
-    where: { id },
-    data: { estado: "inactivo" },
-  });
+  if (creditos === 0) {
+    await prisma.clientes.delete({ where: { id } });
+    await registrarAuditoria({
+      tenantId,
+      entidad: "clientes",
+      entidadId: id,
+      accion: "eliminar",
+      descripcion: `Cliente eliminado: ${nombreCompleto(existing)}`,
+      // La fila ya no existe: lo que la identificaba queda acá.
+      meta: {
+        borrado: true, nombre: existing.nombre, apellido: existing.apellido, documento: existing.documento,
+        telefono: existing.telefono, migrado: existing.migrado,
+      },
+    });
+    return successResponse({ deleted: true, modo: "eliminado" });
+  }
 
+  await prisma.clientes.update({ where: { id }, data: { estado: "inactivo" } });
   await registrarAuditoria({
     tenantId,
     entidad: "clientes",
     entidadId: id,
     accion: "eliminar",
-    descripcion: `Cliente dado de baja: ${nombreCompleto(existing)}`,
+    descripcion: `Cliente dado de baja: ${nombreCompleto(existing)} (tiene ${creditos} crédito(s) cerrado(s))`,
   });
-
-  // 200 con cuerpo (no 204: un Response 204 con body lanza TypeError).
-  return successResponse({ deleted: true });
+  return successResponse({ deleted: true, modo: "baja" });
 });
 
 function isValidEmail(email: string): boolean {

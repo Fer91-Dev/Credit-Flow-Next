@@ -105,7 +105,8 @@ export function ClienteDetail({
    */
   accionesPantalla?: React.ReactNode;
   onEditar?: () => void;
-  onEliminar?: () => void;
+  /** Sin créditos borra; con créditos cerrados da de baja. Recibe cuántos tiene y si es migrado. */
+  onEliminar?: (creditos: number, migrado: boolean) => void;
   /** Para ofrecerle a un admin cambiar el estado del cliente. La barrera real es el PATCH. */
   role?: Role;
 }) {
@@ -414,12 +415,13 @@ export function ClienteDetail({
                       <Pencil className="h-4 w-4 shrink-0" /> Editar
                     </button>
                   )}
-                  {onEliminar && puedeEditar && (
+                  {/* Un dado de baja con créditos ya está donde este botón lo dejaría. */}
+                  {onEliminar && puedeEditar && !(creditos.length > 0 && cliente.estado === "inactivo") && (
                     <button
-                      onClick={onEliminar}
+                      onClick={() => onEliminar(creditos.length, !!cliente.migrado)}
                       className="inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm bg-destructive/[0.06] text-destructive ring-1 ring-inset ring-destructive/25 hover:bg-destructive/15"
                     >
-                      <Trash2 className="h-4 w-4 shrink-0" /> Eliminar
+                      <Trash2 className="h-4 w-4 shrink-0" /> {creditos.length === 0 ? "Eliminar" : "Dar de baja"}
                     </button>
                   )}
                 </div>
