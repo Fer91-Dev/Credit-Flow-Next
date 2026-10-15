@@ -810,7 +810,7 @@ export interface CuotasCredito {
     }[];
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
-  mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number };
+  mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number; desde?: string | null };
   /** Si el crédito se refinanció: el día en que este plan se cerró y la deuda se mudó. */
   refinanciado_al?: string | null;
   /**

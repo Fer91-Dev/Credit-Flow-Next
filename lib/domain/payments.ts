@@ -197,6 +197,8 @@ export interface AplicacionCuota {
 
 export interface OpcionesImputacionCuotas {
   modoCargos?: ModoImputacionCargos;
+  /** Desde qué día corre la mora en este crédito (créditos anteriores al sistema). Ver `ConfigMora.desde`. */
+  moraDesde?: Date | null;
   moraActiva?: boolean;
   tasaMoraDiaria?: number;
   /** Fecha de referencia para mora (default hoy). */
@@ -336,7 +338,7 @@ export function imputarPagoEnCuotas(
         pendienteSinMora,
       },
       diasMora,
-      { moraActiva, tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct },
+      { moraActiva, tasaDiaria: tasaMoraDiaria, diasGracia, topePct: opciones.topeMoraPct, desde: opciones.moraDesde },
     );
     const moraDevengada = round2(moraRestantePlena * factorMora);
     const moraPend = moraDevengada;

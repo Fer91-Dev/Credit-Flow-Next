@@ -71,7 +71,7 @@ export interface PlanDeCuotasProps {
   /** Refuerzo temporal de esa marca, al llegar desde la tarjeta de arriba. */
   resaltarProxima?: boolean;
   /** Parámetros CONGELADOS de la mora de este crédito, para la nota al pie. */
-  mora?: { tasaDiaria: number; diasGracia: number; topePct: number } | null;
+  mora?: { tasaDiaria: number; diasGracia: number; topePct: number; desde?: string | null } | null;
   /** Versión embebida (fila expandida): menos padding y alto acotado con scroll propio. */
   denso?: boolean;
   /** Sin alto acotado: la tabla se muestra entera y el que scrollea es la página. */
@@ -823,6 +823,11 @@ export function PlanDeCuotas({
             {mora.diasGracia > 0 && (
               <Regla emoji="hourglass-done" dato={`${formatDias(mora.diasGracia)} de gracia`} tono="success">
                 No devengan: se cobran los días de atraso menos {mora.diasGracia}.
+              </Regla>
+            )}
+            {mora.desde && (
+              <Regla emoji="calendar" dato={`Desde el ${formatFecha(mora.desde)}`} tono="warning">
+                Crédito anterior al sistema: lo atrasado devenga desde la carga, no desde cada vencimiento.
               </Regla>
             )}
             {mora.topePct > 0 && (

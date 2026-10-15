@@ -142,7 +142,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         interes_mora = moraPendienteTotal(
           c.cuotas.map((q) => ({ fechaVencimiento: q.fecha_vencimiento, baseMora: baseMoraDeCuota(q), pagadoMora: q.pagado_mora, condonadoMora: q.condonado_mora, pendienteSinMora: pendienteSinMoraDeCuota(q) })),
           {
-            tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct,
+            tasaDiaria: mc.tasaMoraDiaria, diasGracia: graciaCred, hoy: hoyComercial(), topePct: mc.topeMoraPct, moraDesde: mc.moraDesde,
             moraCongeladaAl: (() => { const a = acuerdos.get(c.id); return a && a.congela ? a.fecha : null; })(),
           },
         );
@@ -183,7 +183,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
           condonadoMora: q.condonado_mora,
         })),
         {
-          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: graciaV, hoy: hoyCredito,
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, moraDesde: mc.moraDesde, diasGracia: graciaV, hoy: hoyCredito,
           /* El "Debe hoy" de la ficha tiene que ser el importe que la caja va a cobrar: con un
              acuerdo que congela, los punitorios de lo que entró al trato se detuvieron. */
           moraCongeladaAl: (() => { const a = acuerdos.get(c.id); return a && a.congela ? a.fecha : null; })(),

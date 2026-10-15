@@ -33,6 +33,15 @@ export interface ConfigMora {
    * recupera; y la ficha del cliente muestra una deuda que la financiera no va a reclamar.
    */
   topePct?: number;
+  /**
+   * Desde qué día corre la mora en ESTE crédito, o null = desde cada vencimiento (lo normal).
+   *
+   * Existe para los créditos ANTERIORES AL SISTEMA (10/2026): Silvio nunca cobró mora antes de
+   * arrancar, así que una cuota que ya venía atrasada empieza a devengar el día de la carga, no
+   * el de su vencimiento (decisión de Fernando, 15/10/2026). Los días de atraso que se informan
+   * siguen siendo los reales: solo cambia desde cuándo se cobra.
+   */
+  desde?: Date | null;
 }
 
 /**
@@ -137,9 +146,22 @@ export function moraRestanteDeCuota(
   if (config.moraActiva === false) return 0;
   // La cuota ya no debe nada: el punitorio se detuvo el día en que se saldó.
   if (c.pendienteSinMora <= 0) return 0;
-  const devengada = interesMora(c.baseMora, diasQueDevengan, config);
+  const devengada = interesMora(c.baseMora, diasQueDevengan, configMoraDeCuota(c.fechaVencimiento, config));
   const resuelta = (c.pagadoMora ?? 0) + (c.condonadoMora ?? 0);
   return Math.max(0, round2(devengada - resuelta));
+}
+
+/**
+ * Aplica `desde` (mora que arranca en una fecha y no en el vencimiento) como TOLERANCIA de la
+ * cuota: los días entre su vencimiento y `desde` no devengan, igual que los de gracia. Con eso
+ * no hace falta una segunda fórmula — `interesMora` ya sabe descontar días — y el freno de un
+ * acuerdo o de un fallecimiento sigue recortando por el otro extremo, como siempre.
+ */
+export function configMoraDeCuota<T extends ConfigMora>(fechaVencimiento: Date, config: T): T {
+  if (!config.desde) return config;
+  const previos = diasAtraso(fechaVencimiento, config.desde);
+  if (previos <= (config.diasGracia ?? 0)) return config;
+  return { ...config, diasGracia: previos };
 }
 
 /**
@@ -159,6 +181,8 @@ export function moraPendienteTotal(
   cuotas: CuotaParaMora[],
   opciones: {
     tasaDiaria?: number; diasGracia?: number; hoy?: Date; hasta?: Date | null; topePct?: number;
+    /** Ver `ConfigMora.desde`. */
+    moraDesde?: Date | null;
     /**
      * Fecha del acuerdo de pago vigente que congela los punitorios, o null.
      *
@@ -186,6 +210,7 @@ export function moraPendienteTotal(
       tasaDiaria: opciones.tasaDiaria,
       diasGracia: opciones.diasGracia,
       topePct: opciones.topePct,
+      desde: opciones.moraDesde,
     });
     if (pendiente > 0) total = round2(total + pendiente);
   }
@@ -205,6 +230,8 @@ export interface MoraSnapshot {
   tasaDiaria: number;
   /** Techo de la mora (% de la cuota) vigente AL OTORGAR. Ausente en créditos viejos = sin tope. */
   topePct?: number;
+  /** "YYYY-MM-DD": la mora corre desde ese día (créditos anteriores al sistema). Ver `ConfigMora.desde`. */
+  desde?: string;
 }
 
 /**
@@ -222,7 +249,7 @@ export interface MoraSnapshot {
 export function moraDelCredito(
   snapshot: MoraSnapshot | null | undefined,
   configActual: { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct?: number },
-): { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct: number } {
+): { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct: number; moraDesde: Date | null } {
   if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
     return {
       moraActiva: snapshot.activa,
@@ -231,12 +258,16 @@ export function moraDelCredito(
       // Ponerle el tope de hoy le reescribiría la deuda por atrás, que es justo lo que el
       // snapshot existe para impedir.
       topeMoraPct: typeof snapshot.topePct === "number" ? snapshot.topePct : 0,
+      moraDesde: typeof snapshot.desde === "string" && /^\d{4}-\d{2}-\d{2}$/.test(snapshot.desde)
+        ? new Date(`${snapshot.desde}T00:00:00.000Z`)
+        : null,
     };
   }
   return {
     moraActiva: configActual.moraActiva,
     tasaMoraDiaria: configActual.tasaMoraDiaria,
     topeMoraPct: configActual.topeMoraPct ?? 0,
+    moraDesde: null,
   };
 }
 

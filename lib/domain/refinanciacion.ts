@@ -46,6 +46,8 @@ export interface DeudaConsolidada {
 
 export interface OpcionesDeudaConsolidada {
   moraActiva?: boolean;
+  /** Desde qué día corre la mora en este crédito (créditos anteriores al sistema). Ver `ConfigMora.desde`. */
+  moraDesde?: Date | null;
   tasaMoraDiaria?: number;
   /** Fecha de referencia para la mora (default hoy). */
   hoy?: Date;
@@ -168,7 +170,7 @@ export function calcularDeudaConsolidada(
         ),
       },
       dias,
-      { moraActiva, tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct },
+      { moraActiva, tasaDiaria: opciones.tasaMoraDiaria, diasGracia: opciones.diasGracia, topePct: opciones.topeMoraPct, desde: opciones.moraDesde },
     );
 
     capital = round2(capital + capitalPend);

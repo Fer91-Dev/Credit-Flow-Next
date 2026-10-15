@@ -524,6 +524,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
     topeMoraPct: moraCred.topeMoraPct,
+    moraDesde: moraCred.moraDesde,
     hoy: fechaPago,
     descuentoMoraPct,
     diasGracia: graciaCred,

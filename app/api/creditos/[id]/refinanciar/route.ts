@@ -184,6 +184,7 @@ async function cargarRefinanciable(
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
     topeMoraPct: moraCred.topeMoraPct,
+    moraDesde: moraCred.moraDesde,
     diasGracia: graciaCred,
     // Dia comercial argentino (mismo criterio que el resto del sistema): sin esto, entre
     // las 21:00 y la medianoche de Argentina se consolida un dia de mora de mas.

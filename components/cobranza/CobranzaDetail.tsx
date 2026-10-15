@@ -358,7 +358,9 @@ export function CobranzaDetail({ credito, acciones }: {
             {moraTotal > 0 && meta?.mora && (
               <p className="mt-3 text-[11px] text-muted-foreground">
                 Punitorios: {formatNumero(meta.mora.tasaDiaria * 100, 2)}% por día sobre el importe de cada cuota
-                {meta.mora.diasGracia > 0 && <>, a partir del día {meta.mora.diasGracia + 1} de atraso</>}
+                {meta.mora.desde
+                  ? <>, desde el {formatFecha(meta.mora.desde)} (crédito anterior al sistema)</>
+                  : meta.mora.diasGracia > 0 && <>, a partir del día {meta.mora.diasGracia + 1} de atraso</>}
                 {meta.mora.topePct > 0 && <>, con un techo del {meta.mora.topePct}% de la cuota</>}.
               </p>
             )}

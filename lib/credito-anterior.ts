@@ -6,7 +6,7 @@
  *  - No mueve caja ni pide fondos (no hay desembolso ni comisión que asentar).
  *  - No pasa por el motor de riesgo ni por los rangos del simulador: no es una originación.
  *  - Respeta la cuota pactada con el cliente (`lib/domain/credito-anterior.ts`).
- * Desde que se carga se gestiona como cualquier crédito: mora, cobro (a la caja de quien
+ * Desde que se carga se gestiona como cualquier crédito (la mora corre desde el día de la carga): cobro (a la caja de quien
  * cobra), acuerdos, refinanciación. Lo usa `scripts/cargar-credito-anterior.mjs`.
  */
 import { prisma } from "@/lib/prisma";
@@ -67,9 +67,14 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
   const a = await prepararCreditoAnterior(e);
   const cronograma = {
     ...CRONOGRAMA_ANTERIOR,
-    // Gracia y mora: las vigentes, congeladas como en cualquier crédito.
+    // Gracia y mora: las vigentes, congeladas como en cualquier crédito. Con una diferencia: la
+    // mora corre DESDE HOY, no desde cada vencimiento — antes del sistema Silvio no la cobraba
+    // (decisión de Fernando, 15/10/2026). Ver `ConfigMora.desde`.
     diasGracia: config.simulador.diasGracia,
-    mora: { activa: config.moraActiva, tasaDiaria: config.tasaMoraDiaria, topePct: config.topeMoraPct },
+    mora: {
+      activa: config.moraActiva, tasaDiaria: config.tasaMoraDiaria, topePct: config.topeMoraPct,
+      desde: hoyComercial().toISOString().slice(0, 10),
+    },
     redondeo: REDONDEO_ANTERIOR,
     convencion: config.convencionTasa,
     anterior: a.anterior,

@@ -267,7 +267,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
           pendienteSinMora: pendienteSinMoraDeCuota(q),
         })),
         {
-          tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, hoy: hoyMora,
+          tasaDiaria: mc.tasaMoraDiaria, diasGracia: gracia, topePct: mc.topeMoraPct, moraDesde: mc.moraDesde, hoy: hoyMora,
           moraCongeladaAl: congelan.get(c.id) ?? null,
         },
       );

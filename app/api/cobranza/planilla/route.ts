@@ -203,7 +203,7 @@ async function armarPlanilla(
     const mc = moraDelCredito(moraDesdeCronograma(c.cronograma), config);
     const gracia = (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? config.simulador.diasGracia;
     const dv = calcularDeudaVencida(cuotasDom, {
-      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, moraDesde: mc.moraDesde,
       diasGracia: gracia, hoy,
       moraCongeladaAl: congelan.get(c.id) ?? null,
     });

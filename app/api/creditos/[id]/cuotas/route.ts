@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota, anteriorDelCredito } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, configMoraDeCuota, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota, anteriorDelCredito } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
@@ -267,7 +267,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         pendienteSinMora: condonada ? 0 : pendienteSinMoraDeCuota(c),
       },
       diasQueDevengan,
-      { moraActiva: moraCred.moraActiva, tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct },
+      { moraActiva: moraCred.moraActiva, tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct, desde: moraCred.moraDesde },
     );
     // La quita de campaña reduce lo que se cobra, con la MISMA cuenta que `POST /pagos`.
     const moraPend = round2(moraRestantePlena * factorMora);
@@ -351,7 +351,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
         ? interesMora(
             baseMoraDeCuota(c),
             diasAtraso(c.fecha_vencimiento, fechaRefi),
-            { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct },
+            configMoraDeCuota(c.fecha_vencimiento, { tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct, desde: moraCred.moraDesde }),
           )
         : null,
       dias_atraso,
@@ -543,6 +543,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       tasaDiaria: moraCred.tasaMoraDiaria,
       diasGracia: graciaCred,
       topePct: moraCred.topeMoraPct,
+      // Crédito anterior al sistema: la mora corre desde el día de la carga ("YYYY-MM-DD").
+      desde: moraCred.moraDesde ? moraCred.moraDesde.toISOString().slice(0, 10) : null,
     },
     resumen: {
       total: cuotas.length,

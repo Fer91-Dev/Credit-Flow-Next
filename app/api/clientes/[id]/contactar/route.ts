@@ -488,7 +488,7 @@ async function cargarContactable(ctx: Ctx, id: string, creditoId?: string | null
     /* Con un acuerdo vigente que congela, la mora de lo que entró al trato se detuvo el día
        que se firmó. Sin esto el WhatsApp le pedía más de lo que la caja le iba a cobrar. */
     const opts = {
-      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy,
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, moraDesde: mc.moraDesde, diasGracia: gracia, hoy,
       moraCongeladaAl: congelan.get(c.id) ?? null,
     };
 

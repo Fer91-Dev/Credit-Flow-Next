@@ -156,6 +156,7 @@ export async function deudaVencidaDeCredito(tenantId: string, creditoId: string)
     moraActiva: moraCred.moraActiva,
     tasaMoraDiaria: moraCred.tasaMoraDiaria,
     topeMoraPct: moraCred.topeMoraPct,
+    moraDesde: moraCred.moraDesde,
     diasGracia: gracia,
     // Sin esto se usa el ahora en UTC y, después de las 21:00 de Argentina, el acuerdo se
     // arma sobre un día más de punitorios por cuota que los que muestra la lista.

@@ -319,6 +319,8 @@ export interface DeudaVencida {
 
 export interface OpcionesDeudaVencida {
   moraActiva?: boolean;
+  /** Desde qué día corre la mora en este crédito (créditos anteriores al sistema). Ver `ConfigMora.desde`. */
+  moraDesde?: Date | null;
   tasaMoraDiaria?: number;
   /** Techo de la mora (% de la cuota). 0/ausente = sin tope. Ver `interesMora`. */
   topeMoraPct?: number;
@@ -441,7 +443,7 @@ export function calcularDeudaVencida(
       /* Los días que DEVENGAN, que no son los de atraso cuando un acuerdo los congeló.
          `atraso` se sigue informando entero: el cliente lleva los días que lleva. */
       diasAtraso(c.fechaVencimiento, topeMoraDeCuota(c.fechaVencimiento, topeMora, congeladaAl)),
-      { moraActiva, tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct },
+      { moraActiva, tasaDiaria: tasa, diasGracia: gracia, topePct: opts.topeMoraPct, desde: opts.moraDesde },
     );
 
     if (capPend + intPend + carPend + moraPend <= 0) continue; // ya saldada

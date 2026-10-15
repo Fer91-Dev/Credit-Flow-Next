@@ -567,7 +567,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
      * la caja va a cobrar.
      */
     const dv = calcularDeudaVencida(cuotasDom, {
-      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, diasGracia: gracia, hoy: corteCredito,
+      moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, moraDesde: mc.moraDesde, diasGracia: gracia, hoy: corteCredito,
       moraCongeladaAl: congelaDe(c.id),
     });
     /**
@@ -577,7 +577,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
      */
     const deudaTotal = esRecupero
       ? calcularDeudaConsolidada(cuotasDom, {
-          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct,
+          moraActiva: mc.moraActiva, tasaMoraDiaria: mc.tasaMoraDiaria, topeMoraPct: mc.topeMoraPct, moraDesde: mc.moraDesde,
           diasGracia: gracia, hoy: corteCredito, fechaInicio: c.fecha_inicio,
         }).total
       : round2(dv.total);
