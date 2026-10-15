@@ -481,16 +481,26 @@ const AYUDA: Record<string, AyudaBloque> = {
   },
   riesgo: {
     titulo: "Política de originación",
-    texto: "Reglas que definen si un cliente califica para un crédito y hasta qué monto.",
-    puntos: [
-      "Ratio cuota/ingreso: la cuota no puede superar ese % del sueldo.",
-      "Tope por múltiplo de ingreso y límites de monto.",
-      "Máx. créditos activos y bloqueo por mora previa.",
-      "Si no califica: avisar y dejar autorizar, o bloquear.",
-      "Cuotas vencidas impagas: frena el otorgamiento aunque «Si no califica» esté en «autorizar». Con la excepción prendida, el admin puede firmarlo igual y queda registrado quién lo autorizó; el vendedor nunca.",
-      "Crédito incobrable: quien tiene uno castigado no vuelve a sacar crédito. Es un freno absoluto: no lo autoriza nadie.",
-      "Refinanciación sin cancelar: hasta que no termine de pagarla, no se le otorga otro crédito. También es absoluto.",
-      "Sin sueldo cargado: no hay capacidad de pago que evaluar, así que el ratio y el múltiplo de ingreso no corren. Por defecto lo firma un administrador; también se puede bloquear o dejar pasar con aviso.",
+    texto: "Qué mira el sistema al otorgar un crédito. Cada regla termina en una de tres respuestas: «califica»; «revisar», que avisa y deja otorgar; o «no califica», que hace lo elegido en «Si el cliente no califica». Los frenos absolutos no los levanta nadie.",
+    opciones: [
+      { opcion: "Ratio cuota / ingreso máx", efecto: "La cuota del crédito nuevo —pasada a mensual y con cargos— más las cuotas de los créditos que ya tiene no pueden superar ese % del sueldo. Si lo supera, no califica. En 0 nadie califica." },
+      { opcion: "Tope de monto (× ingreso mensual)", efecto: "Monto máximo sugerido = sueldo × este número. Pasarse da «revisar», no rechaza. En 0 no hay tope." },
+      { opcion: "Sueldo que debe quedarle libre", efecto: "Segunda chance para quien se pasa del ratio: si después de pagar todas sus cuotas le sigue quedando este % del sueldo, pasa a «revisar» en vez de no calificar. En 0 está apagado." },
+      { opcion: "Situación BCRA máx aceptada", efecto: "Si el bureau informa una situación peor que esta (1 = normal, 5-6 = irrecuperable), no califica. Sin consulta al bureau no se evalúa." },
+      { opcion: "Límite base sin bureau", efecto: "Cuando el cliente no tiene consulta al bureau, el monto sugerido no pasa de este importe. Pasarse da «revisar». En 0 no hay límite propio." },
+      { opcion: "Máx. créditos activos por cliente", efecto: "Si ya tiene esa cantidad de créditos vigentes, no califica. En 0 no hay límite." },
+      { opcion: "Máx. ediciones del sueldo (vendedor)", efecto: "Cuántas veces un vendedor puede cambiar el sueldo de un cliente. Al llegar, solo un administrador puede resetear el contador. El administrador no tiene tope. En 0 no hay límite." },
+      { opcion: "Alerta por salto de sueldo", efecto: "Si el sueldo nuevo supera al anterior en más de este %, el sistema exige un motivo, que queda registrado. Vale para todos los usuarios. En 0 no pide nada." },
+      { opcion: "Score externo mínimo", efecto: "Si el score del bureau (0 a 1000) está por debajo, no califica. En 0 no se exige." },
+      { opcion: "Si el cliente no califica", efecto: "«Avisar y dejar autorizar»: un administrador puede otorgarlo igual y queda registrado quién lo autorizó; el vendedor no. «Bloquear»: no se otorga." },
+      { opcion: "Si el cliente no tiene sueldo cargado", efecto: "Sin sueldo, el ratio y el tope por ingreso no se pueden calcular. «Pedir autorización»: lo otorga solo un administrador. «Bloquear»: hasta cargarle el sueldo. «Solo avisar»: se otorga igual." },
+      { opcion: "Cuotas vencidas impagas", efecto: "Si tiene cuotas vencidas en un crédito vigente, no se le otorga, aunque «Si no califica» esté en «autorizar». Con «…pero un administrador puede autorizarlo» prendido, el admin lo puede firmar y queda registrado; el vendedor nunca." },
+      { opcion: "Crédito incobrable", efecto: "Quien tiene un crédito castigado como incobrable no vuelve a sacar crédito. Freno absoluto: no lo autoriza nadie." },
+      { opcion: "Refinanciación sin cancelar", efecto: "Hasta que termine de pagar su refinanciación no se le otorga otro crédito, aunque esté al día. Freno absoluto." },
+      { opcion: "Cheques rechazados", efecto: "Si el bureau informa cheques rechazados sin regularizar, no califica." },
+      { opcion: "Proceso judicial", efecto: "Si alguna entidad le inició juicio, no califica. Con «Avisar y dejar autorizar» no se bloquea: lo tiene que firmar un administrador." },
+      { opcion: "Refinanció en otra entidad", efecto: "No lo descalifica: pasa a «revisar», porque es alguien que no pudo con su plan original." },
+      { opcion: "Historial en la financiera (sin parámetro)", efecto: "Corre siempre: con historial de riesgo alto (categoría D) no califica; regular (C) da «revisar». Un cliente sin historial y sin consulta al bureau también da «revisar»." },
     ],
   },
   documentos: {
@@ -1895,7 +1905,7 @@ export function ConfigForm() {
           {activeTab === "riesgo" && (
           <Section
             title="Política de originación"
-            desc="Límites de crédito según el ingreso del cliente. Si un cliente no califica, la decisión queda en el admin (puede autorizar asumiendo el riesgo). Las señales de bureau (BCRA/Nosis) se conectan en un paso próximo."
+            desc="Qué mira el sistema antes de otorgar: capacidad de pago, historial en la financiera y señales del bureau."
             ayuda={AYUDA.riesgo}
             onSave={() => save("riesgo", { riesgoConfig: riesgo } as Partial<ConfiguracionFinanciera>)}
             saving={savingKey === "riesgo"} saved={savedKey === "riesgo"} dirty={isDirty("riesgo")}
