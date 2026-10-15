@@ -58,6 +58,9 @@ const digitos = (s) => String(s ?? "").replace(/\D/g, "");
 
 const filas = [];
 let errores = 0;
+// Un cliente NUEVO se identifica por su DNI si lo tiene, y si no por el nombre: con el DNI, dos
+// filas con el nombre escrito distinto ("Daniel Gauna" / "Gauna Daniel") son la misma ficha.
+const claveNuevo = (o) => (digitos(o.dni).length >= 7 ? `dni:${digitos(o.dni)}` : `nombre:${norm(o.cliente)}`);
 // La planilla se recarga ENTERA cada vez que crece: lo ya cargado (misma nota) se saltea.
 // Cuenta solo si el crédito SIGUE existiendo: la auditoría sobrevive al borrado, y sin este filtro
 // una base vaciada para recargar (dev, 15/10) salteaba las filas como "ya cargadas".
@@ -78,7 +81,7 @@ for (const [k, e] of lote.entries()) {
   const cands = porDni.length ? porDni : clientes.filter((c) => c.id === e.cliente || norm(`${c.nombre} ${c.apellido ?? ""}`) === norm(e.cliente) || norm(`${c.apellido ?? ""} ${c.nombre}`) === norm(e.cliente));
   if (cands.length > 1) { console.log(`✗ ${etiqueta}: hay ${cands.length} clientes con ese nombre (usá el id)`); errores++; continue; }
   // Un cliente NUEVO con varios créditos en el lote: alcanza con "crear_cliente" en uno de ellos.
-  const nuevoEnLote = cands.length === 0 && lote.some((o) => o.crear_cliente && norm(o.cliente) === norm(e.cliente));
+  const nuevoEnLote = cands.length === 0 && lote.some((o) => o.crear_cliente && claveNuevo(o) === claveNuevo(e));
   if (cands.length === 0 && !e.crear_cliente && !nuevoEnLote) { console.log(`✗ ${etiqueta}: no existe (poné "crear_cliente": true para crearlo)`); errores++; continue; }
   const frecuencia = e.frecuencia ?? "mensual";
   const primer = e.primer_vencimiento ?? (Number.isNaN(fechaYmd(e.otorgado ?? "").getTime()) ? "" : dom.ymdUTC(dom.sumarPeriodos(fechaYmd(e.otorgado), 1, frecuencia, config.simulador.frecuencias)));
@@ -99,6 +102,17 @@ for (const f of filas) {
     p.length ? fd(p[0].fecha) : "CANCELADO", p.length === 0 ? "—" : f.a.diasMora > 0 ? `${f.a.diasMora} días` : "al día", fmt(f.a.totalACobrar),
   ].join(" | "));
 }
+// Mismo DNI con nombres distintos: es UNA ficha, con el nombre de la primera fila.
+const nombresPorDni = new Map();
+for (const f of filas) {
+  if (f.cliente || digitos(f.e.dni).length < 7) continue;
+  const k = digitos(f.e.dni);
+  nombresPorDni.set(k, [...new Set([...(nombresPorDni.get(k) ?? []), String(f.e.cliente).trim()])]);
+}
+for (const [dni, nombres] of nombresPorDni) {
+  if (nombres.length > 1) console.log(`
+⚠ DNI ${dni} aparece como ${nombres.map((n) => `"${n}"`).join(", ")}: se crea UNA ficha, "${nombres[0]}".`);
+}
 const total = filas.reduce((s, f) => s + f.a.totalACobrar, 0);
 if (salteadas) console.log(`\n${salteadas} ya estaban cargados (misma nota): se saltean.`);
 console.log(`\n${filas.length} créditos · a cobrar ${fmt(total)} · ${errores} con error`);
@@ -110,12 +124,12 @@ const creados = new Map();
 for (const f of filas) {
   // Los clientes creados en esta corrida se reusan: dos créditos del mismo cliente nuevo no
   // tienen que crear dos clientes.
-  let clienteId = f.cliente?.id ?? creados.get(norm(f.e.cliente));
+  let clienteId = f.cliente?.id ?? creados.get(claveNuevo(f.e));
   if (!clienteId) {
     const [nombre, ...resto] = String(f.e.cliente).trim().split(/\s+/);
     const c = await prisma.clientes.create({ data: { tenant_id: tenantId, nombre, apellido: resto.join(" ") || null, documento: digitos(f.e.dni).length >= 7 ? digitos(f.e.dni) : null, estado: "activo" }, select: { id: true } });
     clienteId = c.id;
-    creados.set(norm(f.e.cliente), c.id);
+    creados.set(claveNuevo(f.e), c.id);
     console.log(`  + cliente creado: ${f.e.cliente}`);
   }
   const r = await cargarCreditoAnterior({ ...f.datos, clienteId, nota: f.e.nota ?? "carga de créditos anteriores" });
