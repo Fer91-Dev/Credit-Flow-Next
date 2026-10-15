@@ -13,7 +13,7 @@ import { scopeCreditosVendedor, type AuthContext } from "@/lib/auth";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
-import { round2, anteriorDelCredito } from "@/lib/domain";
+import { round2, anteriorDelCredito, imputarParcialAnterior } from "@/lib/domain";
 import { nombreCompleto } from "@/lib/utils";
 
 /** Motivo por el que no se puede emitir, para que cada ruta arme su propia respuesta. */
@@ -92,7 +92,7 @@ export async function datosLibreDeuda(
     }),
     prisma.cuotas.findMany({
       where: { ...withTenant(tenantId), credito_id: creditoId },
-      select: { nro: true, condonado: true, pagado_capital: true, pagado_interes: true, pagado_cargos: true },
+      select: { nro: true, capital: true, interes: true, condonado: true, pagado_capital: true, pagado_interes: true, pagado_cargos: true },
     }),
   ]);
 
@@ -104,8 +104,14 @@ export async function datosLibreDeuda(
   const anterior = anteriorDelCredito(credito.cronograma);
   const nrosAntes = new Set((anterior?.pagos ?? []).map((p) => p.nro));
   const antes = cuotas.filter((q) => nrosAntes.has(q.nro));
-  const antesCapital = round2(antes.reduce((s, q) => s + q.pagado_capital, 0));
-  const antesInteres = round2(antes.reduce((s, q) => s + q.pagado_interes, 0));
+  // La cuota que quedó A MEDIAS antes del sistema: su `pagado_*` mezcla lo de antes con lo cobrado
+  // después (que ya está en `pagos`), así que lo de antes se recalcula con la misma imputación.
+  const cuotaParcial = anterior?.parcial ? cuotas.find((q) => q.nro === anterior.parcial!.nro) : undefined;
+  const parcialAntes = cuotaParcial && anterior?.parcial
+    ? imputarParcialAnterior(cuotaParcial, anterior.parcial.monto)
+    : { capital: 0, interes: 0 };
+  const antesCapital = round2(antes.reduce((s, q) => s + q.pagado_capital, 0) + parcialAntes.capital);
+  const antesInteres = round2(antes.reduce((s, q) => s + q.pagado_interes, 0) + parcialAntes.interes);
   const antesCargos = round2(antes.reduce((s, q) => s + q.pagado_cargos, 0));
   const total_pagado = round2(pagos.reduce((s, p) => s + p.monto, 0) + antesCapital + antesInteres + antesCargos);
   /**
@@ -138,6 +144,7 @@ export async function datosLibreDeuda(
   const fecha_cancelacion = [
     ...pagos.map((p) => p.created_at),
     ...(anterior?.pagos ?? []).flatMap((p) => (p.fecha ? [new Date(`${p.fecha}T00:00:00.000Z`)] : [])),
+    ...(anterior?.parcial?.fecha ? [new Date(`${anterior.parcial.fecha}T00:00:00.000Z`)] : []),
   ].reduce<Date | null>((acc, f) => (acc && acc > f ? acc : f), null);
 
   return {

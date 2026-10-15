@@ -17,7 +17,7 @@ import { registrarAuditoria } from "@/lib/audit";
 import { formatCreditoNumero, nombreCompleto, hoyComercial } from "@/lib/utils";
 import {
   armarCreditoAnterior, planACuotas, normalizarFrecuencia, resolverFrecuencia, FRECUENCIAS_BUILTIN,
-  diasMoraActual, formatPesos, CARGOS_APAGADOS, REDONDEO_ANTERIOR, CRONOGRAMA_ANTERIOR,
+  diasMoraActual, formatPesos, CARGOS_APAGADOS, REDONDEO_ANTERIOR, CRONOGRAMA_ANTERIOR, imputarParcialAnterior, round2,
   type CreditoAnteriorArmado,
 } from "@/lib/domain";
 
@@ -34,6 +34,8 @@ export interface EntradaCreditoAnterior {
   primerVencimiento: string;
   /** Día en que se pagó cada cuota pagada: { "1": "YYYY-MM-DD" }. Opcional. */
   fechasPago?: Record<string, string>;
+  /** Cuota siguiente a las pagadas que quedó a medias: lo abonado y, si se sabe, cuándo. */
+  parcial?: { monto: number; fecha?: string | null };
   frecuencia: string;
   /** Para la auditoría: de dónde salió el dato ("dictado por Fernando 10/10"). */
   nota: string;
@@ -56,6 +58,7 @@ export async function prepararCreditoAnterior(e: Omit<EntradaCreditoAnterior, "c
     cuotasPagadas: Math.trunc(Number(e.cuotasPagadas)),
     fechaOtorgamiento: fechaYmd(e.fechaOtorgamiento), primerVencimiento: fechaYmd(e.primerVencimiento), frecuencia,
     fechasPago: Object.fromEntries(Object.entries(e.fechasPago ?? {}).map(([n, f]) => [Number(n), fechaYmd(f)])),
+    ...(e.parcial && { parcial: { monto: Number(e.parcial.monto), fecha: e.parcial.fecha ? fechaYmd(e.parcial.fecha) : null } }),
   }, hoy, config.convencionTasa, catalogo);
   const proxima = armado.pendientes[0]?.fecha;
   return { ...armado, frecuencia, diasMora: proxima ? diasMoraActual(proxima, hoy) : 0 };
@@ -138,6 +141,11 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
           pagado_capital: f.capital,
           pagado_interes: f.interes,
         }),
+        // La cuota pagada A MEDIAS: lo abonado imputado como en un cobro, el saldo queda a cobrar.
+        ...(a.anterior.parcial?.nro === f.nro && (() => {
+          const x = imputarParcialAnterior(f, a.anterior.parcial.monto);
+          return { estado: "parcial", pagado: round2(x.interes + x.capital), pagado_capital: x.capital, pagado_interes: x.interes };
+        })()),
       })),
     });
     return { id: c.id, numero, cliente };
@@ -154,6 +162,7 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
       numero: credito.numero, anterior_al_sistema: true, monto: Number(e.monto), cuota: a.anterior.cuota,
       cuotas: Math.trunc(Number(e.cuotas)), cuotas_pagadas: a.anterior.cuotasPagadas,
       fecha_otorgamiento: e.fechaOtorgamiento, primer_vencimiento: a.anterior.primerVencimiento, pagos: a.anterior.pagos,
+      parcial: a.anterior.parcial ?? null,
       frecuencia: a.frecuencia, tasa_despejada: a.tasa, saldo_capital: a.saldoCapital, total_a_cobrar: a.totalACobrar,
       nota: e.nota,
     },

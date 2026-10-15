@@ -17,6 +17,7 @@
  *      "otorgado": "2026-09-10",
  *      "primer_vencimiento": "2026-10-10",     // opcional: un período después del otorgamiento
  *      "fechas_pago": { "1": "2026-10-10" },   // opcional: día en que se pagó cada cuota pagada
+ *      "parcial": { "monto": 75000 },          // opcional: lo abonado de la cuota siguiente a las pagadas
  *      "frecuencia": "mensual",                // opcional
  *      "nota": "dictado por Fernando 10/10" }]
  *
@@ -85,7 +86,7 @@ for (const [k, e] of lote.entries()) {
   if (cands.length === 0 && !e.crear_cliente && !nuevoEnLote) { console.log(`✗ ${etiqueta}: no existe (poné "crear_cliente": true para crearlo)`); errores++; continue; }
   const frecuencia = e.frecuencia ?? "mensual";
   const primer = e.primer_vencimiento ?? (Number.isNaN(fechaYmd(e.otorgado ?? "").getTime()) ? "" : dom.ymdUTC(dom.sumarPeriodos(fechaYmd(e.otorgado), 1, frecuencia, config.simulador.frecuencias)));
-  const datos = { tenantId, monto: e.monto, cuota: e.cuota, cuotas: e.cuotas, cuotasPagadas: e.pagadas ?? 0, fechaOtorgamiento: e.otorgado, primerVencimiento: primer, frecuencia, fechasPago: e.fechas_pago };
+  const datos = { tenantId, monto: e.monto, cuota: e.cuota, cuotas: e.cuotas, cuotasPagadas: e.pagadas ?? 0, fechaOtorgamiento: e.otorgado, primerVencimiento: primer, frecuencia, fechasPago: e.fechas_pago, parcial: e.parcial };
   let a;
   try { a = await prepararCreditoAnterior(datos); } catch (err) { console.log(`✗ ${etiqueta}: ${err.message}`); errores++; continue; }
   filas.push({ e, cliente: cands[0] ?? null, datos, a });
@@ -97,7 +98,8 @@ for (const f of filas) {
   console.log([
     f.cliente ? `${f.cliente.nombre} ${f.cliente.apellido ?? ""}`.trim() : `${f.e.cliente} (NUEVO)`,
     fmt(Number(f.e.monto)), fmt(f.a.anterior.cuota), `${f.e.cuotas} (${f.datos.cuotasPagadas} pagadas)`, fd(fechaYmd(f.e.otorgado)),
-    f.a.anterior.pagos.map((x) => `${x.nro}: ${x.fecha ? fd(fechaYmd(x.fecha)) : "sin fecha"}`).join(" · ") || "—",
+    (f.a.anterior.pagos.map((x) => `${x.nro}: ${x.fecha ? fd(fechaYmd(x.fecha)) : "sin fecha"}`).join(" · ") || "—") +
+      (f.a.anterior.parcial ? ` · ${f.a.anterior.parcial.nro}: PARCIAL ${fmt(f.a.anterior.parcial.monto)}` : ""),
     p.map((c) => `${c.nro}: ${fd(c.fecha)} ${fmt(c.cuotaTotal)}`).join(" · ") || "—",
     p.length ? fd(p[0].fecha) : "CANCELADO", p.length === 0 ? "—" : f.a.diasMora > 0 ? `${f.a.diasMora} días` : "al día", fmt(f.a.totalACobrar),
   ].join(" | "));

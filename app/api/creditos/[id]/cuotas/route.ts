@@ -204,7 +204,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   // Crédito anterior al sistema: sus cuotas pagadas están saldadas SIN pago (la plata entró a
   // la caja vieja). Para que el plan diga cuándo y cuánto, van como un "comprobante" sin recibo.
-  const pagosAnteriores = new Map((anteriorDelCredito(credito.cronograma)?.pagos ?? []).map((p) => [p.nro, p.fecha]));
+  const anteriorCred = anteriorDelCredito(credito.cronograma);
+  const pagosAnteriores = new Map((anteriorCred?.pagos ?? []).map((p) => [p.nro, p.fecha]));
+  // La cuota que quedó a medias antes del sistema: lo abonado ahí se sigue mostrando aunque
+  // después se cobre el resto desde acá (sus aplicaciones son solo las del sistema).
+  const parcialAnterior = anteriorCred?.parcial ?? null;
 
   const cuotas = credito.cuotas.map((c) => {
     /**
@@ -314,6 +318,13 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       comprobantes.push({
         comprobante: "Antes del sistema", pago_id: null, fecha: fecha ? new Date(`${fecha}T00:00:00.000Z`) : null,
         fecha_hora: null, monto: round2(c.pagado), monto_pago: round2(c.pagado), entrega_refinanciacion: false, sin_recibo: true,
+      });
+    }
+    if (parcialAnterior?.nro === c.nro) {
+      comprobantes.unshift({
+        comprobante: "Antes del sistema", pago_id: null,
+        fecha: parcialAnterior.fecha ? new Date(`${parcialAnterior.fecha}T00:00:00.000Z`) : null,
+        fecha_hora: null, monto: parcialAnterior.monto, monto_pago: parcialAnterior.monto, entrega_refinanciacion: false, sin_recibo: true,
       });
     }
     return {

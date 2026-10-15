@@ -35,6 +35,12 @@ export interface CreditoAnterior {
    * las pagadas: ahí lo cobrado vive solo en `cobradoAntes`.
    */
   pagos?: { nro: number; fecha: string | null }[];
+  /**
+   * La cuota que quedó PAGADA A MEDIAS antes del sistema (la siguiente a las pagadas): se guarda
+   * con lo abonado imputado como en un cobro —interés primero, después capital— y estado
+   * "parcial", sin pago ni caja. El saldo se cobra normal desde el sistema (Fernando, 15/10/2026).
+   */
+  parcial?: { nro: number; monto: number; fecha: string | null };
 }
 
 export interface DatosCreditoAnterior {
@@ -47,6 +53,8 @@ export interface DatosCreditoAnterior {
   frecuencia: Frecuencia;
   /** Día en que se pagó cada cuota pagada, por número (opcional: si no se sabe, va sin fecha). */
   fechasPago?: Record<number, Date>;
+  /** Lo abonado de la cuota siguiente a las pagadas, si quedó a medias. */
+  parcial?: { monto: number; fecha?: Date | null };
 }
 
 /** Snapshot de cargos completo y apagado (`resolverCargos` no lo rellena con la config vigente). */
@@ -108,7 +116,23 @@ export function validarCreditoAnterior(d: DatosCreditoAnterior, hoy: Date): stri
     if (f.getTime() > hoy.getTime()) return `La fecha de pago de la cuota ${nro} no puede ser futura.`;
     if (f.getTime() < d.fechaOtorgamiento.getTime()) return `La cuota ${nro} no puede pagarse antes del otorgamiento.`;
   }
+  if (d.parcial) {
+    if (d.cuotasPagadas >= d.cuotas) return "Un crédito con todas las cuotas pagadas no puede tener una cuota parcial.";
+    if (!ok(d.parcial.monto) || d.parcial.monto <= 0) return "Lo pagado de la cuota parcial tiene que ser mayor a cero.";
+    if (round2(d.parcial.monto) >= round2(d.cuota)) return `La cuota ${d.cuotasPagadas + 1} no es parcial: lo pagado cubre la cuota entera.`;
+    const f = d.parcial.fecha;
+    if (f && (Number.isNaN(f.getTime()) || f.getTime() > hoy.getTime())) return `La fecha del pago parcial de la cuota ${d.cuotasPagadas + 1} es inválida o futura.`;
+  }
   return null;
+}
+
+/**
+ * Cómo se reparte lo abonado de una cuota parcial: como en un cobro, el interés primero y el
+ * resto al capital (los créditos anteriores no tienen cargos).
+ */
+export function imputarParcialAnterior(c: Pick<CuotaPlan, "interes" | "capital">, monto: number): { interes: number; capital: number } {
+  const interes = round2(Math.min(monto, c.interes));
+  return { interes, capital: round2(Math.min(c.capital, monto - interes)) };
 }
 
 /**
@@ -173,18 +197,25 @@ export function armarCreditoAnterior(
     primerVencimiento: ymdUTC(d.primerVencimiento),
     cuotasPagadas: d.cuotasPagadas,
     cuota: round2(d.cuota),
-    cobradoAntes: round2(d.cuota * d.cuotasPagadas),
+    cobradoAntes: round2(d.cuota * d.cuotasPagadas + (d.parcial?.monto ?? 0)),
     pagos: Array.from({ length: d.cuotasPagadas }, (_, i) => {
       const f = d.fechasPago?.[i + 1];
       return { nro: i + 1, fecha: f ? ymdUTC(f) : null };
+    }),
+    ...(d.parcial && {
+      parcial: { nro: d.cuotasPagadas + 1, monto: round2(d.parcial.monto), fecha: d.parcial.fecha ? ymdUTC(d.parcial.fecha) : null },
     }),
   };
   const plan = planCreditoAnterior(d.monto, tasa, d.cuotas, d.frecuencia, anterior, convencion, catalogo);
   const pagadas = plan.cuotas.filter((c) => c.nro <= d.cuotasPagadas);
   const pendientes = plan.cuotas.filter((c) => c.nro > d.cuotasPagadas);
+  // Lo ya abonado de la cuota parcial baja lo que falta cobrar y, su parte de capital, el saldo.
+  const abonado = anterior.parcial && pendientes[0]
+    ? imputarParcialAnterior(pendientes[0], anterior.parcial.monto)
+    : { interes: 0, capital: 0 };
   return {
     tasa, plan, pagadas, pendientes, anterior,
-    saldoCapital: round2(pendientes.reduce((s, c) => s + c.capital, 0)),
-    totalACobrar: round2(pendientes.reduce((s, c) => s + c.cuotaTotal, 0)),
+    saldoCapital: round2(pendientes.reduce((s, c) => s + c.capital, 0) - abonado.capital),
+    totalACobrar: round2(pendientes.reduce((s, c) => s + c.cuotaTotal, 0) - abonado.interes - abonado.capital),
   };
 }
