@@ -54,7 +54,10 @@ console.log("  Ninguno vivo.");
 // 3) Respaldo
 paso(3, "Respaldo de producción");
 const antes = new Date(Date.now() - 60_000).toISOString(); // margen por reloj de GitHub
-sh("gh workflow run backup.yml");
+// Desde `preview`: es el código que está por pasar, así que el respaldo prueba también la versión
+// de backup.yml que va a quedar en main (15/10/2026: el arreglo del control de contenido no se
+// podía pasar porque el pase corría el respaldo viejo de main, que fallaba).
+sh("gh workflow run backup.yml --ref preview");
 let run = null;
 for (let i = 0; i < 90; i++) {
   await dormir(10_000);
