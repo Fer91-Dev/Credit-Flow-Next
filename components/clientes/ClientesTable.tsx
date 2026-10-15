@@ -471,11 +471,6 @@ function ClienteRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-semibold text-foreground">{nombreCompleto(c)}</p>
-          {c.migrado && (
-            <span className="shrink-0 rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning" title="Importado del sistema anterior">
-              Migrado
-            </span>
-          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {c.documento && (

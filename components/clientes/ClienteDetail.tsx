@@ -26,7 +26,6 @@ import { frasePago } from "@/lib/pago-concepto";
 import { PlanDeCuotas } from "@/components/creditos/PlanDeCuotas";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
 import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
-import { EditarHistorialDialog } from "@/components/clientes/EditarHistorialDialog";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
@@ -117,13 +116,9 @@ export function ClienteDetail({
   const { mutate: globalMutate } = useSWRConfig();
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
   const [anularPago, setAnularPago] = useState<PagoAAnular | null>(null);
-  const [editarHist, setEditarHist] = useState(false);
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
-  // El historial del sistema anterior se abre desde el chip "Migrado" (Fernando, 30/09/2026):
-  // es referencia, no algo que se mira todos los días, y ocupaba media ficha.
-  const [verHistorial, setVerHistorial] = useState(false);
   /**
    * Cuota que se está cobrando desde el plan (null = cerrado).
    *
@@ -320,28 +315,6 @@ export function ClienteDetail({
                       <BellOff className="h-3 w-3" /> No contactar
                     </span>
                   )}
-                  {cliente.migrado && (cliente.historial_migrado ? (
-                    <button
-                      type="button"
-                      onClick={() => setVerHistorial((v) => !v)}
-                      aria-expanded={verHistorial}
-                      aria-controls="historial-previo"
-                      title={verHistorial ? "Ocultar el historial del sistema anterior" : "Ver el historial del sistema anterior"}
-                      className={`group inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning transition-colors ${
-                        verHistorial ? "border-warning/60 bg-warning/20" : "border-warning/30 bg-warning/10 hover:border-warning/60 hover:bg-warning/20"
-                      }`}
-                    >
-                      Migrado
-                      <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${verHistorial ? "rotate-180" : "group-hover:translate-y-px"}`} />
-                    </button>
-                  ) : (
-                    <span
-                      className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
-                      title="Cliente importado del sistema anterior — completá sus datos reales (nombre, DNI, sueldo) con Editar"
-                    >
-                      Migrado
-                    </span>
-                  ))}
                   {/* Un crédito en LEGALES se dice acá arriba, con el nombre: es lo que
                       cambia la conversación entera, y estaba solo en la tarjeta del crédito
                       —abajo del todo y con el plan desplegado—. */}
@@ -600,91 +573,6 @@ export function ClienteDetail({
             </div>
           </div>
         )}
-
-        {/* Historial previo (cliente migrado del sistema anterior) — solo referencia */}
-        {cliente.migrado && cliente.historial_migrado && verHistorial && (() => {
-          const h = cliente.historial_migrado!;
-          const HB: Record<string, { l: string; v: BadgeVariant }> = {
-            al_dia: { l: "Al día", v: "success" }, debe: { l: "Debe", v: "destructive" },
-            muy_deudor: { l: "Muy deudor", v: "destructive" }, parcial: { l: "Parcial", v: "warning" },
-            terminado: { l: "Pagado", v: "muted" }, recien: { l: "Reciente", v: "primary" },
-          };
-          const tiles: [string, string, string][] = [
-            ["Créditos previos", String(h.resumen.creditos), "text-foreground"],
-            ["Total prestado", `${formatMonto(h.resumen.total_prestado)}`, "text-foreground"],
-            ["Saldo pendiente", `${formatMonto(h.resumen.saldo_pendiente)}`, h.resumen.saldo_pendiente > 0 ? "text-warning" : "text-success"],
-            ["Ya pagados", String(h.resumen.terminados), "text-foreground"],
-          ];
-          return (
-            <div id="historial-previo" className="rounded-xl border border-warning/25 bg-warning/[0.04] p-5 space-y-4 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Emoji name="page-facing-up" className="h-4 w-4" />
-                  <h3 className="text-sm font-semibold text-foreground">Historial previo</h3>
-                  <span className="text-[11px] text-muted-foreground">· sistema anterior (planilla)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-foreground">{h.perfil}</span>
-                  {puedeAnular && (
-                    <button
-                      onClick={() => setEditarHist(true)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      title="Editar el historial (solo administrador)"
-                    >
-                      <Pencil className="h-3 w-3" /> Editar
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {tiles.map(([l, v, c]) => (
-                  <div key={l} className="rounded-lg border border-border bg-card/50 px-2.5 py-2">
-                    <p className="text-[10px] text-muted-foreground">{l}</p>
-                    <p className={`font-mono text-sm font-bold ${c}`}>{v}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="tabla-apilable w-full min-w-[30rem] text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground">
-                      <th className="py-1.5 pr-2 font-semibold">Crédito (planilla)</th>
-                      <th className="py-1.5 px-2 text-right font-semibold">Prestado</th>
-                      <th className="py-1.5 px-2 text-right font-semibold">Cuota</th>
-                      <th className="py-1.5 px-2 text-center font-semibold" title="Cuotas pagadas / total">Cuotas</th>
-                      <th className="py-1.5 px-2 font-semibold">Estado</th>
-                      <th className="py-1.5 pl-2 text-right font-semibold">Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {h.historial.map((c, i) => {
-                      const b = HB[c.estado] ?? { l: c.estado, v: "muted" as BadgeVariant };
-                      const totalCuotas = c.cuotas_pagadas + c.cuotas_pendientes;
-                      return (
-                        <tr key={i} className="border-b border-border/60">
-                          <td className="py-1.5 pr-2 text-foreground">{c.descripcion}{c.revisar ? <span className="ml-1 text-[10px] text-warning">⚠ {c.revisar}</span> : null}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-foreground">{formatMonto(c.monto)}</td>
-                          <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{formatMonto(c.cuota)}</td>
-                          <td className="py-1.5 px-2 text-center font-mono text-muted-foreground" title="pagadas / total">
-                            <span><span className="text-foreground font-semibold">{c.cuotas_pagadas}</span>/{totalCuotas}</span>
-                          </td>
-                          <td className="py-1.5 px-2"><StatusBadge label={b.l} variant={b.v} /></td>
-                          <td className={`py-1.5 pl-2 text-right font-mono ${c.saldo > 0 ? "text-warning font-semibold" : "text-success"}`}>{formatMonto(c.saldo)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-                Importado de la planilla anterior — <strong className="text-foreground">solo referencia</strong> (no genera caja ni cuotas). Completá el nombre real y el DNI con <strong className="text-foreground">Editar</strong>; los créditos nuevos se cargan normalmente.
-              </p>
-            </div>
-          );
-        })()}
 
         {/* Datos personales (presentación editorial por bloques) */}
         {showPersonal && (
@@ -960,13 +848,6 @@ export function ClienteDetail({
           mutate(); // revalida la ficha del cliente
           mutarCreditos(); mutarPagos(); globalMutate(KEYS.dashboard); globalMutate("/api/caja");
         }}
-      />
-
-      {/* Editar historia clínica del cliente migrado (solo admin) */}
-      <EditarHistorialDialog
-        clienteId={cliente.id}
-        historial={editarHist ? (cliente.historial_migrado ?? null) : null}
-        onClose={() => { setEditarHist(false); mutate(); }}
       />
 
       {/* Contacto individual (WhatsApp / email). Montado en la RAÍZ del componente, no dentro

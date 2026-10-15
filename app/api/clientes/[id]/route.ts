@@ -520,11 +520,6 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   if ("consentimiento_bureau" in body) {
     updateData.consentimiento_bureau = body.consentimiento_bureau === true;
   }
-  // Historia clínica del cliente migrado: SOLO un admin puede editarla (referencia, no toca caja).
-  if ("historial_migrado" in body && role === "admin") {
-    const h = body.historial_migrado;
-    updateData.historial_migrado = h && typeof h === "object" ? h : null;
-  }
 
   /**
    * ── ESTADO DEL CLIENTE (activo / fallecido) ──

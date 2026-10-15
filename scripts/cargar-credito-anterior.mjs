@@ -42,9 +42,13 @@ const lote = JSON.parse(readFileSync(archivo, "utf8"));
 const host = (process.env.DATABASE_URL ?? "").replace(/^.*@/, "").replace(/[/?].*$/, "");
 console.log(`Base: ${host} · ${confirmar ? "ESCRIBE" : "vista previa (no escribe)"}`);
 
-const tenants = await prisma.clientes.groupBy({ by: ["tenant_id"], where: { migrado: true } });
-if (tenants.length !== 1) { console.error(`ABORTADO: se esperaba un solo tenant con migrados, hay ${tenants.length}.`); process.exit(1); }
-const tenantId = tenants[0].tenant_id;
+// La financiera es el ÚNICO tenant que no es el de la plataforma (antes se buscaba por los clientes
+// migrados, que se borraron el 14/10 en prod y el 15/10 en dev: con cero, el script abortaba).
+const { PLATAFORMA_TENANT_ID } = await jiti.import("@/lib/saas-owner");
+const tenants = await prisma.tenants.findMany({ where: { id: { not: PLATAFORMA_TENANT_ID } }, select: { id: true, nombre: true } });
+if (tenants.length !== 1) { console.error(`ABORTADO: se esperaba una sola financiera, hay ${tenants.length}.`); process.exit(1); }
+const tenantId = tenants[0].id;
+console.log(`Financiera: ${tenants[0].nombre}`);
 const config = await getConfiguracion(tenantId);
 const fmt = (n) => `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fd = (d) => d.toISOString().slice(0, 10).split("-").reverse().join("/");
@@ -55,9 +59,15 @@ const digitos = (s) => String(s ?? "").replace(/\D/g, "");
 const filas = [];
 let errores = 0;
 // La planilla se recarga ENTERA cada vez que crece: lo ya cargado (misma nota) se saltea.
-const yaCargadas = new Set((await prisma.auditoria.findMany({
-  where: { tenant_id: tenantId, entidad: "creditos", accion: "crear" }, select: { meta: true },
-})).filter((a) => a.meta?.anterior_al_sistema).map((a) => a.meta.nota));
+// Cuenta solo si el crédito SIGUE existiendo: la auditoría sobrevive al borrado, y sin este filtro
+// una base vaciada para recargar (dev, 15/10) salteaba las filas como "ya cargadas".
+const auditados = (await prisma.auditoria.findMany({
+  where: { tenant_id: tenantId, entidad: "creditos", accion: "crear" }, select: { meta: true, entidad_id: true },
+})).filter((a) => a.meta?.anterior_al_sistema && a.entidad_id);
+const vivos = new Set((await prisma.creditos.findMany({
+  where: { tenant_id: tenantId, id: { in: auditados.map((a) => a.entidad_id) } }, select: { id: true },
+})).map((c) => c.id));
+const yaCargadas = new Set(auditados.filter((a) => vivos.has(a.entidad_id)).map((a) => a.meta.nota));
 let salteadas = 0;
 for (const [k, e] of lote.entries()) {
   const etiqueta = `#${k + 1} ${e.cliente}`;
