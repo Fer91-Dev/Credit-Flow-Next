@@ -79,6 +79,11 @@ jobs:
           STAMP=$(date -u +%Y%m%d-%H%M%S)
           FILE="creditflow-$STAMP.dump"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # Cuántos clientes hay EN PRODUCCIÓN, para que la verificación compare contra eso y no
+          # contra un mínimo fijo (con la cartera vacía de verdad, el respaldo vacío es correcto).
+          # (asignado aparte: con `set -e`, si psql falla el paso se corta en vez de dejarlo vacío)
+          ORIGEN_CLIENTES=$(psql "$PGCONN" -tAX -c 'SELECT count(*) FROM clientes')
+          echo "ORIGEN_CLIENTES=$ORIGEN_CLIENTES" >> "$GITHUB_ENV"
           # -Fc = formato custom (comprimido y restaurable con pg_restore)
           pg_dump "$PGCONN" -Fc --no-owner --no-privileges -f "$FILE"
           ls -lh "$FILE"
@@ -127,11 +132,19 @@ jobs:
             echo "  $t: $($PSQL -c "SELECT count(*) FROM $t") filas"
           done
 
-          echo "── Control de contenido: la cartera no puede venir vacía ──"
+          echo "── Control de contenido: lo que hay en producción tiene que venir en el respaldo ──"
           CLIENTES=$($PSQL -c "SELECT count(*) FROM clientes")
           TENANTS=$($PSQL -c "SELECT count(*) FROM tenants")
-          if [ "$CLIENTES" -eq 0 ] || [ "$TENANTS" -eq 0 ]; then
-            echo "❌ Restauró SIN clientes o SIN financieras: es un respaldo vacío."; exit 1
+          echo "  clientes en producción: $ORIGEN_CLIENTES · en el respaldo: $CLIENTES"
+          if [ "$TENANTS" -eq 0 ]; then
+            echo "❌ Restauró SIN financieras: es un respaldo vacío."; exit 1
+          fi
+          # Comparado contra producción y no contra "al menos 1": el 14/10/2026 se vació la
+          # cartera a propósito (para cargarla de nuevo) y el control viejo rechazó todos los
+          # respaldos — dos noches sin copia. Lo que sigue atajando es el caso temido: la base
+          # tiene clientes y el dump llegó sin ninguno.
+          if [ "$ORIGEN_CLIENTES" -gt 0 ] && [ "$CLIENTES" -eq 0 ]; then
+            echo "❌ Producción tiene $ORIGEN_CLIENTES clientes y el respaldo restauró 0."; exit 1
           fi
 
           echo "✅ Restaurado y verificado: $TABLAS tablas · $CLIENTES clientes · $TENANTS financieras."
