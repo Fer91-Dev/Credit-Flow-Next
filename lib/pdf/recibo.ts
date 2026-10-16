@@ -225,7 +225,8 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
    * Dos números distintos con nombres parecidos en el mismo papel es la receta para que el
    * cliente crea que le cobraron mal. El capital no incluye el interés todavía no devengado.
    */
-  pair("Capital pendiente", fmtMoney(credito.saldo_pendiente), colR, y);
+  // Va con el desglose: es el mismo tipo de detalle (Silvio, 16/10/2026: fuera del papel).
+  if (data.detalleImputacion) pair("Capital pendiente", fmtMoney(credito.saldo_pendiente), colR, y);
   y -= 44;
 
   /**
