@@ -8,7 +8,7 @@ import type { DetalleCobro } from "@/lib/swr";
 
 const n2 = (x: number) => x.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const METODO: Record<string, string> = { efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque", otro: "Otro" };
+const METODO: Record<string, string> = { efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque", otro: "Otro", antes_sistema: "—" };
 
 /**
  * QUÉ FUE CADA COBRO, en una palabra. El `concepto` del servidor dice el detalle ("Pago de la
@@ -17,6 +17,7 @@ const METODO: Record<string, string> = { efectivo: "Efectivo", transferencia: "T
  */
 export function tipoDeCobro(c: DetalleCobro): { label: string; variant: BadgeVariant } {
   if (c.anulado) return { label: "Anulado", variant: "destructive" };
+  if (c.tipo === "antes_sistema") return { label: "Antes del sistema", variant: "muted" };
   if (c.tipo === "entrega_refinanciacion") return { label: "Entrega refinanciación", variant: "warning" };
   if (c.tipo === "entrega_acuerdo") return { label: "Entrega acuerdo", variant: "primary" };
   if (c.tipo === "cuota_acuerdo") return { label: "Cuota de acuerdo", variant: "primary" };
@@ -60,7 +61,7 @@ export function DetalleCobros({ cobros }: { cobros: DetalleCobro[] }) {
       cell: (c) => (
         <div className="leading-tight">
           <span className="text-xs tabular-nums text-foreground">{formatFecha(c.fecha)}</span>
-          <span className="block text-[11px] tabular-nums text-muted-foreground">{horaAR(c.hora)}</span>
+          {c.hora && <span className="block text-[11px] tabular-nums text-muted-foreground">{horaAR(c.hora)}</span>}
         </div>
       ),
     },

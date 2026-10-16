@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import type { NextRequest } from "next/server";
 import { hoyComercial } from "@/lib/utils";
 import { cobrabilidadDeCuota } from "@/lib/domain";
+import { cobrosAnterioresDe } from "@/lib/cobros-anteriores";
 
 /**
  * GET /api/dashboard/series
@@ -65,7 +66,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const credRel = vendedorId ? { vendedor_id: vendedorId } : undefined;
   const finDeMes = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-  const [pagos, creditos, cuotas] = await Promise.all([
+  const [pagos, creditos, cuotas, todos] = await Promise.all([
     prisma.pagos.findMany({
       where: { ...withTenant(tenantId), anulado: false, fecha: { gte: windowStart }, ...(credRel ? { credito: credRel } : {}) },
       select: { fecha: true, monto: true },
@@ -82,6 +83,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       },
       select: { fecha_vencimiento: true, estado: true, cuota_total: true, pagado: true, pagado_mora: true },
     }),
+    // Para lo cobrado antes del sistema: los créditos anteriores pueden ser de antes de la ventana.
+    prisma.creditos.findMany({ where: credFiltro as never, select: { id: true, estado: true, cronograma: true, created_at: true } }),
   ]);
 
   const aCobrar = new Array(12).fill(0);
@@ -105,6 +108,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   for (const p of pagos) {
     const i = idxDe.get(keyDe(p.fecha));
     if (i !== undefined) cobrado[i] += p.monto;
+  }
+  // Las cuotas cobradas antes del sistema, en el mes en que se cobraron (no tienen fila en `pagos`).
+  for (const a of await cobrosAnterioresDe(tenantId, todos)) {
+    const i = idxDe.get(keyDe(a.fecha));
+    if (i !== undefined) cobrado[i] += a.total;
   }
 
   // Primer mes con algo que mostrar. Sin nada, la serie va vacía y el gráfico lo dice.

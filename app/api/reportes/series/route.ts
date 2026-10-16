@@ -12,6 +12,7 @@ import {
   comisionesDeCaja,
 } from "@/lib/domain";
 import { getConfiguracion, getRentabilidadConfig } from "@/lib/config";
+import { cobrosAnterioresDe } from "@/lib/cobros-anteriores";
 import { inicioDiaAR, finDiaAR, mesAR, mesDeFecha, hoyComercial } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 
@@ -79,11 +80,11 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.creditos.findMany({
       where: { ...withTenant(tenantId) },
       select: {
-        estado: true, monto_original: true, es_refinanciacion: true,
+        id: true, estado: true, monto_original: true, es_refinanciacion: true,
         created_at: true, fecha_inicio: true, cronograma: true, recupero_at: true,
         cuotas: {
           select: {
-            capital: true, fecha_vencimiento: true, condonado: true,
+            nro: true, capital: true, fecha_vencimiento: true, condonado: true,
             aplicaciones: { select: { aplicado_capital: true, pago: { select: { fecha: true } } } },
           },
         },
@@ -128,6 +129,21 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
 
   const graciaDefault = config.simulador.diasGracia ?? 0;
 
+  /**
+   * Lo cobrado ANTES DEL SISTEMA (créditos anteriores): sin fila en `pagos` ni en `aplicaciones`.
+   * Va a la cobranza del mes en que se cobró y, como aplicación de capital fechada, a la
+   * reconstrucción de la cartera: sin eso la cuota figuraba impaga en todos los cortes y el
+   * histórico mostraba como mora capital que el cliente ya había devuelto.
+   */
+  const antes = await cobrosAnterioresDe(tenantId, creditos);
+  const capitalAntes = new Map<string, { aplicado_capital: number; fecha: Date }>();
+  for (const a of antes) {
+    const k = `${a.creditoId}:${a.nro}`;
+    const cur = capitalAntes.get(k);
+    // La cuota parcial puede venir junto con su parte saldada: se suman, con la fecha más tardía.
+    capitalAntes.set(k, cur ? { aplicado_capital: cur.aplicado_capital + a.capital, fecha: a.fecha > cur.fecha ? a.fecha : cur.fecha } : { aplicado_capital: a.capital, fecha: a.fecha });
+  }
+
   // Ledger para la reconstrucción de cartera/mora (usa TODAS las aplicaciones, no solo del rango).
   const ledger: CreditoLedger[] = creditos.map((c) => ({
     estado: c.estado,
@@ -135,12 +151,18 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     dias_gracia: (c.cronograma as { diasGracia?: number } | null)?.diasGracia ?? graciaDefault,
     // La quita se fecha con el pago que cerró el acuerdo; el cierre de recupero, con su marca.
     condonado_en: c.pagos[0]?.fecha ?? c.recupero_at ?? null,
-    cuotas: c.cuotas.map((q) => ({
-      capital: q.capital,
-      fecha_vencimiento: q.fecha_vencimiento,
-      condonado: q.condonado,
-      aplicaciones: q.aplicaciones.map((a) => ({ aplicado_capital: a.aplicado_capital, fecha: a.pago.fecha })),
-    })),
+    cuotas: c.cuotas.map((q) => {
+      const previo = capitalAntes.get(`${c.id}:${q.nro}`);
+      return {
+        capital: q.capital,
+        fecha_vencimiento: q.fecha_vencimiento,
+        condonado: q.condonado,
+        aplicaciones: [
+          ...q.aplicaciones.map((a) => ({ aplicado_capital: a.aplicado_capital, fecha: a.pago.fecha })),
+          ...(previo ? [previo] : []),
+        ],
+      };
+    }),
   }));
 
   // Acumuladores por mes (otorgamiento + cobranza) en una sola pasada.
@@ -174,6 +196,13 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const cur = cobradoPorMes.get(k) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0, excedente: 0 };
     cur.total += p.monto; cur.capital += p.aplicado_capital; cur.interes += p.aplicado_interes;
     cur.mora += p.aplicado_mora; cur.cargos += p.aplicado_cargos; cur.excedente += p.excedente ?? 0;
+    cobradoPorMes.set(k, cur);
+  }
+  for (const a of antes) {
+    if (a.fecha < desde || a.fecha > hasta) continue;
+    const k = mesDeFecha(a.fecha);
+    const cur = cobradoPorMes.get(k) ?? { total: 0, capital: 0, interes: 0, mora: 0, cargos: 0, excedente: 0 };
+    cur.total += a.total; cur.capital += a.capital; cur.interes += a.interes; cur.mora += a.otros;
     cobradoPorMes.set(k, cur);
   }
 

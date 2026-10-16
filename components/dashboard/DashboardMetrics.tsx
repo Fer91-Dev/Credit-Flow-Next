@@ -378,6 +378,11 @@ export function DashboardMoraGrid({ data, apilado = false }: { data: DashboardDa
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Monto total cobrado</p>
             <p className="text-2xl font-bold text-success font-mono tabular-nums">{formatMonto(transacciones.monto_pagos_total)}</p>
+            {(transacciones.cobrado_antes_sistema ?? 0) > 0 && (
+              <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+                {formatMonto(transacciones.cobrado_antes_sistema ?? 0)} de {transacciones.cuotas_antes_sistema} cuotas antes del sistema
+              </p>
+            )}
           </div>
         </div>
       </div>

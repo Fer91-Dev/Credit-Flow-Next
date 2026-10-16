@@ -16,8 +16,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, StackedBarChart, Sparkline, Donut, type Punto } from "./charts";
 import { Nota } from "@/components/ui/Nota";
 import { DetalleCobros, tipoDeCobro, horaAR } from "./DetalleCobros";
+import { RentabilidadPorCliente } from "./RentabilidadPorCliente";
 import { imgLogoImpreso } from "@/lib/logo-papel";
-import { ESTADOS_COBRABLES } from "@/lib/domain";
+import { ESTADOS_COBRABLES, detalleAbonado } from "@/lib/domain";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -42,6 +43,7 @@ const estadoLabel: Record<string, string> = {
 };
 const metodoLabel: Record<string, string> = {
   efectivo: "Efectivo", transferencia: "Transferencia", cheque: "Cheque", otro: "Otro",
+  antes_sistema: "Antes del sistema",
 };
 /* Solo los dos tipos vigentes. Se lee con `?? t.tipo`, así que un tipo desconocido -de datos
    viejos o de otra financiera- se muestra crudo en vez de quedar en blanco. */
@@ -182,7 +184,7 @@ function imprimirReporte(
     const nuevo = c.credito_nuevo != null ? ` · sigue en <span class="nw">${formatCreditoNumero(c.credito_nuevo, c.credito.numero)}</span>` : "";
     const motivo = c.anulado && c.anulado_motivo ? " · " + esc(c.anulado_motivo) : "";
     return `<tr class="${i % 2 ? "ev" : ""}${c.anulado ? " anu" : ""}">
-      <td class="nw">${fmtDate(c.fecha)}<span class="sub">${horaAR(c.hora)}</span></td>
+      <td class="nw">${fmtDate(c.fecha)}${c.hora ? `<span class="sub">${horaAR(c.hora)}</span>` : ""}</td>
       <td class="mn">${esc(c.recibo ?? "—")}</td>
       <td><strong>${esc(c.cliente)}</strong><span class="sub mn">${esc(formatCreditoNumero(c.credito.numero, c.credito.numero_origen))}</span></td>
       <td><strong>${esc(tipoDeCobro(c).label)}</strong><span class="sub">${esc(c.concepto)}${nuevo}${motivo}</span></td>
@@ -498,7 +500,7 @@ function TabResumen({ r }: { r: Reporte }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon="handshake" label="Operaciones" value={String(r.operaciones.cantidad)} accent="primary" sub={`ticket $${n2(r.operaciones.ticket_promedio)}`} />
         <KpiCard icon="dollar-banknote" label="Monto otorgado" value={`$${n2(r.operaciones.monto_otorgado)}`} accent="primary" mono />
-        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={`${r.cobranzas.cantidad} pago${r.cobranzas.cantidad !== 1 ? "s" : ""}`}
+        <KpiCard icon="chart-increasing" label="Cobrado" value={`$${n2(r.cobranzas.total_cobrado)}`} accent="success" mono sub={detalleAbonado(r.cobranzas.cantidad, r.cobranzas.antes_sistema?.cuotas ?? 0).replace(/^en /, "")}
           onClick={cobros.length > 0 ? () => setVerCobros((v) => !v) : undefined} active={verCobros} />
         <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(r.rentabilidad.ingreso_total)}`} accent="warning" mono sub={r.rentabilidad.comisiones_cobradas !== 0 ? `incluye $${n2(r.rentabilidad.comisiones_cobradas)} de comisión de otorgamiento` : "interés + cargos + mora"} />
         <KpiCard icon="bar-chart" label={r.rentabilidad.habilitado ? "Rentabilidad neta" : "Rentab. (bruta)"} value={`$${n2(r.rentabilidad.rentabilidad_neta)}`} accent={r.rentabilidad.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={r.rentabilidad.habilitado ? `${n1(r.rentabilidad.margen_neto_pct)}% margen` : "sin costo de fondeo"} />
@@ -517,7 +519,7 @@ function TabResumen({ r }: { r: Reporte }) {
             <Emoji name="receipt" className="h-4 w-4" />
             <h3 className="text-sm font-semibold text-foreground">Cobros del período</h3>
             <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-              {r.cobranzas.cantidad} {r.cobranzas.cantidad === 1 ? "cobro" : "cobros"} · ${n2(r.cobranzas.total_cobrado)}
+              {detalleAbonado(r.cobranzas.cantidad, r.cobranzas.antes_sistema?.cuotas ?? 0).replace(/^en /, "")} · ${n2(r.cobranzas.total_cobrado)}
               {anulados > 0 && ` · ${anulados} ${anulados === 1 ? "anulado" : "anulados"}`}
             </span>
           </div>
@@ -586,13 +588,17 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
           configurá el costo de fondeo en <strong>Configuración → Rentabilidad</strong>.
         </div>
       )}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Con plata propia el fondeo es $0,00: la tarjeta solo aparece si hay un costo cargado. */}
+      <div className={`grid grid-cols-2 gap-4 ${rent.costo_total !== 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <KpiCard icon="money-bag" label="Ingreso financiero" value={`$${n2(rent.ingreso_total)}`} accent="success" mono
-          sub={rent.comisiones_cobradas !== 0 ? `$${n2(rent.ingreso_financiero)} cobrado + $${n2(rent.comisiones_cobradas)} comisión de otorgamiento` : "interés + cargos + mora"} />
-        <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n2(rent.costo_total)}`} accent="destructive" mono sub={rent.habilitado ? "capital + fuera de caja" : "sin configurar"} />
+          sub={[
+            r.cobranzas.antes_sistema?.interes ? `$${n2(r.cobranzas.antes_sistema.interes)} de cuotas cobradas antes del sistema` : "",
+            rent.comisiones_cobradas !== 0 ? `$${n2(rent.comisiones_cobradas)} comisión de otorgamiento` : "",
+          ].filter(Boolean).join(" · ") || "interés + cargos + mora"} />
+        {rent.costo_total !== 0 && <KpiCard icon="dollar-banknote" label="Costo de fondeo" value={`$${n2(rent.costo_total)}`} accent="destructive" mono sub="capital + fuera de caja" />}
         <KpiCard icon="receipt" label="Gastos y comisiones" value={`$${n2(rent.gastos_registrados + rent.comisiones_pagadas)}`} accent={rent.gastos_registrados + rent.comisiones_pagadas > 0 ? "warning" : "muted"} mono
           sub={rent.comisiones_pagadas !== 0 ? `$${n2(rent.gastos_registrados)} gastos + $${n2(rent.comisiones_pagadas)} comisiones pagadas` : "los de la caja, del período"} />
-        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub="ingreso − fondeo − gastos − comisiones" />
+        <KpiCard icon="bar-chart" label="Rentabilidad neta" value={`$${n2(rent.rentabilidad_neta)}`} accent={rent.rentabilidad_neta >= 0 ? "success" : "destructive"} mono sub={rent.costo_total !== 0 ? "ingreso − fondeo − gastos − comisiones" : "ingreso − gastos − comisiones"} />
         <KpiCard
           icon="chart-increasing" label="Margen neto" value={`${n1(rent.margen_neto_pct)}%`} mono sub="sobre el ingreso total"
           accent={rent.margen_neto_pct >= 0 ? "primary" : "destructive"}
@@ -603,7 +609,7 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
         <BarChart data={neta} accent="success" format={(v) => `$${n2(v)}`} />
         <Nota compacta className="mt-2">Ingreso cobrado (cuotas + comisión de otorgamiento) menos fondeo, gastos y comisiones pagadas del mes. En rojo, los meses en negativo.</Nota>
       </Section>
-      {rent.habilitado && (
+      {rent.habilitado && rent.costo_total !== 0 && (
         <Section title="Rentabilidad neta vs costo de fondeo" icon="bar-chart">
           <StackedBarChart data={stack} accents={["success", "destructive"]} format={(v) => `$${n2(v)}`} />
           <div className="mt-2 flex gap-4 text-[11px] text-muted-foreground">
@@ -612,6 +618,7 @@ function TabRentabilidad({ r, s }: { r: Reporte; s?: ReporteSerie }) {
           </div>
         </Section>
       )}
+      <RentabilidadPorCliente />
     </div>
   );
 }

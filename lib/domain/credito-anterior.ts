@@ -219,3 +219,68 @@ export function armarCreditoAnterior(
     totalACobrar: round2(pendientes.reduce((s, c) => s + c.cuotaTotal, 0) - abonado.interes - abonado.capital),
   };
 }
+
+/** Una cuota (o la parte de una cuota parcial) cobrada antes del sistema, fechada. */
+export interface CobroAnterior {
+  creditoId: string;
+  nro: number;
+  /** Día en que se cobró; si la planilla no lo trae, el vencimiento de la cuota (ver abajo). */
+  fecha: Date;
+  /** false = la fecha es el vencimiento, no un pago anotado. */
+  fechaInformada: boolean;
+  capital: number;
+  interes: number;
+  /** Cargos y punitorios (los créditos anteriores no los tienen: queda por si algún día sí). */
+  otros: number;
+  total: number;
+  parcial: boolean;
+}
+
+/**
+ * LO COBRADO ANTES DEL SISTEMA, CUOTA POR CUOTA Y CON SU FECHA (Fernando, 16/10/2026).
+ *
+ * Esas cuotas están saldadas en `cuotas` pero no tienen fila en `pagos` (la plata entró a la caja
+ * vieja), así que todo lo que se calcula desde `pagos` —Reportes, rentabilidad, el histórico— no
+ * las veía: $74.821.100,00 cobrados y $33.709.556,99 de interés que no existían para el reporte.
+ * Esta es la ÚNICA definición de "cuánto y cuándo se cobró antes": la usan el reporte del período,
+ * la serie mensual y la tabla por cliente.
+ *
+ * Fecha: la anotada en la carga; si no se anotó, el vencimiento de la cuota, sin pasarse del día
+ * en que se cargó el crédito (antes de esa fecha ya estaba cobrada). La parcial imputa como un
+ * cobro —interés primero— con `imputarParcialAnterior`: su cuota puede tener además cobros del
+ * sistema, que ya cuentan por `pagos`.
+ */
+export function cobrosAnteriores(credito: {
+  id: string;
+  cronograma: unknown;
+  created_at: Date;
+  cuotas: { nro: number; fecha_vencimiento: Date; capital: number; interes: number; pagado_capital: number; pagado_interes: number; pagado_cargos: number; pagado_mora: number }[];
+}): CobroAnterior[] {
+  const a = anteriorDelCredito(credito.cronograma);
+  if (!a?.pagos) return [];
+  const porNro = new Map(credito.cuotas.map((q) => [q.nro, q]));
+  const fechar = (f: string | null, venc: Date) => {
+    if (f) return { fecha: new Date(`${f}T00:00:00.000Z`), fechaInformada: true };
+    return { fecha: venc.getTime() < credito.created_at.getTime() ? venc : credito.created_at, fechaInformada: false };
+  };
+  const out: CobroAnterior[] = [];
+  for (const p of a.pagos) {
+    const q = porNro.get(p.nro);
+    if (!q) continue;
+    const otros = round2(q.pagado_cargos + q.pagado_mora);
+    out.push({
+      creditoId: credito.id, nro: p.nro, ...fechar(p.fecha, q.fecha_vencimiento),
+      capital: q.pagado_capital, interes: q.pagado_interes, otros,
+      total: round2(q.pagado_capital + q.pagado_interes + otros), parcial: false,
+    });
+  }
+  const qp = a.parcial ? porNro.get(a.parcial.nro) : undefined;
+  if (a.parcial && qp) {
+    const imp = imputarParcialAnterior(qp, a.parcial.monto);
+    out.push({
+      creditoId: credito.id, nro: a.parcial.nro, ...fechar(a.parcial.fecha, qp.fecha_vencimiento),
+      capital: imp.capital, interes: imp.interes, otros: 0, total: round2(imp.capital + imp.interes), parcial: true,
+    });
+  }
+  return out;
+}

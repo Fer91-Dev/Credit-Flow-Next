@@ -855,6 +855,8 @@ export interface Reporte {
     total_interes: number;
     total_mora: number;
     total_cargos: number;
+    /** Lo cobrado antes del sistema (créditos anteriores) en el período: ya está sumado arriba. */
+    antes_sistema: { cuotas: number; total: number; capital: number; interes: number; otros: number; sin_fecha: number };
   };
   cobranzas_por_metodo: { metodo: string; cantidad: number; monto: number }[];
   operaciones: {
@@ -922,12 +924,12 @@ export interface Reporte {
 export interface DetalleCobro {
   id: string;
   fecha: string;
-  /** Instante en que se registró (la `fecha` es solo el día). */
-  hora: string;
+  /** Instante en que se registró (la `fecha` es solo el día). null = cobrado antes del sistema. */
+  hora: string | null;
   credito: { id: string; numero: number | null; numero_origen: number | null };
   cliente: string;
   cliente_id: string;
-  tipo: "cuota" | "entrega_refinanciacion" | "entrega_acuerdo" | "cuota_acuerdo";
+  tipo: "cuota" | "entrega_refinanciacion" | "entrega_acuerdo" | "cuota_acuerdo" | "antes_sistema";
   concepto: string;
   credito_nuevo: number | null;
   monto: number;
@@ -1293,6 +1295,9 @@ export interface DashboardData {
   transacciones: {
     total_pagos_registrados: number;
     monto_pagos_total: number;
+    /** Parte de `monto_pagos_total` cobrada antes del sistema (créditos anteriores). */
+    cobrado_antes_sistema?: number;
+    cuotas_antes_sistema?: number;
   };
   cobranza_mes: {
     esperado: number;
@@ -2759,6 +2764,36 @@ export function useReporteProductos(desde: string, hasta: string) {
     desde && hasta ? `/api/reportes/productos?desde=${desde}&hasta=${hasta}` : null,
   );
   return { productos: data, error, isLoading };
+}
+
+/** Rentabilidad por cliente, acumulada (incluye lo cobrado antes del sistema). */
+export interface FilaRentabilidadCliente {
+  cliente_id: string;
+  cliente: string;
+  creditos: number;
+  prestado: number;
+  cobrado: number;
+  ganancia_cobrada: number;
+  ganancia_por_cobrar: number;
+  deuda_vencida: number;
+  en_riesgo: number;
+  creditos_en_riesgo: number;
+  castigado: number;
+  max_dias_mora: number;
+}
+export interface ReporteClientes {
+  umbral_riesgo_dias: number;
+  totales: {
+    clientes: number; creditos: number; prestado: number; cobrado: number; ganancia_cobrada: number;
+    comisiones_cobradas: number; comisiones_pagadas: number; gastos_caja: number; castigado: number;
+    ganancia_neta: number; ganancia_por_cobrar: number; deuda_vencida: number; en_riesgo: number;
+    creditos_en_riesgo: number; clientes_en_riesgo: number; clientes_con_vencido: number;
+  };
+  filas: FilaRentabilidadCliente[];
+}
+export function useReporteClientes() {
+  const { data, error, isLoading } = useSWR<ReporteClientes>("/api/reportes/clientes");
+  return { clientes: data, error, isLoading };
 }
 
 /** Punto de la serie mensual de Reportes (una fila = un mes). */

@@ -9,6 +9,7 @@ import { getConfiguracion, getRentabilidadConfig, getCobranzaConfig } from "@/li
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import { frasePago } from "@/lib/pago-concepto";
+import { cobrosAnterioresDe } from "@/lib/cobros-anteriores";
 import type { NextRequest } from "next/server";
 
 const MS_DIA = 86_400_000;
@@ -35,6 +36,18 @@ const INCLUDE_DETALLE = {
   acuerdo_entrega: { select: { id: true } },
   acuerdo_cuota: { select: { numero: true, acuerdo: { select: { _count: { select: { cuotas: true } } } } } },
 };
+
+/** Un renglón del detalle de cobros: un pago del sistema o una cuota cobrada antes de él. */
+interface DetalleCobroFila {
+  id: string; fecha: Date; hora: Date | null;
+  credito: { id: string; numero: number | null; numero_origen: number | null };
+  cliente: string; cliente_id: string;
+  tipo: "cuota" | "entrega_refinanciacion" | "entrega_acuerdo" | "cuota_acuerdo" | "antes_sistema";
+  concepto: string; credito_nuevo: number | null; monto: number;
+  aplicado_capital: number; aplicado_interes: number; aplicado_cargos: number; aplicado_mora: number;
+  excedente: number; metodo: string; recibo: string | null; caja: string | null;
+  anulado: boolean; anulado_motivo: string | null;
+}
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   // Reportes financieros: solo admin.
@@ -84,7 +97,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         id: true, estado: true, monto_original: true, saldo_pendiente: true,
         dias_mora: true, proximo_pago: true, tasa: true, plazo_meses: true,
         cronograma: true, // trae la mora congelada del crédito
-        fecha_inicio: true, es_refinanciacion: true, tipo_credito: true,
+        fecha_inicio: true, es_refinanciacion: true, tipo_credito: true, created_at: true,
+        numero: true, cliente: { select: { id: true, nombre: true, apellido: true } },
       },
     }),
     getConfiguracion(tenantId),
@@ -110,17 +124,39 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Dónde corta cada tramo de mora, según lo definió la financiera.
   const tramos = cobranzaCfg.tramos_mora;
 
+  /**
+   * ── LO COBRADO ANTES DEL SISTEMA, en el mes en que se cobró (Fernando, 16/10/2026) ──
+   *
+   * Las cuotas de los créditos anteriores entraron a la caja vieja: no tienen fila en `pagos`.
+   * Sin esto el reporte de cualquier mes previo a la carga daba $0,00 cobrado y $0,00 de
+   * ganancia. Entran en lo cobrado y en el ingreso, discriminadas en `antes_sistema`; no en la
+   * caja (esa plata nunca pasó por ella). `fecha` es un día pelado: bordes UTC.
+   */
+  const antes = (await cobrosAnterioresDe(tenantId, creditos))
+    .filter((a) => a.fecha >= desde && a.fecha <= hasta);
+  const sumA = (f: (a: (typeof antes)[number]) => number) => round2(antes.reduce((t, a) => t + f(a), 0));
+  const antes_sistema = {
+    cuotas: antes.length,
+    total: sumA((a) => a.total),
+    capital: sumA((a) => a.capital),
+    interes: sumA((a) => a.interes),
+    otros: sumA((a) => a.otros),
+    sin_fecha: antes.filter((a) => !a.fechaInformada).length,
+  };
+
   // ── Cobranzas del período ──────────────────────────────────────────────
   const cobranzas = {
     cantidad: pagos.length,
-    total_cobrado: pagos.reduce((s, p) => s + p.monto, 0),
-    total_capital: pagos.reduce((s, p) => s + p.aplicado_capital, 0),
-    total_interes: pagos.reduce((s, p) => s + p.aplicado_interes, 0),
-    total_mora:    pagos.reduce((s, p) => s + p.aplicado_mora, 0),
+    total_cobrado: pagos.reduce((s, p) => s + p.monto, 0) + antes_sistema.total,
+    total_capital: pagos.reduce((s, p) => s + p.aplicado_capital, 0) + antes_sistema.capital,
+    total_interes: pagos.reduce((s, p) => s + p.aplicado_interes, 0) + antes_sistema.interes,
+    // Los créditos anteriores no tienen punitorios ni cargos; si algún día los tienen, van acá.
+    total_mora:    pagos.reduce((s, p) => s + p.aplicado_mora, 0) + antes_sistema.otros,
     total_cargos:  pagos.reduce((s, p) => s + p.aplicado_cargos, 0),
     // Cobrado sin imputar a una cuota: hoy solo el interes de acuerdo del modo
     // `ingreso_aparte`. Cualquier otro sobrepago se rechaza antes de guardarse.
     total_excedente: pagos.reduce((s, p) => s + (p.excedente ?? 0), 0),
+    antes_sistema,
   };
 
   // ── Operaciones otorgadas en el período (plata nueva: excluye refinanciaciones) ──
@@ -174,6 +210,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     cur.monto += p.monto;
     porMetodoMap.set(p.metodo, cur);
   }
+  // Lo cobrado antes del sistema no tiene medio conocido: va en su propio renglón para que la
+  // tabla sume lo mismo que la tarjeta "Cobrado".
+  if (antes_sistema.cuotas > 0) porMetodoMap.set("antes_sistema", { metodo: "antes_sistema", cantidad: antes_sistema.cuotas, monto: antes_sistema.total });
   const cobranzas_por_metodo = [...porMetodoMap.values()].sort((a, b) => b.monto - a.monto);
 
   // ── Cartera por estado (snapshot) ──────────────────────────────────────
@@ -401,6 +440,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
   });
   const todos = [...pagos, ...anulados];
+  const creditoDe = new Map(creditos.map((c) => [c.id, c]));
   const [origenesRefi, entregasRefi, recibos] = await Promise.all([
     numerosRefinanciados(tenantId, todos.map((p) => p.credito)),
     entregasDeRefinanciacion(tenantId, todos.map((p) => p.id)),
@@ -411,7 +451,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     }),
   ]);
   const reciboDe = new Map(recibos.map((m) => [m.pago_id, m]));
-  const detalle_cobros = todos.map((p) => {
+  const detalle_cobros = todos.map((p): DetalleCobroFila => {
     const entrega = entregasRefi.get(p.id);
     const tipo = entrega ? "entrega_refinanciacion"
       : p.acuerdo_entrega ? "entrega_acuerdo"
@@ -450,6 +490,34 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       anulado_motivo: p.anulado_motivo,
     };
   });
+  // Las cuotas cobradas antes del sistema, en la misma lista: sin recibo ni caja.
+  for (const a of antes) {
+    const c = creditoDe.get(a.creditoId);
+    if (!c) continue;
+    detalle_cobros.push({
+      id: `antes-${a.creditoId}-${a.nro}`,
+      fecha: a.fecha,
+      hora: null,
+      credito: { id: c.id, numero: c.numero, numero_origen: null },
+      cliente: nombreCompleto(c.cliente),
+      cliente_id: c.cliente.id,
+      tipo: "antes_sistema",
+      concepto: `${a.parcial ? "Parte de la cuota" : "Cuota"} ${a.nro}${a.fechaInformada ? "" : " · sin fecha de pago: va al vencimiento"}`,
+      credito_nuevo: null,
+      monto: a.total,
+      aplicado_capital: a.capital,
+      aplicado_interes: a.interes,
+      aplicado_cargos: 0,
+      aplicado_mora: a.otros,
+      excedente: 0,
+      metodo: "antes_sistema",
+      recibo: null,
+      caja: null,
+      anulado: false,
+      anulado_motivo: null,
+    });
+  }
+  detalle_cobros.sort((x, y) => y.fecha.getTime() - x.fecha.getTime());
 
   return successResponse({
     periodo: { desde: desdeStr, hasta: hastaStr },

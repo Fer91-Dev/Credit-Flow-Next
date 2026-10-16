@@ -7,6 +7,7 @@ import { diasMoraActual, severidadMora, ESTADOS_VIVOS, esCreditoVivo, cobrabilid
 import { getCobranzaConfig } from "@/lib/config";
 import { hoyComercial } from "@/lib/utils";
 import { nombrePropioFinanciera } from "@/lib/branding";
+import { cobrosAnterioresDe } from "@/lib/cobros-anteriores";
 import type { NextRequest } from "next/server";
 
 /**
@@ -86,6 +87,9 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         // Para contar CUÁNTOS clientes están prestando ahora mismo. Sale de esta query, que ya
         // se hace: un cliente con tres créditos es UNO, así que un count no serviría.
         cliente_id: true,
+        // Para sumar lo cobrado ANTES del sistema (créditos anteriores) al histórico de cobros.
+        cronograma: true,
+        created_at: true,
       },
     }),
 
@@ -325,6 +329,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       .sort((a, b) => b.en_mora_monto - a.en_mora_monto || b.cartera - a.cartera);
   }
 
+  // Las cuotas cobradas antes del sistema: no tienen fila en `pagos` (ver `cobrosAnteriores`).
+  const antes = await cobrosAnterioresDe(tenantId, creditos);
+  const antesTotal = antes.reduce((t, a) => t + a.total, 0);
+
   return successResponse({
     resumen: {
       clientes_activos: clientes,
@@ -358,7 +366,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     },
     transacciones: {
       total_pagos_registrados: pagosTotal._count,
-      monto_pagos_total: pagosTotal._sum.monto || 0,
+      // Incluye lo cobrado antes del sistema: si no, el histórico arrancaba el día de la carga.
+      monto_pagos_total: Math.round(((pagosTotal._sum.monto || 0) + antesTotal) * 100) / 100,
+      cobrado_antes_sistema: Math.round(antesTotal * 100) / 100,
+      cuotas_antes_sistema: antes.length,
     },
     cobranza_mes: {
       esperado: cobranzaEsperado,
