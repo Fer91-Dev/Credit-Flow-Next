@@ -2,7 +2,7 @@
 
 import { ShieldAlert, CalendarClock, HandCoins, Handshake, Printer } from "lucide-react";
 import { pagadoDeCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
-import { abrirRecibo } from "@/lib/recibo";
+import { abrirRecibo, abrirReciboPrevio } from "@/lib/recibo";
 import type { Credito, AccionCobranza } from "@/lib/swr";
 import { useCuotas } from "@/lib/swr";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -302,8 +302,19 @@ export function CobranzaDetail({ credito, acciones }: {
                             <span className="font-mono tabular-nums text-success">{formatMonto(pagado)}</span>
                             {[...(c.comprobantes ?? [])]
                               .sort((a, b2) => (a.fecha_hora ?? "").localeCompare(b2.fecha_hora ?? ""))
-                              .map((comp) => comp.pago_id == null ? (
-                                // Pagada antes del sistema: no hay recibo que abrir.
+                              .map((comp) => comp.pago_id == null && comp.recibo_previo_id ? (
+                                <button
+                                  key={comp.recibo_previo_id}
+                                  onClick={() => abrirReciboPrevio(comp.recibo_previo_id!)}
+                                  title={`Recibo en PDF${comp.fecha ? ` · ${formatFecha(comp.fecha)}` : ""}`}
+                                  className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  <Printer className="h-2.5 w-2.5 shrink-0" />
+                                  {comp.comprobante}
+                                  <span className="tabular-nums text-muted-foreground/60">{formatMonto(comp.monto)}</span>
+                                </button>
+                              ) : comp.pago_id == null ? (
+                                // Pagada antes del sistema sin día anotado: no hay recibo que abrir.
                                 <span key="anterior" className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                   {comp.comprobante}{comp.fecha && ` · ${formatFecha(comp.fecha)}`}
                                   <span className="font-mono tabular-nums text-muted-foreground/60">{formatMonto(comp.monto)}</span>

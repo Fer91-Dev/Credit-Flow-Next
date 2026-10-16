@@ -137,4 +137,9 @@ for (const f of filas) {
   const r = await cargarCreditoAnterior({ ...f.datos, clienteId, nota: f.e.nota ?? "carga de créditos anteriores" });
   console.log(`✓ ${f.e.cliente} → CRD-${String(r.numero).padStart(6, "0")}`);
 }
+// Los recibos de lo que ya pagaron (uno por día de pago): mismo armado que generar-recibos-previos.mjs.
+const { generarRecibosPrevios } = await jiti.import("@/lib/recibos-previos");
+const rp = await generarRecibosPrevios(tenantId);
+console.log(`
+Recibos de lo cobrado antes: ${rp.creados} creados${rp.sinFecha.length ? ` · ${rp.sinFecha.length} pagos sin día anotado quedan sin recibo` : ""}.`);
 await prisma.$disconnect();

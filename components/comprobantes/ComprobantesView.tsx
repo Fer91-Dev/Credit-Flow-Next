@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect} from "react";
-import { ChevronDown, Download, Users, Landmark, X, History } from "lucide-react";
-import { useComprobantes, type Comprobante, type MovimientoCaja } from "@/lib/swr";
+import { ChevronDown, Download, Users, Landmark, X, History, FileText } from "lucide-react";
+import { useComprobantes, type Comprobante, type ComprobantePrevio, type MovimientoCaja } from "@/lib/swr";
 import { descargarCSV } from "@/lib/csv";
 import { formatFecha, formatFechaHora } from "@/lib/utils";
-import { SERIE_LABEL } from "@/lib/comprobantes";
+import { SERIE_LABEL, SERIE_RECIBO_PREVIO } from "@/lib/comprobantes";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { FiltrosPanel } from "@/components/ui/FiltrosPanel";
@@ -13,6 +13,8 @@ import { BuscadorF3 } from "@/components/ui/BuscadorF3";
 import { DataTable } from "@/components/ui/DataTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MovimientoDetail } from "@/components/caja/MovimientoDetail";
+import { DetailGrid } from "@/components/ui/DetailGrid";
+import { CreditoLink } from "@/components/ui/CreditoLink";
 
 function n2(x: number) {
   return new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x);
@@ -40,6 +42,46 @@ const TIPO_META: Record<MovimientoCaja["tipo"], { label: string; variant: BadgeV
   comision_otorgamiento: { label: "Comisión de otorgamiento", variant: "success" },
 };
 
+/** El recibo de un cobro de antes del sistema no es un movimiento de caja: tiene su propia etiqueta. */
+const PREVIO_META = { label: "Cobro previo", variant: "muted" as BadgeVariant };
+const metaDe = (m: Comprobante) => (m.tipo === "recibo_previo" ? PREVIO_META : TIPO_META[m.tipo]);
+const cajaDe = (m: Comprobante) => (m.tipo === "recibo_previo" ? "—" : m.vendedor ?? "Caja principal");
+
+/** Detalle de un recibo previo: los datos y el PDF, que es lo que se le da al cliente si lo reclama. */
+function ReciboPrevioDetail({ rec }: { rec: ComprobantePrevio }) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <StatusBadge label={PREVIO_META.label} variant={PREVIO_META.variant} />
+          <p className="font-mono text-sm font-semibold text-foreground mt-1.5">{rec.comprobante}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{formatFecha(rec.fecha)}</p>
+        </div>
+        <p className="font-mono font-bold text-xl text-success">+${n2(rec.monto)}</p>
+      </div>
+      <DetailGrid
+        rows={[
+          ["Comprobante", <span key="c" className="font-mono font-semibold">{rec.comprobante}</span>],
+          ["Fecha de pago", formatFecha(rec.fecha)],
+          ["Cliente", rec.cliente || null],
+          ["Crédito", rec.credito_numero != null && rec.credito_id ? <CreditoLink key="cr" id={rec.credito_id} numero={rec.credito_numero} /> : null],
+          ["Detalle", rec.descripcion],
+          ["Monto", <span key="m" className="font-mono text-success">+${n2(rec.monto)}</span>],
+          ["Caja", "No mueve caja: se cobró antes del sistema"],
+        ]}
+      />
+      <a
+        href={`/api/recibos-previos/${rec.id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+      >
+        <FileText className="h-4 w-4" /> Ver recibo
+      </a>
+    </div>
+  );
+}
+
 const INPUT =
   "h-10 rounded-lg border border-border bg-muted/40 px-3 text-sm text-foreground outline-none " +
   "transition-all focus:border-primary focus:ring-2 focus:ring-primary/20";
@@ -62,8 +104,8 @@ function exportarCSV(rows: Comprobante[]) {
       m.comprobante ?? "",
       formatFecha(m.fecha),
       formatFechaHora(m.created_at ?? m.fecha),
-      TIPO_META[m.tipo]?.label ?? m.tipo,
-      m.vendedor ?? "Caja principal",
+      metaDe(m)?.label ?? m.tipo,
+      cajaDe(m),
       m.origen ?? "",
       m.destino ?? "",
       m.descripcion,
@@ -145,6 +187,7 @@ export function ComprobantesView() {
                 {(Object.keys(SERIE_LABEL) as (keyof typeof SERIE_LABEL)[]).map((s) => (
                   <option key={s} value={s}>{s} · {SERIE_LABEL[s]}</option>
                 ))}
+                <option value={SERIE_RECIBO_PREVIO}>{SERIE_RECIBO_PREVIO} · Recibo de cobro previo</option>
               </select>
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             </div>
@@ -230,7 +273,8 @@ export function ComprobantesView() {
               header: "Fecha",
               cell: (m) => {
                 const cargado = m.created_at ? formatFecha(m.created_at) : null;
-                const distinto = cargado && cargado !== formatFecha(m.fecha);
+                // Un recibo previo se generó HOY sobre un pago viejo: el "cargado" no dice nada útil.
+                const distinto = m.tipo !== "recibo_previo" && cargado && cargado !== formatFecha(m.fecha);
                 return (
                   <span className="flex flex-col leading-tight whitespace-nowrap">
                     <span className="text-foreground tabular-nums">{formatFecha(m.fecha)}</span>
@@ -241,13 +285,13 @@ export function ComprobantesView() {
                 );
               },
             },
-            { header: "Tipo", cell: (m) => <StatusBadge label={TIPO_META[m.tipo].label} variant={TIPO_META[m.tipo].variant} /> },
+            { header: "Tipo", cell: (m) => <StatusBadge label={metaDe(m).label} variant={metaDe(m).variant} /> },
             {
               header: "Caja", className: "hidden md:table-cell",
               cell: (m) => (
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  {m.vendedor ? <Users className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}
-                  {m.vendedor ?? "Caja principal"}
+                  {m.tipo === "recibo_previo" ? null : m.vendedor ? <Users className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}
+                  {cajaDe(m)}
                 </span>
               ),
             },
@@ -270,7 +314,7 @@ export function ComprobantesView() {
             <DialogTitle>Detalle del comprobante</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {detalle && <MovimientoDetail mov={detalle} />}
+            {detalle && (detalle.tipo === "recibo_previo" ? <ReciboPrevioDetail rec={detalle} /> : <MovimientoDetail mov={detalle} />)}
           </div>
         </DialogContent>
       </Dialog>

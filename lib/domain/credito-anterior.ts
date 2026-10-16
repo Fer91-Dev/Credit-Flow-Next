@@ -284,3 +284,71 @@ export function cobrosAnteriores(credito: {
   }
   return out;
 }
+
+/** Una cuota dentro de un recibo de lo cobrado antes del sistema, tal como quedó ESE día. */
+export interface CuotaReciboPrevio {
+  nro: number;
+  vencimiento: string;
+  cuota_total: number;
+  imputado: number;
+  /** Lo que le quedaba a la cuota después de este pago (0 = saldada). */
+  restante: number;
+}
+
+export interface ReciboPrevioArmado {
+  fecha: Date;
+  monto: number;
+  capital: number;
+  interes: number;
+  capital_pendiente: number;
+  cuotas: CuotaReciboPrevio[];
+}
+
+/**
+ * LOS RECIBOS DE LO COBRADO ANTES DEL SISTEMA (Fernando, 16/10/2026): uno por día de pago.
+ *
+ * Sale de `cobrosAnteriores` —la única definición de cuánto y cuándo se cobró antes—, así que el
+ * papel y Reportes no pueden decir cosas distintas. Si el cliente pagó dos cuotas el mismo día,
+ * es UN recibo con las dos, como el que se habría hecho en el mostrador. El "queda" de cada cuota
+ * y el capital pendiente son los de ESE momento, no los de hoy.
+ */
+export function recibosDeCobrosAnteriores(
+  cobros: CobroAnterior[],
+  cuotas: { nro: number; fecha_vencimiento: Date; cuota_total: number }[],
+  capitalOtorgado: number,
+): ReciboPrevioArmado[] {
+  const porNro = new Map(cuotas.map((q) => [q.nro, q]));
+  const porDia = new Map<string, CobroAnterior[]>();
+  for (const c of cobros) {
+    const k = ymdUTC(c.fecha);
+    porDia.set(k, [...(porDia.get(k) ?? []), c]);
+  }
+  const pagadoCuota = new Map<number, number>();
+  let capitalCobrado = 0;
+  return [...porDia.keys()].sort().map((dia) => {
+    const lineas = porDia.get(dia)!.sort((a, b) => a.nro - b.nro);
+    const cuotasRecibo = lineas.map((l) => {
+      const q = porNro.get(l.nro);
+      const total = q?.cuota_total ?? l.total;
+      const acum = round2((pagadoCuota.get(l.nro) ?? 0) + l.total);
+      pagadoCuota.set(l.nro, acum);
+      return {
+        nro: l.nro,
+        vencimiento: ymdUTC(q?.fecha_vencimiento ?? l.fecha),
+        cuota_total: total,
+        imputado: l.total,
+        restante: round2(Math.max(0, total - acum)),
+      };
+    });
+    const capital = round2(lineas.reduce((s, l) => s + l.capital, 0));
+    capitalCobrado = round2(capitalCobrado + capital);
+    return {
+      fecha: new Date(`${dia}T00:00:00.000Z`),
+      monto: round2(lineas.reduce((s, l) => s + l.total, 0)),
+      capital,
+      interes: round2(lineas.reduce((s, l) => s + l.interes + l.otros, 0)),
+      capital_pendiente: round2(Math.max(0, capitalOtorgado - capitalCobrado)),
+      cuotas: cuotasRecibo,
+    };
+  });
+}

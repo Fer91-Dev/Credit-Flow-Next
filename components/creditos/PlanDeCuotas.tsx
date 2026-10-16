@@ -7,7 +7,7 @@ import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domai
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
 import { formatDias, formatFecha, formatFechaHora, formatNumero } from "@/lib/utils";
-import { abrirRecibo } from "@/lib/recibo";
+import { abrirRecibo, abrirReciboPrevio } from "@/lib/recibo";
 import { tienePagos, pagadoDeCuota, moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 
 /**
@@ -583,8 +583,19 @@ export function PlanDeCuotas({
                   <td className={`${celda} whitespace-nowrap`}>
                     {comps.length > 0 ? (
                       <div className="flex flex-col items-start gap-1">
-                        {comps.map((c) => c.pago_id == null ? (
-                          // Pagada antes del sistema: no hay recibo que abrir.
+                        {comps.map((c) => c.pago_id == null && c.recibo_previo_id ? (
+                          // Pagada antes del sistema, con su recibo armado después.
+                          <button
+                            key={c.recibo_previo_id}
+                            onClick={() => abrirReciboPrevio(c.recibo_previo_id!)}
+                            title="Recibo en PDF"
+                            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-border px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Printer className="h-3 w-3 shrink-0" />
+                            {c.comprobante}
+                          </button>
+                        ) : c.pago_id == null ? (
+                          // Pagada antes del sistema sin día anotado: no hay recibo que abrir.
                           <span key="anterior" className="inline-flex h-7 items-center rounded-md border border-dashed border-border px-2 text-[11px] text-muted-foreground">
                             {c.comprobante}
                           </span>

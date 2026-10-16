@@ -4,7 +4,16 @@
  * cookies/headers en un window.open directo.
  */
 export async function abrirRecibo(pagoId: string): Promise<void> {
-  const res = await fetch(`/api/pagos/${pagoId}/recibo`);
+  return abrirPdf(`/api/pagos/${pagoId}/recibo`);
+}
+
+/** El recibo de un cobro de antes del sistema (`lib/recibos-previos.ts`). */
+export async function abrirReciboPrevio(id: string): Promise<void> {
+  return abrirPdf(`/api/recibos-previos/${id}`);
+}
+
+async function abrirPdf(ruta: string): Promise<void> {
+  const res = await fetch(ruta);
   if (!res.ok) {
     let msg = "No se pudo generar el recibo";
     try {

@@ -35,6 +35,13 @@ export const SERIE_LABEL = {
 
 export type SerieComprobante = keyof typeof SERIE_LABEL;
 
+/**
+ * Serie de los recibos de lo cobrado ANTES del sistema (`recibos_previos`). No es de caja, por eso
+ * no está en `SERIE_LABEL`: su numeración vive en su propia tabla. Solo se ve adentro del sistema;
+ * el PDF que se lleva el cliente no la menciona.
+ */
+export const SERIE_RECIBO_PREVIO = "RPA";
+
 /** Formatea el comprobante visible: REC-000123. */
 export function formatComprobante(serie: string | null | undefined, numero: number | null | undefined): string | null {
   if (!serie || numero == null) return null;

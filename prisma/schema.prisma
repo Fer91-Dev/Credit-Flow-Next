@@ -360,9 +360,9 @@ model creditos {
   /// explicar después: sin esto no se audita si se cerró bien o se regaló el caso.
   recupero_sugerido  Float?
   recupero_nota      String?
-  cargos           Json? // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
-  cronograma       Json? // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
-  tenant_id        String    @db.Uuid
+  cargos             Json? // snapshot de CargosConfig vigente al otorgar (congela los cargos del crédito)
+  cronograma         Json? // snapshot del cronograma (corte/día venc/gracia/feriados) vigente al otorgar
+  tenant_id          String    @db.Uuid
 
   vendedor_id String? @db.Uuid // vendedor que otorgó el crédito (Fase 5, opcional)
 
@@ -407,6 +407,7 @@ model creditos {
   movimientos       movimientos_caja[]
   movimientos_stock movimientos_stock[]
   objetivos_campana campana_objetivo[]
+  recibos_previos   recibos_previos[]
 
   // ── Documentación del crédito (solicitud/mutuo + pagaré) ──
   // Estado del PAPEL, distinto del estado del crédito: un crédito puede estar activo y
@@ -632,12 +633,10 @@ model campanas_cobranza {
   estado           String    @default("borrador") // borrador | activa | finalizada
   /**
    * QUÉ RECLAMA la campaña. Son dos cosas distintas y no se pueden mezclar en una lista:
-   *
-   *   "mora"        → a los que YA se atrasaron. La base es lo VENCIDO y hay punitorios que
-   *                   se pueden condonar. Es lo único que existía.
-   *   "vencimiento" → a los que están AL DÍA y les vence una cuota. No hay mora ni punitorios
-   *                   que descontar: es un recordatorio para que no se atrasen.
-   *
+   * "mora"        → a los que YA se atrasaron. La base es lo VENCIDO y hay punitorios que
+   * se pueden condonar. Es lo único que existía.
+   * "vencimiento" → a los que están AL DÍA y les vence una cuota. No hay mora ni punitorios
+   * que descontar: es un recordatorio para que no se atrasen.
    * Sin este campo, una campaña de recordatorio quedaba guardada como si fuera un reclamo de
    * mora, y en la lista de campañas viejas nadie podría distinguir una de otra.
    */
@@ -656,9 +655,9 @@ model campanas_cobranza {
   /// QUIÉN la armó, congelado al crearla (migración 018). El `vendedor_id` es el DUEÑO de la
   /// cartera que trabaja, no el autor. Va en la campaña y no se lee de la auditoría porque la
   /// auditoría se purga a los dos años, y quién ofreció una quita tiene que quedar siempre.
-  creado_por        String? @db.Uuid
+  creado_por        String?            @db.Uuid
   creado_por_nombre String?
-  objetivos campana_objetivo[]
+  objetivos         campana_objetivo[]
 
   @@index([tenant_id, created_at])
   @@index([tenant_id, vendedor_id])
@@ -669,15 +668,15 @@ model campanas_cobranza {
 /// y la oferta de recuperación calculada. `monto_recuperado` se actualiza con los
 /// pagos imputados a ese crédito mientras la campaña esté activa.
 model campana_objetivo {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  tenant_id        String    @db.Uuid
-  campana_id       String    @db.Uuid
-  credito_id       String    @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  tenant_id       String    @db.Uuid
+  campana_id      String    @db.Uuid
+  credito_id      String    @db.Uuid
   // Snapshot de la mora al incorporar a la campaña
-  saldo            Float     @default(0) // capital pendiente (NO es lo que se reclama)
-  dias_mora        Int       @default(0)
-  interes_mora     Float     @default(0)
+  saldo           Float     @default(0) // capital pendiente (NO es lo que se reclama)
+  dias_mora       Int       @default(0)
+  interes_mora    Float     @default(0)
   /**
    * Lo que está VENCIDO e impago, con mora: capital + interés + cargos de las cuotas que ya
    * vencieron. Es lo que hay que reclamar, y sobre lo que se calcula la oferta.
@@ -686,16 +685,16 @@ model campana_objetivo {
    * una cifra que no coincidía con lo que la caja le iba a cobrar. Nulable porque las
    * campañas viejas no lo tienen.
    */
-  vencido          Float?
-  cuotas_vencidas  Int?
+  vencido         Float?
+  cuotas_vencidas Int?
   /**
    * Snapshot para las campañas de VENCIMIENTO (tipo = "vencimiento"): qué cuota se le
    * recuerda y para cuándo. Nulos en las campañas de mora, donde la base es `vencido`.
    * Se congelan igual que el resto: el monto de la cuota puede cambiar si después se le
    * imputa un pago parcial, y el mensaje que salió decía otra cifra.
    */
-  cuota_monto      Float?
-  vence_el         DateTime? @db.Date
+  cuota_monto     Float?
+  vence_el        DateTime? @db.Date
 
   // Oferta de recuperación calculada (calculateRecoveryOffer)
   oferta_monto     Float     @default(0) // monto a cancelar con descuento aplicado
@@ -900,10 +899,10 @@ model cierres_turno {
   diferencia     Float // fisico − sistema
   retiro         Float // lo que salió de la caja al cerrar (contado − fondo)
   fondo          Float // lo que quedó para el turno siguiente
-  detalle        Json  // por tipo: { cobro: { cantidad, monto }, desembolso: {...}, ... }
+  detalle        Json // por tipo: { cobro: { cantidad, monto }, desembolso: {...}, ... }
 
-  arqueo_id String? @db.Uuid // acta de arqueo emitida en el cierre
-  retiro_id String? @db.Uuid // movimiento CIE (o la pata REN del vendedor)
+  arqueo_id   String? @db.Uuid // acta de arqueo emitida en el cierre
+  retiro_id   String? @db.Uuid // movimiento CIE (o la pata REN del vendedor)
   observacion String?
 
   /// DÓLARES, en la misma acta. Son billetes: se cuentan, se cuadran y se retiran igual que
@@ -1013,19 +1012,19 @@ model pago_cuota {
 }
 
 model pagos {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  credito_id       String    @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  credito_id       String   @db.Uuid
   monto            Float
-  fecha            DateTime  @default(now()) @db.Date
-  metodo           String    @default("efectivo")
+  fecha            DateTime @default(now()) @db.Date
+  metodo           String   @default("efectivo")
   notas            String?
-  tenant_id        String    @db.Uuid
-  aplicado_mora    Float     @default(0)
-  aplicado_interes Float     @default(0)
-  aplicado_cargos  Float     @default(0)
-  aplicado_capital Float     @default(0)
-  excedente        Float     @default(0)
+  tenant_id        String   @db.Uuid
+  aplicado_mora    Float    @default(0)
+  aplicado_interes Float    @default(0)
+  aplicado_cargos  Float    @default(0)
+  aplicado_capital Float    @default(0)
+  excedente        Float    @default(0)
 
   /// QUITA DE PUNITORIOS QUE SE APLICÓ EN ESTE COBRO, congelada.
   ///
@@ -1045,9 +1044,9 @@ model pagos {
 
   // Anulación de pago (tesorería): no se borra, se marca anulado + contra-asiento en caja.
   // Solo dentro de la ventana configurable (cobranza_config.dias_anulacion_pago).
-  anulado          Boolean   @default(false)
-  anulado_motivo   String?
-  anulado_at       DateTime? @db.Timestamptz(6)
+  anulado        Boolean   @default(false)
+  anulado_motivo String?
+  anulado_at     DateTime? @db.Timestamptz(6)
 
   /// Planilla de calle de la que salió este cobro, si se cargó desde una.
   ///
@@ -1385,4 +1384,34 @@ model observaciones_cliente {
   cliente clientes @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id, cliente_id, fecha])
+}
+
+/// RECIBOS DE LO COBRADO ANTES DEL SISTEMA (Fernando, 16/10/2026).
+///
+/// Las cuotas de los créditos anteriores están saldadas sin `pagos` ni caja: la plata entró a la
+/// caja vieja. Esta tabla les da el papel que el cliente puede reclamar: UN recibo por crédito y
+/// por día de pago, con lo imputado congelado (un recibo reimpreso dice siempre lo mismo).
+/// 🔴 NO es caja: no suma al saldo, ni al arqueo, ni a Reportes (eso ya lo cuenta
+/// `cobrosAnteriores`). Serie interna RPA, propia, para no mezclarse con los REC entregados.
+model recibos_previos {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  tenant_id         String   @db.Uuid
+  credito_id        String   @db.Uuid
+  numero            Int
+  /// Día del pago (el que dice el recibo).
+  fecha             DateTime @db.Date
+  monto             Float
+  capital           Float
+  interes           Float
+  /// Capital del crédito que quedaba DESPUÉS de este pago.
+  capital_pendiente Float
+  /// [{ nro, vencimiento, cuota_total, imputado, restante }] — contra qué cuotas, congelado.
+  cuotas            Json
+
+  credito creditos @relation(fields: [credito_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, numero])
+  @@index([tenant_id, fecha])
+  @@index([tenant_id, credito_id])
 }

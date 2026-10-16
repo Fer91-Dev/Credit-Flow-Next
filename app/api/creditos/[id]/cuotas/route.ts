@@ -8,7 +8,7 @@ import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
 import { veredictoCobro } from "@/lib/recupero-server";
-import { formatComprobante } from "@/lib/comprobantes";
+import { formatComprobante, SERIE_RECIBO_PREVIO } from "@/lib/comprobantes";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
@@ -52,6 +52,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       refinanciado_en: true,
       // `estado`/`estado_fecha` del cliente: un fallecido frena los punitorios de todo el plan.
       cliente: { select: { nombre: true, apellido: true, estado: true, estado_fecha: true } },
+      // Los recibos de lo cobrado antes del sistema (`lib/recibos-previos.ts`): la cuota los abre.
+      recibos_previos: { select: { id: true, numero: true, fecha: true, cuotas: true } },
       cuotas: {
         orderBy: { nro: "asc" },
         include: {
@@ -209,6 +211,15 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   // La cuota que quedó a medias antes del sistema: lo abonado ahí se sigue mostrando aunque
   // después se cobre el resto desde acá (sus aplicaciones son solo las del sistema).
   const parcialAnterior = anteriorCred?.parcial ?? null;
+  /** El recibo previo de una cuota en un día dado ("nro|YYYY-MM-DD"). */
+  const reciboPrevio = new Map<string, { id: string; comprobante: string | null }>();
+  for (const r of credito.recibos_previos) {
+    const dia = r.fecha.toISOString().slice(0, 10);
+    for (const x of r.cuotas as { nro: number }[]) {
+      reciboPrevio.set(`${x.nro}|${dia}`, { id: r.id, comprobante: formatComprobante(SERIE_RECIBO_PREVIO, r.numero) });
+    }
+  }
+  const previoDe = (nro: number, fecha: string | null | undefined) => (fecha ? reciboPrevio.get(`${nro}|${fecha}`) : undefined);
 
   const cuotas = credito.cuotas.map((c) => {
     /**
@@ -284,6 +295,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     const comprobantes: {
       comprobante: string | null; pago_id: string | null; fecha: Date | null; fecha_hora: Date | null;
       monto: number; monto_pago: number; entrega_refinanciacion: boolean; sin_recibo?: boolean;
+      recibo_previo_id?: string;
     }[] = c.aplicaciones
       .map((a) => {
         // El COBRO, no "el primero con número": desde que la anulación también apunta al
@@ -315,14 +327,16 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       .filter((x) => x.monto > 0);
     if (pagosAnteriores.has(c.nro) && c.aplicaciones.length === 0) {
       const fecha = pagosAnteriores.get(c.nro) ?? null;
+      const previo = previoDe(c.nro, fecha);
       comprobantes.push({
-        comprobante: "Antes del sistema", pago_id: null, fecha: fecha ? new Date(`${fecha}T00:00:00.000Z`) : null,
+        comprobante: previo?.comprobante ?? "Antes del sistema", pago_id: null, recibo_previo_id: previo?.id, fecha: fecha ? new Date(`${fecha}T00:00:00.000Z`) : null,
         fecha_hora: null, monto: round2(c.pagado), monto_pago: round2(c.pagado), entrega_refinanciacion: false, sin_recibo: true,
       });
     }
     if (parcialAnterior?.nro === c.nro) {
+      const previo = previoDe(c.nro, parcialAnterior.fecha);
       comprobantes.unshift({
-        comprobante: "Antes del sistema", pago_id: null,
+        comprobante: previo?.comprobante ?? "Antes del sistema", pago_id: null, recibo_previo_id: previo?.id,
         fecha: parcialAnterior.fecha ? new Date(`${parcialAnterior.fecha}T00:00:00.000Z`) : null,
         fecha_hora: null, monto: parcialAnterior.monto, monto_pago: parcialAnterior.monto, entrega_refinanciacion: false, sin_recibo: true,
       });

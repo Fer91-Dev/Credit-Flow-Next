@@ -759,6 +759,8 @@ export interface CuotaPersistida {
     /** `pago_id`/`fecha_hora` null = cuota pagada ANTES del sistema (sin recibo; `fecha` = día de pago, si se sabe). */
     comprobante: string | null; pago_id: string | null; fecha: string | null; fecha_hora: string | null;
     sin_recibo?: boolean;
+    /** El recibo de ese cobro de antes del sistema (`/api/recibos-previos/[id]`), si tiene fecha. */
+    recibo_previo_id?: string;
     /** Si ese cobro fue la entrega con la que se refinanció el crédito. */
     entrega_refinanciacion?: boolean;
     /** Lo que de ESE cobro se imputó a ESTA cuota. */
@@ -983,10 +985,21 @@ export interface MovimientoCaja {
 }
 
 /** Fila del registro central de comprobantes (movimiento numerado). */
-export interface Comprobante extends MovimientoCaja {
+export interface ComprobanteCaja extends MovimientoCaja {
   serie: string | null;
   vendedor: string | null; // null = caja principal
 }
+
+/**
+ * Recibo de un cobro de antes del sistema (serie RPA, `recibos_previos`). Va en Comprobantes
+ * para poder encontrarlo y reimprimirlo, pero NO es caja: no tiene cuenta ni caja.
+ */
+export interface ComprobantePrevio extends Omit<ComprobanteCaja, "tipo" | "cuenta"> {
+  tipo: "recibo_previo";
+  cuenta: null;
+}
+
+export type Comprobante = ComprobanteCaja | ComprobantePrevio;
 
 /** Caja personal de un vendedor (su porción del libro de caja). */
 export interface CajaVendedor {

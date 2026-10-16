@@ -14,7 +14,7 @@
  * único a color, texto en #111827, totales invertidos. Ningún rótulo interno.
  */
 import { imgLogoImpreso } from "@/lib/logo-papel";
-import { formatMonto, formatNumero, formatFecha, formatFechaHora, formatDias } from "@/lib/utils";
+import { formatMonto, formatNumero, formatFecha, formatDias } from "@/lib/utils";
 import type { CuotasCredito } from "@/lib/swr";
 
 export interface EstadoCuentaData {
@@ -64,9 +64,6 @@ export function imprimirEstadoCuenta(data: EstadoCuentaData): void {
     const pag = pagadoDe(q);
     const estado = ESTADO_LABEL[q.estado] ?? q.estado;
     const detalleEstado = q.estado === "vencida" && (q.dias_atraso ?? 0) > 0 ? `<span class="sub">${formatDias(q.dias_atraso ?? 0)} de atraso</span>` : "";
-    const recibos = (q.comprobantes ?? [])
-      .map((c) => `<div class="rc"><span class="mn">${esc(c.comprobante ?? "recibo")}</span> <span class="sub">${formatFechaHora(c.fecha_hora)} · ${formatMonto(c.monto)}</span></div>`)
-      .join("");
     const cls = q.estado === "pagada" ? " ok" : q.estado === "vencida" ? " bad" : "";
     return `<tr${ev}>
       <td class="nm c">${q.nro} de ${n}</td>
@@ -76,7 +73,6 @@ export function imprimirEstadoCuenta(data: EstadoCuentaData): void {
       <td class="r mn">${(q.mora ?? 0) > 0 ? formatMonto(q.mora ?? 0) : "—"}</td>
       <td class="st${cls}">${esc(estado)}${detalleEstado}${(q.condonado ?? 0) > 0 ? `<span class="sub">se condonaron ${formatMonto(q.condonado ?? 0)}</span>` : ""}</td>
       <td class="r mn fw pg">${(q.total_cobrar ?? 0) > 0 ? formatMonto(q.total_cobrar ?? 0) : "—"}</td>
-      <td class="rcs">${recibos || '<span class="sub">—</span>'}</td>
     </tr>`;
   }).join("");
 
@@ -125,7 +121,6 @@ tfoot tr{background:#111827}tfoot td{padding:13px 12px;font-weight:700;color:#ff
 .st{font-weight:600;white-space:nowrap}
 .st.ok{color:#15803D}.st.bad{color:#B91C1C}
 .sub{display:block;font-size:10px;font-weight:500;color:#6B7280;white-space:nowrap}
-.rc{white-space:nowrap;line-height:1.3}.rcs{font-size:11px}
 thead th.pg{background:#0B1220;border-left:1px solid #3A4356}
 tbody td.pg{background:#EEF1F6;border-left:1px solid #D5DBE5}
 tbody tr.ev td.pg{background:#E7EBF2}
@@ -167,7 +162,7 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
   <div class="tw">
     <p class="ttl">Cuota por cuota</p>
     <table>
-      <thead><tr><th class="c">Cuota</th><th>Vence</th><th class="r">Importe</th><th class="r">Pagado</th><th class="r">Punitorios</th><th>Estado</th><th class="r pg">Le falta</th><th>Recibos</th></tr></thead>
+      <thead><tr><th class="c">Cuota</th><th>Vence</th><th class="r">Importe</th><th class="r">Pagado</th><th class="r">Punitorios</th><th>Estado</th><th class="r pg">Le falta</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr>
         <td colspan="2" class="fl">Totales</td>
@@ -176,7 +171,6 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
         <td class="r mn">${formatMonto(totMora)}</td>
         <td class="fl">${totCondonado > 0 ? `condonado ${formatMonto(totCondonado)}` : ""}</td>
         <td class="r mn fw pg">${formatMonto(totFalta)}</td>
-        <td></td>
       </tr></tfoot>
     </table>
   </div>

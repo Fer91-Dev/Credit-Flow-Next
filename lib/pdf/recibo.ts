@@ -35,6 +35,11 @@ export interface ReciboData {
     descuento_mora_pct?: number;
     ahorro_mora?: number;
     created_at: Date;
+    /**
+     * Recibo de un cobro de antes del sistema, armado después: no lleva "Comprobante generado
+     * el …" (diría hoy, sobre un pago de hace meses) y, si no se sabe el método, no lo inventa.
+     */
+    sinFechaEmision?: boolean;
     /** Si el pago fue anulado: el recibo sale con marca de agua "ANULADO". */
     anulado?: boolean;
     anulado_motivo?: string | null;
@@ -198,7 +203,7 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   pair("Fecha de pago", fmtDate(pago.fecha), colR, y);
   y -= 40;
   pair("Documento", cliente.documento || "—", colL, y);
-  pair("Método de pago", metodoLabel[pago.metodo] ?? pago.metodo, colR, y);
+  if (pago.metodo) pair("Método de pago", metodoLabel[pago.metodo] ?? pago.metodo, colR, y);
   y -= 40;
   /**
    * 🔴 El recibo armaba el número A MANO, con la misma plantilla repetida que `lib/utils`.
@@ -436,7 +441,7 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   // ── Pie ────────────────────────────────────────────────────────────────
   const footerY = M + 8;
   hr(footerY + 22);
-  text(
+  if (!pago.sinFechaEmision) text(
     /* La zona va ESCRITA: sin ella `Intl` usa la del proceso, que corre en UTC. El recibo
        decía tres horas de más, y después de las 21:00 un día de más. */
     `Comprobante generado el ${new Intl.DateTimeFormat(locale || "es-AR", { dateStyle: "long", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" }).format(new Date())}`,

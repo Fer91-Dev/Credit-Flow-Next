@@ -3,7 +3,7 @@ import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { esCuentaValida, type Cuenta } from "@/lib/domain";
-import { formatComprobante } from "@/lib/comprobantes";
+import { formatComprobante, SERIE_RECIBO_PREVIO } from "@/lib/comprobantes";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { nombreCompleto } from "@/lib/utils";
 import type { NextRequest } from "next/server";
@@ -15,6 +15,10 @@ import type { Prisma } from "@prisma/client";
  * (principal + cajas de todos los vendedores); el vendedor ve SOLO su caja
  * (scoping anti-IDOR por `vendedor_id`). Solo lectura (no hay borrado acá).
  * Filtros: q (texto), serie, cuenta, rango de fechas.
+ *
+ * Suma los recibos de lo cobrado antes del sistema (serie RPA, `recibos_previos`) para que se
+ * puedan encontrar y reimprimir. No son caja: un filtro de cuenta los deja afuera, y el vendedor
+ * no los ve (no son de su caja). Se ordenan por la fecha del pago, no por cuándo se generaron.
  */
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { tenantId, role, vendedorId } = await requireRole(["admin", "vendedor"], req);
@@ -53,7 +57,28 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     where.OR = or;
   }
 
-  const [movs, total] = await Promise.all([
+  // Recibos previos: solo admin, sin filtro de cuenta, y con la serie vacía o la suya.
+  const conPrevios = role === "admin" && !esCuentaValida(cuentaParam) && (!serie || serie === SERIE_RECIBO_PREVIO);
+  const conCaja = serie !== SERIE_RECIBO_PREVIO;
+  const wherePrev: Prisma.recibos_previosWhereInput = { ...withTenant(tenantId) };
+  if (desdeStr || hastaStr) {
+    wherePrev.fecha = {};
+    if (desdeStr) wherePrev.fecha.gte = new Date(`${desdeStr}T00:00:00.000Z`);
+    if (hastaStr) wherePrev.fecha.lte = new Date(`${hastaStr}T23:59:59.999Z`);
+  }
+  if (q) {
+    const or: Prisma.recibos_previosWhereInput[] = [
+      { credito: { cliente: { nombre: { contains: q, mode: "insensitive" } } } },
+      { credito: { cliente: { apellido: { contains: q, mode: "insensitive" } } } },
+    ];
+    const num = parseInt(q.replace(/\D/g, ""));
+    if (!Number.isNaN(num)) or.push({ numero: num }, { credito: { numero: num } });
+    wherePrev.OR = or;
+  }
+  // Dos fuentes con una sola página: de cada una se traen las primeras `offset + limit`, se
+  // mezclan por fecha y se corta. Los previos son pocos (uno por cuota cobrada antes).
+  const tope = offset + limit;
+  const [movs, totalCaja, previos, totalPrevios] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where,
       include: {
@@ -61,11 +86,22 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
         vendedor: { select: { nombre: true } },
       },
       orderBy: [{ created_at: "desc" }, { id: "desc" }],
-      take: limit,
-      skip: offset,
+      take: conCaja ? (conPrevios ? tope : limit) : 0,
+      skip: conPrevios ? 0 : offset,
     }),
-    prisma.movimientos_caja.count({ where }),
+    conCaja ? prisma.movimientos_caja.count({ where }) : Promise.resolve(0),
+    conPrevios
+      ? prisma.recibos_previos.findMany({
+          where: wherePrev,
+          include: { credito: { select: { id: true, numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
+          orderBy: [{ fecha: "desc" }, { numero: "desc" }],
+          take: conCaja ? tope : limit,
+          skip: conCaja ? 0 : offset,
+        })
+      : Promise.resolve([]),
+    conPrevios ? prisma.recibos_previos.count({ where: wherePrev }) : Promise.resolve(0),
   ]);
+  const total = totalCaja + totalPrevios;
 
   // Mismo criterio que la caja: si el movimiento es de una refinanciación, dice REF-.
   const origenesRefi = await numerosRefinanciados(tenantId, movs.map((m) => m.credito).filter((c) => c != null));
@@ -89,5 +125,38 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     vendedor: m.vendedor?.nombre ?? null, // null = caja principal
   }));
 
-  return successResponse({ comprobantes, total, limit, offset });
+  const deCajaYPrevios = [
+    ...comprobantes.map((c) => ({ c, orden: c.created_at.getTime() })),
+    ...previos.map((r) => {
+      const cliente = nombreCompleto(r.credito.cliente);
+      return {
+        orden: r.fecha.getTime(),
+        c: {
+          id: r.id,
+          comprobante: formatComprobante(SERIE_RECIBO_PREVIO, r.numero),
+          serie: SERIE_RECIBO_PREVIO,
+          fecha: r.fecha,
+          created_at: r.created_at,
+          tipo: "recibo_previo" as const,
+          monto: r.monto,
+          metodo: null,
+          cuenta: null,
+          origen: cliente,
+          destino: null,
+          descripcion: `Cobro de ${(r.cuotas as { nro: number }[]).map((x) => `cuota ${x.nro}`).join(", ")}`,
+          credito_id: r.credito.id,
+          credito_numero: r.credito.numero,
+          credito_refinancia_a_numero: null,
+          cliente,
+          vendedor: null,
+        },
+      };
+    }),
+  ];
+  // Con una sola fuente la base ya paginó; con las dos se pagina acá, después de mezclar.
+  const pagina = conPrevios && conCaja
+    ? deCajaYPrevios.sort((a, b) => b.orden - a.orden).slice(offset, tope).map((x) => x.c)
+    : deCajaYPrevios.map((x) => x.c);
+
+  return successResponse({ comprobantes: pagina, total, limit, offset });
 });
