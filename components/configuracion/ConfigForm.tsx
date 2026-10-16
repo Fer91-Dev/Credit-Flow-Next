@@ -519,6 +519,7 @@ const AYUDA: Record<string, AyudaBloque> = {
       { opcion: "Cesión de crédito", efecto: "Agrega la cláusula que permite ceder el crédito a un tercero." },
       { opcion: "Entidad autorizada por el BCRA", efecto: "Aparece en el encabezado de las condiciones. Solo si la financiera tiene la autorización: declararlo sin tenerla es una infracción grave." },
       { opcion: "Cláusulas adicionales", efecto: "Van al final, como «Otras condiciones»." },
+      { opcion: "Detalle de interés y capital en el recibo", efecto: "Prendido, el recibo de cada cobro desglosa cuánto fue a punitorios, a interés y a capital. Apagado, dice qué cuotas pagó, el monto y lo que le queda, sin ese desglose; la quita de una campaña y el saldo a favor se muestran igual." },
       { opcion: "Interés punitorio", efecto: "No se configura acá: sale de la mora que cobra el sistema (Motor financiero), así que el papel siempre coincide con lo que se cobra." },
     ],
   },
@@ -2979,6 +2980,12 @@ export function ConfigForm() {
                   desc="Permite vender la cartera a un tercero. Activalo solo si la financiera lo hace."
                   checked={docs.incluye_cesion_credito}
                   onChange={v => setDocs({ incluye_cesion_credito: v })}
+                />
+                <NotifRow
+                  title="Detalle de interés y capital en el recibo"
+                  desc="El recibo del cliente desglosa el pago en punitorios, interés y capital."
+                  checked={docs.recibo_detalle_imputacion}
+                  onChange={v => setDocs({ recibo_detalle_imputacion: v })}
                 />
                 <NotifRow
                   title="Entidad autorizada por el BCRA"

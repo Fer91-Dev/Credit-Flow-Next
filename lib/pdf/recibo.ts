@@ -71,6 +71,11 @@ export interface ReciboData {
   locale: string;
   /** Co-branding: identidad de la financiera (nombre + logo PNG/JPG opcional). */
   financiera?: { nombre?: string | null; logo_url?: string | null };
+  /**
+   * Desglose mora / interés / capital (Configuración → Documentos). Apagado, solo quedan los
+   * renglones que cambian lo que el cliente pagó: la quita de campaña y el saldo a favor.
+   */
+  detalleImputacion?: boolean;
 }
 
 // Paleta (Bloomberg Terminal del producto) en rgb 0–1.
@@ -377,44 +382,57 @@ export async function generarReciboPDF(data: ReciboData): Promise<Uint8Array> {
   y -= 76;
 
   // ── Imputación ────────────────────────────────────────────────────────────
-  text("IMPUTACIÓN DEL PAGO", M, y, bold, 9, MUTED);
-  y -= 8;
-  hr(y);
-  y -= 20;
-
-  const rowImput = (label: string, value: number, color = INK) => {
-    text(label, M, y, font, 10, INK);
-    textRight(fmtMoney(value), right, y, font, 10, color);
-    y -= 18;
-  };
-  /**
-   * Con quita, la mora va DISCRIMINADA: lo devengado, lo condonado y lo que quedó. Sin los
-   * tres renglones el número de abajo no se puede reconstruir desde el contrato.
-   */
   const ahorro = pago.ahorro_mora ?? 0;
-  if (ahorro > 0) {
-    rowImput("Interés por mora devengado", pago.aplicado_mora + ahorro, rgb(0.94, 0.27, 0.27));
-    rowImput(
-      `Descuento por campaña${pago.descuento_mora_pct ? ` (${pago.descuento_mora_pct}% de los punitorios)` : ""}`,
-      -ahorro,
-      SUCCESS,
-    );
-    rowImput("Interés por mora a pagar", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
-  } else {
-    rowImput("Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
-  }
-  rowImput("Interés del período", pago.aplicado_interes, pago.aplicado_interes > 0 ? rgb(0.96, 0.62, 0.04) : MUTED);
-  if (pago.aplicado_cargos > 0) rowImput("Cargos (IVA / seguro / gastos)", pago.aplicado_cargos, rgb(0.55, 0.55, 0.95));
-  rowImput("Capital", pago.aplicado_capital, pago.aplicado_capital > 0 ? PRIMARY : MUTED);
-  if (pago.excedente > 0) rowImput("Excedente (saldo a favor)", pago.excedente, MUTED);
+  if (data.detalleImputacion) {
+    text("IMPUTACIÓN DEL PAGO", M, y, bold, 9, MUTED);
+    y -= 8;
+    hr(y);
+    y -= 20;
 
-  y -= 4;
-  hr(y);
-  y -= 20;
-  text("TOTAL IMPUTADO", M, y, bold, 10, INK);
-  textRight(fmtMoney(pago.aplicado_mora + pago.aplicado_interes + pago.aplicado_cargos + pago.aplicado_capital + pago.excedente),
-    right, y, bold, 11, INK);
-  y -= 36;
+    const rowImput = (label: string, value: number, color = INK) => {
+      text(label, M, y, font, 10, INK);
+      textRight(fmtMoney(value), right, y, font, 10, color);
+      y -= 18;
+    };
+    /**
+     * Con quita, la mora va DISCRIMINADA: lo devengado, lo condonado y lo que quedó. Sin los
+     * tres renglones el número de abajo no se puede reconstruir desde el contrato.
+     */
+    if (ahorro > 0) {
+      rowImput("Interés por mora devengado", pago.aplicado_mora + ahorro, rgb(0.94, 0.27, 0.27));
+      rowImput(
+        `Descuento por campaña${pago.descuento_mora_pct ? ` (${pago.descuento_mora_pct}% de los punitorios)` : ""}`,
+        -ahorro,
+        SUCCESS,
+      );
+      rowImput("Interés por mora a pagar", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+    } else {
+      rowImput("Interés por mora", pago.aplicado_mora, pago.aplicado_mora > 0 ? rgb(0.94, 0.27, 0.27) : MUTED);
+    }
+    rowImput("Interés del período", pago.aplicado_interes, pago.aplicado_interes > 0 ? rgb(0.96, 0.62, 0.04) : MUTED);
+    if (pago.aplicado_cargos > 0) rowImput("Cargos (IVA / seguro / gastos)", pago.aplicado_cargos, rgb(0.55, 0.55, 0.95));
+    rowImput("Capital", pago.aplicado_capital, pago.aplicado_capital > 0 ? PRIMARY : MUTED);
+    if (pago.excedente > 0) rowImput("Excedente (saldo a favor)", pago.excedente, MUTED);
+
+    y -= 4;
+    hr(y);
+    y -= 20;
+    text("TOTAL IMPUTADO", M, y, bold, 10, INK);
+    textRight(fmtMoney(pago.aplicado_mora + pago.aplicado_interes + pago.aplicado_cargos + pago.aplicado_capital + pago.excedente),
+      right, y, bold, 11, INK);
+    y -= 36;
+  } else if (ahorro > 0 || pago.excedente > 0) {
+    /* Sin el desglose, igual quedan la quita y el saldo a favor: son plata que el cliente no
+       pagó o que le queda, y el papel es su constancia. */
+    const fila = (label: string, value: number, color = INK) => {
+      text(label, M, y, font, 10, INK);
+      textRight(fmtMoney(value), right, y, font, 10, color);
+      y -= 18;
+    };
+    if (ahorro > 0) fila(`Descuento por campaña${pago.descuento_mora_pct ? ` (${pago.descuento_mora_pct}% de los punitorios)` : ""}`, -ahorro, SUCCESS);
+    if (pago.excedente > 0) fila("Excedente (saldo a favor)", pago.excedente, MUTED);
+    y -= 18;
+  }
 
   // ── Notas ───────────────────────────────────────────────────────────────
   if (pago.notas) {

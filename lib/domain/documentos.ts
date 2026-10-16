@@ -65,6 +65,12 @@ export interface DocumentosConfig {
   autorizada_bcra: boolean;
   /** Texto libre que se agrega al final de las cláusulas. Para lo que no previmos. */
   clausulas_extra: string;
+  /**
+   * Si el recibo del cliente desglosa el pago en mora / interés / capital. Apagado, el papel
+   * dice qué cuotas pagó, cuánto y qué le queda, sin el detalle (Silvio, 16/10/2026: "no
+   * quiere que se muestre tanto detalle para los clientes").
+   */
+  recibo_detalle_imputacion: boolean;
 }
 
 export const DOCUMENTOS_DEFAULT: DocumentosConfig = {
@@ -79,6 +85,7 @@ export const DOCUMENTOS_DEFAULT: DocumentosConfig = {
   incluye_autorizacion_informes: true,
   autorizada_bcra: false,
   clausulas_extra: "",
+  recibo_detalle_imputacion: false,
 };
 
 const num = (v: unknown, def: number, min: number, max: number) => {
@@ -106,6 +113,7 @@ export function resolverDocumentos(raw: Partial<DocumentosConfig> | null | undef
     incluye_autorizacion_informes: bool(raw.incluye_autorizacion_informes, d.incluye_autorizacion_informes),
     autorizada_bcra: bool(raw.autorizada_bcra, d.autorizada_bcra),
     clausulas_extra: texto(raw.clausulas_extra, d.clausulas_extra),
+    recibo_detalle_imputacion: bool(raw.recibo_detalle_imputacion, d.recibo_detalle_imputacion),
   };
 }
 

@@ -1,7 +1,7 @@
 import { scopeCreditosVendedor, type AuthContext } from "@/lib/auth";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getDocumentosConfig } from "@/lib/config";
 import { getFinanciera } from "@/lib/financiera";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
@@ -152,6 +152,7 @@ export async function armarReciboDePago(
 
   const config = await getConfiguracion(tenantId);
   const financiera = await getFinanciera(tenantId); // co-branding del recibo
+  const documentos = await getDocumentosConfig(tenantId); // ¿desglose mora/interés/capital?
   // Si el crédito nació de refinanciar otro, el recibo lo nombra REF-<número del original>,
   // igual que la pantalla: el papel del cliente y el sistema no pueden llamarlo distinto.
   const [{ refinancia_a_numero: numeroOrigen }] = await conNumeroDeOrigen(tenantId, [pago.credito]);
@@ -218,6 +219,7 @@ export async function armarReciboDePago(
     moneda: config.moneda,
     locale: config.locale,
     financiera: { nombre: financiera.nombre, logo_url: financiera.logo_url },
+    detalleImputacion: documentos.recibo_detalle_imputacion,
   });
 
   return {

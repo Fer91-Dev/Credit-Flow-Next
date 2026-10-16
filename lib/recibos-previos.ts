@@ -11,7 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { scopeCreditosVendedor, type AuthContext } from "@/lib/auth";
-import { getConfiguracion } from "@/lib/config";
+import { getConfiguracion, getDocumentosConfig } from "@/lib/config";
 import { getFinanciera } from "@/lib/financiera";
 import { generarReciboPDF } from "@/lib/pdf/recibo";
 import { SERIE_RECIBO_PREVIO } from "@/lib/comprobantes";
@@ -101,7 +101,7 @@ export async function armarReciboPrevioPDF(
   });
   if (!rec) return null;
 
-  const [config, financiera] = await Promise.all([getConfiguracion(tenantId), getFinanciera(tenantId)]);
+  const [config, financiera, documentos] = await Promise.all([getConfiguracion(tenantId), getFinanciera(tenantId), getDocumentosConfig(tenantId)]);
   const lineas = rec.cuotas as unknown as CuotaReciboPrevio[];
   const pdf = await generarReciboPDF({
     pago: {
@@ -131,6 +131,7 @@ export async function armarReciboPrevioPDF(
     moneda: config.moneda,
     locale: config.locale,
     financiera: { nombre: financiera.nombre, logo_url: financiera.logo_url },
+    detalleImputacion: documentos.recibo_detalle_imputacion,
   });
   return { pdf, numero: rec.numero };
 }
