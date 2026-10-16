@@ -7,7 +7,7 @@ import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { registrarAuditoria } from "@/lib/audit";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
 import { normalizarCuit, validarDuplicadoCliente } from "@/lib/clientes-validacion";
-import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos } from "@/lib/domain";
+import { cuotaCerradaSinPago, calcularScore, diasMoraActual, cuotaMensualFrancesa, tasaPeriodicaSegunConvencion, convencionDelCredito, normalizarFrecuencia, interesMora, diasAtraso, round2, estadoCoherente, esCreditoVivo, moraDelCredito, moraDesdeCronograma, moraPendienteTotal, calcularDeudaVencida, esCreditoCobrable, topeMoraPorIncobrable, ESTADOS_CLIENTE, ESTADO_CLIENTE_LABEL, esEstadoClienteValido, normalizarEstadoCliente, type EstadoCliente, cargosDeCuota, baseMoraDeCuota, pendienteSinMoraDeCuota, formatPesos, cobrosAnteriores } from "@/lib/domain";
 import { getConfiguracion, getRiesgoConfig, getCobranzaConfig } from "@/lib/config";
 import { situacionAcuerdoPorCredito } from "@/lib/acuerdos";
 import { after, type NextRequest } from "next/server";
@@ -192,7 +192,11 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       vencido = round2(dv.total);
       cuotas_vencidas = dv.cuotas_vencidas;
     }
-    const total_cobrado = c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0);
+    // Más lo cobrado ANTES del sistema (créditos anteriores): sin esto un crédito con las 12
+    // cuotas pagadas decía "Cobrado $0,00 · 0 pagos" (16/10/2026).
+    const antes = cobrosAnteriores(c);
+    const cobrado_antes = round2(antes.reduce((s, a) => s + a.total, 0));
+    const total_cobrado = round2(c.pagos.filter((p) => !p.anulado).reduce((s, p) => s + p.monto, 0) + cobrado_antes);
 
     // Cronograma persistido: estado AUTORITATIVO (escrito por el motor cuota-dirigido,
     // Fase 6B); `vencida` se recalcula dinámicamente (depende de hoy).
@@ -251,7 +255,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     return {
       ...rest,
       pagos: c.pagos.map((p) => ({ ...p, entrega_refinanciacion: entregasRefi.get(p.id) ?? null })),
-      estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, vencido, cuotas_vencidas, interes_pendiente, total_cobrado, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null,
+      estado: estadoReal, dias_mora: diasMora, cuota, interes_mora, vencido, cuotas_vencidas, interes_pendiente, total_cobrado, cobrado_antes, cuotas_antes: antes.length, cuotas_resumen, acuerdo: acuerdos.get(c.id) ?? null,
     };
   });
 

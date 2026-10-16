@@ -201,7 +201,10 @@ export interface CreditoConFinanzas {
   /** Lo EXIGIBLE hoy: cuotas vencidas impagas + sus punitorios, cuota por cuota. */
   vencido?: number;
   cuotas_vencidas?: number;
+  /** Incluye lo cobrado antes del sistema (`cobrado_antes`, en `cuotas_antes` cuotas). */
   total_cobrado: number;
+  cobrado_antes?: number;
+  cuotas_antes?: number;
   pagos: PagoImputado[];
   /** Cuándo se lo dio por incobrable. Marca el corte entre "pagó" y "pagó DESPUÉS del castigo". */
   incobrable_at?: string | null;

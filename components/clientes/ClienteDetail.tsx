@@ -36,7 +36,7 @@ import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { moraDevengadaDeCuota } from "@/lib/recibo-cuota";
 import { CreditoLink } from "@/components/ui/CreditoLink";
 import { formatCreditoNumero, formatFecha, formatFechaHora, nombreCompleto, hoyComercial, formatDias, formatMonto } from "@/lib/utils";
-import { esCreditoVivo, esCreditoCobrable, esRecuperoPostCastigo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT } from "@/lib/domain";
+import { esCreditoVivo, esCreditoCobrable, esRecuperoPostCastigo, deudaEnRevision, normalizarEstadoCliente, round2, ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_VARIANT, frecuenciaLabel, detalleAbonado } from "@/lib/domain";
 import type { Role } from "@/lib/auth/roles";
 
 function n2(x: number) {
@@ -1019,6 +1019,12 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   numeroOrigen={c.refinancia_a_numero}
                   className="text-base font-bold tracking-tight"
                 />
+                {/* LO QUE SE PRESTÓ, al lado del número y del mismo tamaño (Fernando, 16/10/2026:
+                    "estuve 5 minutos para encontrar el crédito de 169.000"). Es el dato con el que
+                    se identifica un crédito al hablarlo, y estaba en gris al pie del saldo. */}
+                <span className="font-mono text-base font-bold tabular-nums tracking-tight text-foreground" title="Monto otorgado">
+                  ${n2(c.monto_original)}
+                </span>
                 <StatusBadge label={b.label} variant={b.variant} />
                 {/*
                   🔴 "EN ACUERDO" EN VERDE Y "82 DÍAS DE MORA" EN ROJO, EN EL MISMO RENGLÓN.
@@ -1046,15 +1052,18 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                     Refi
                   </span>
                 )}
-                <span className="text-xs capitalize text-muted-foreground">
-                  {c.tipo_credito} · {Number(c.tasa.toFixed(2))}% · {c.plazo_meses} cuotas
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground/80">{c.plazo_meses} {c.plazo_meses === 1 ? frecuenciaLabel(c.frecuencia).cuotaSingular : frecuenciaLabel(c.frecuencia).cuotaPlural}</span>
+                  {" · "}<span className="capitalize">{c.tipo_credito}</span>
+                  {" · "}otorgado {formatFecha(c.fecha_inicio ?? c.created_at)}
+                  {" · "}{Number(c.tasa.toFixed(2))}%
                 </span>
               </div>
 
               {/* Las cifras que se miran. En `text-foreground`: el color se reserva para el estado. */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
                 <CifraCredito label="Capital pendiente" valor={`$${n2(c.saldo_pendiente)}`}
-                  pie={`de ${formatMonto(c.monto_original)} otorgados`} />
+                  pie={!muerto && c.monto_original > 0 ? `${Math.round(Math.max(0, 1 - c.saldo_pendiente / c.monto_original) * 100)}% devuelto` : undefined} />
                 {/*
                   🔴 DOS COSAS LLAMADAS "CUOTA" EN LA MISMA FILA. Con un acuerdo vigente acá
                   decía "CUOTA $217.675,00" al lado de "CUOTA PACTADA $271.730,95", y nada
@@ -1133,7 +1142,7 @@ function CreditosTabla({ creditos, mostrarProximo, onCobrar, onCobrarAcuerdo, cl
                   desmentía a la cifra que estaba explicando. Un cobro anulado no es un cobro.
                 */}
                 <CifraCredito label="Cobrado" valor={`$${n2(c.total_cobrado)}`}
-                  pie={`${pagosVivosDelCredito} pago${pagosVivosDelCredito === 1 ? "" : "s"}${c.estado === "refinanciado" ? " · antes de refinanciarse" : ""}`}
+                  pie={`${detalleAbonado(pagosVivosDelCredito, c.cuotas_antes ?? 0).replace(/^en /, "")}${c.estado === "refinanciado" ? " · antes de refinanciarse" : ""}`}
                   tono={muerto ? "muted" : "success"} />
               </div>
 
