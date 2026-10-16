@@ -456,13 +456,25 @@ export function CreditosTable({ role }: { role: Role }) {
         <div className="space-y-5">
 
         {/* ── KPI Strip ── */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           {/*
             Los KPI mueven los MISMOS filtros del panel de abajo, no unos propios: si no se
             hablaran, la tabla mostraría una cosa y los chips de filtro dirían otra.
             "Cartera activa" es una suma de pesos y no filtra — no hay "los créditos de la
             cartera activa" distintos de los activos, que ya tienen su tarjeta.
           */}
+          {/* El total de créditos cargados, con de qué se compone (Fernando, 16/10/2026). Filtra
+              "todos": saca estado y mora, que es lo que hacen los demás KPI al revés. */}
+          <KpiCard
+            icon="scroll" label="Créditos" value={String(kpis.total)} accent="muted"
+            sub={[
+              `${kpis.activos} vivo${kpis.activos === 1 ? "" : "s"}`,
+              `${kpis.pagados} pagado${kpis.pagados === 1 ? "" : "s"}`,
+              ("otros" in kpis && kpis.otros) ? `${kpis.otros} otro${kpis.otros === 1 ? "" : "s"}` : "",
+            ].filter(Boolean).join(" · ")}
+            onClick={kpis.total > 0 ? () => { setEstado("all"); setMora("all"); } : undefined}
+            active={estadoFilter === "all" && moraFilter === "all"}
+          />
           <KpiCard
             icon="page-facing-up" label="Créditos activos" value={String(kpis.activos)} accent="primary"
             // Cuántos de esos activos vienen bien y cuántos no: el total solo no distingue
@@ -549,7 +561,9 @@ export function CreditosTable({ role }: { role: Role }) {
               pestañas de arriba, así que el número se lee igual en los dos lugares.
             */}
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
-              {hasFilters ? `${filtered.length} de ${deLaPestana.length}` : deLaPestana.length}
+              {/* Totales del SERVIDOR: la lista llega paginada, así que `filtered.length` era lo de
+                  una página (decía 12 con 152 créditos). */}
+              {hasFilters ? `${totalCreditos ?? filtered.length} de ${creditosCount}` : (totalCreditos ?? creditosCount)}
             </span>
           </div>
           <div className="flex items-center gap-3">

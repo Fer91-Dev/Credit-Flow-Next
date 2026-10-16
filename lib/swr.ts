@@ -1675,6 +1675,8 @@ export function mutarCreditos() {
 export interface CreditosKpis {
   activos: number; alDia: number; enMora: number; cartera: number; promedio: number;
   moraCritica: number; montoCritico: number; pagados: number; montoPagado: number; total: number;
+  /** Ni vivos ni pagados: anulados, refinanciados, incobrables. */
+  otros?: number;
   /** Badge "Activo atrasado": en mora, antes de Legales, sin acuerdo. Sin refinanciaciones. */
   atrasados: number; montoAtrasado: number;
   /** Pestaña Refinanciados: sobre el historial ENTERO, no sobre la página que se esté viendo. */

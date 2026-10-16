@@ -46,6 +46,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   let moraCritica = 0, montoCritico = 0;
   let pagados = 0, montoPagado = 0;
   let atrasados = 0, montoAtrasado = 0;
+  // "Créditos" (Fernando, 16/10/2026: que el total se vea): los que no son vivos ni pagados.
+  let otros = 0;
 
   /**
    * 🔴 LOS NÚMEROS DE LA PESTAÑA REFINANCIADOS, SOBRE EL HISTORIAL ENTERO.
@@ -62,6 +64,8 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     if (c.estado === "pagado") {
       pagados++;
       montoPagado += c.monto_original;
+    } else if (!esCreditoVivo(c.estado)) {
+      otros++;
     }
     // La mora se mira en TODOS, no solo en los vivos: es el mismo criterio que la lista, que
     // calcula la severidad sobre `dias_mora` venga de donde venga el crédito.
@@ -110,6 +114,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     atrasados,
     montoAtrasado: round2(montoAtrasado),
     total: filas.length,
+    otros,
     /* Pestaña Refinanciados. `tasaRecupero` es el número que decide si reestructurar sirve o
        solo patea el problema: de cada 100 refinanciaciones, cuántas se están pagando. */
     refi: {
