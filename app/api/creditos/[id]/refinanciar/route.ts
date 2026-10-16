@@ -354,7 +354,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
      * esa tasa es válida, y el borde más cercano cuando no lo es.
      */
     sugerido: {
-      tasa: Math.min(Math.max(credito.tasa, bandaTasaPreview.min), bandaTasaPreview.max),
+      // A 2 decimales: la tasa de un crédito anterior al sistema sale despejada de la cuota
+      // (362,3922310637303) y el campo de Refinanciar la mostraba entera.
+      tasa: Math.round(Math.min(Math.max(credito.tasa, bandaTasaPreview.min), bandaTasaPreview.max) * 100) / 100,
       plazo_meses: credito.plazo_meses,
       frecuencia: credito.frecuencia,
     },

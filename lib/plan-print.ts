@@ -6,7 +6,7 @@
  * sigue las reglas permanentes del documento (ver CLAUDE.md → PDF "Plan de pagos").
  */
 import { imgLogoImpreso } from "@/lib/logo-papel";
-import { formatMonto, formatFecha } from "@/lib/utils";
+import { formatMonto, formatFecha, formatNumero } from "@/lib/utils";
 import { montoEnPalabras } from "@/lib/domain";
 import type { CargoCuotaCol } from "@/lib/domain";
 
@@ -346,7 +346,7 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
          número si no coinciden. Tenerlo en el mismo papel permite cotejarlo sin abrir el
          sistema. -->
     <div class="kitem"><span class="klabel">${esc(data.montoLabel ?? "Monto solicitado")}</span><span class="kval">${formatMonto(capital)}</span><span class="kletras">${esc(montoEnPalabras(capital))}</span></div>
-    <div class="kitem"><span class="klabel">Tasa</span><span class="kval">${data.tasa}% ${convLabel}</span></div>
+    ${esOp ? `<div class="kitem"><span class="klabel">Tasa</span><span class="kval">${formatNumero(data.tasa, 2)}% ${convLabel}</span></div>` : ""}
     <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${nCuotas} – ${freqLabel}</span></div>${
       data.cft != null
         ? `<div class="kitem hl"><span class="klabel">C.F.T. anual</span><span class="kval">${(data.cft * 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span></div>`

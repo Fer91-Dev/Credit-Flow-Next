@@ -157,7 +157,7 @@ tfoot td.pg{background:#0B1220;border-left:1px solid #3A4356}
     </div>
   </div>
   <div class="band">
-    <div class="kitem"><span class="klabel">Otorgado</span><span class="kval">${formatMonto(data.capitalOtorgado)}</span>${data.fechaOtorgamiento ? `<span class="sub">el ${formatFecha(data.fechaOtorgamiento)}${data.tasa != null ? ` · ${data.tasa}% T.N.A.` : ""}</span>` : ""}</div>
+    <div class="kitem"><span class="klabel">Otorgado</span><span class="kval">${formatMonto(data.capitalOtorgado)}</span>${data.fechaOtorgamiento ? `<span class="sub">el ${formatFecha(data.fechaOtorgamiento)}</span>` : ""}</div>
     <div class="kitem"><span class="klabel">Cuotas</span><span class="kval">${pagadas} de ${n} pagadas</span>${vencidas > 0 ? `<span class="sub">${vencidas} vencida${vencidas === 1 ? "" : "s"}</span>` : ""}</div>
     <div class="kitem"><span class="klabel">Pagado</span><span class="kval">${formatMonto(totPagado)}</span><span class="sub">punitorios incluidos</span></div>
     <div class="kitem"><span class="klabel">Punitorios pendientes</span><span class="kval">${formatMonto(totMora)}</span></div>

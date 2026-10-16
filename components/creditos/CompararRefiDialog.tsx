@@ -126,7 +126,7 @@ function TermCard({ titulo, sub, credito, amort, loading, error, accent, onOpen 
   accent: "muted" | "warning"; onOpen?: (c: Credito) => void;
 }) {
   const wrap = accent === "warning" ? "border-warning/30 bg-warning/[0.05]" : "border-border bg-muted/20";
-  const tasa = amort ? `${amort.parametros.tasa_ingresada}% ${CONV_LABEL[amort.parametros.convencion_tasa] ?? ""}`.trim() : `${credito.tasa}%`;
+  const tasa = amort ? `${pct(amort.parametros.tasa_ingresada)}% ${CONV_LABEL[amort.parametros.convencion_tasa] ?? ""}`.trim() : `${pct(credito.tasa)}%`;
   const tea = amort ? amort.parametros.tasa_efectiva_anual : null;
   return (
     <div className={`rounded-xl border ${wrap} p-3.5`}>
@@ -267,9 +267,9 @@ function Deltas({ a, b, entrega }: { a: Amortizacion; b: Amortizacion; entrega: 
               {dTotal > 0
                 ? <>Por eso el total sube: se paga interés sobre interés que antes no se había pagado.</>
                 : dTotal < 0
-                  ? <>El total igual baja porque el plan nuevo se pactó al {b.parametros.tasa_ingresada}% contra el {a.parametros.tasa_ingresada}% del original.</>
+                  ? <>El total igual baja porque el plan nuevo se pactó al {pct(b.parametros.tasa_ingresada)}% contra el {pct(a.parametros.tasa_ingresada)}% del original.</>
                   : <>El total queda igual.</>}
-              {tasaBaja && dTotal > 0 && <> La tasa bajó del {a.parametros.tasa_ingresada}% al {b.parametros.tasa_ingresada}%, pero no alcanza a compensar el capital consolidado.</>}
+              {tasaBaja && dTotal > 0 && <> La tasa bajó del {pct(a.parametros.tasa_ingresada)}% al {pct(b.parametros.tasa_ingresada)}%, pero no alcanza a compensar el capital consolidado.</>}
             </>
           );
         })()}
