@@ -958,14 +958,15 @@ const HELP: Record<string, HelpDoc> = {
           { nombre: "Cobrado", muestra: "Todo lo que pagaron los clientes: las cuotas cobradas antes del sistema más los pagos registrados en el sistema. Abajo, cuánto de eso es ganancia." },
           { nombre: "Ganancia neta", muestra: "Ganancia cobrada + comisión de otorgamiento − todos los gastos de la caja − comisiones pagadas a vendedores − capital de los créditos declarados incobrables. La línea de abajo muestra cada resta. No descuenta costo de fondeo." },
           { nombre: "Ganancia por cobrar", muestra: "El interés y los cargos de las cuotas que faltan cobrar de los créditos vivos. Es ganancia futura: entra recién cuando se cobra. No incluye punitorios." },
-          { nombre: "Deuda vencida", muestra: "Las cuotas ya vencidas y sin pagar de los créditos vivos (capital + interés, sin punitorios). Abajo, cuántos clientes deben algo vencido.", alTocar: "Deja en la tabla solo esos clientes, del que más debe al que menos. Tocar de nuevo vuelve a todos." },
-          { nombre: "En riesgo (+N días)", muestra: "El capital que todavía no volvió de los créditos con N días de atraso o más (N es el atraso con el que hay que refinanciar, de Configuración → Cobranza). No se resta de la ganancia: se resta recién si el crédito se declara incobrable.", alTocar: "Deja en la tabla solo esos clientes, del de más capital en riesgo al de menos." },
+          { nombre: "Deuda vencida", muestra: "Las cuotas ya vencidas y sin pagar de los créditos vivos (capital + interés, sin punitorios). Abajo, cuántos clientes deben algo vencido.", alTocar: "Deja en la tabla solo esos clientes, del que más debe al que menos. Tocar de nuevo o «Limpiar filtros» vuelve a todos." },
+          { nombre: "En riesgo (+N días)", muestra: "El capital que todavía no volvió de los créditos con N días de atraso o más (N es el atraso con el que hay que refinanciar, de Configuración → Cobranza). No se resta de la ganancia: se resta recién si el crédito se declara incobrable.", alTocar: "Deja en la tabla solo esos clientes, del de más capital en riesgo al de menos. Tocar de nuevo o «Limpiar filtros» vuelve a todos." },
         ],
       },
       {
         kind: "definiciones",
         titulo: "Rentabilidad · Por cliente: las columnas",
         items: [
+          { term: "Encabezado", desc: "«Rentabilidad por cliente» con la cantidad de clientes al lado. Con una tarjeta tocada dice cuántos quedan («24 de 65») y a la derecha aparece «Limpiar filtros»." },
           { term: "Cliente", desc: "El nombre y cuántos créditos tuvo (vivos, pagados, refinanciados e incobrables; no los anulados)." },
           { term: "Prestado", desc: "La suma de lo que se le prestó en cada crédito, sin contar las refinanciaciones." },
           { term: "Cobrado (verde)", desc: "Todo lo que pagó, en el sistema y antes del sistema. Incluye la devolución del préstamo y la ganancia." },

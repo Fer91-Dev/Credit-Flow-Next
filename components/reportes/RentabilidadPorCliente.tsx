@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { useReporteClientes, type FilaRentabilidadCliente } from "@/lib/swr";
 import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -122,6 +123,28 @@ export function RentabilidadPorCliente() {
           accent={t && t.en_riesgo > 0 ? "destructive" : "muted"}
           sub={t ? `capital sin recuperar · ${t.creditos_en_riesgo} crédito${t.creditos_en_riesgo === 1 ? "" : "s"}` : undefined}
           onClick={t && t.clientes_en_riesgo > 0 ? () => alternar("riesgo") : undefined} active={filtro === "riesgo"} />
+      </div>
+
+      {/* Encabezado de la tabla (patrón de Movimientos de caja): título + conteo en píldora,
+          "24 de 65" si una tarjeta la filtra, y el único "Limpiar filtros" a la derecha. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+        <div className="flex items-center gap-2">
+          <Emoji name="clipboard" className="h-4 w-4" />
+          <h3 className="text-sm font-semibold text-foreground">Rentabilidad por cliente</h3>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">
+            {!r ? "…" : filtro === "todos" ? r.filas.length : `${filas.length} de ${r.filas.length}`}
+          </span>
+        </div>
+        {filtro !== "todos" && (
+          <button
+            type="button"
+            onClick={() => setFiltro("todos")}
+            title="Volver a ver todos los clientes"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="h-3 w-3" /> Limpiar filtros
+          </button>
+        )}
       </div>
 
       <DataTable
