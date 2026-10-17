@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, X, Lightbulb, MousePointerClick } from "lucide-react";
+import { HelpCircle, X, Lightbulb, MousePointerClick, Download } from "lucide-react";
 import type { HelpDoc, HelpBlock } from "@/lib/help/content";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { MANUAL_URL, MANUAL_VERSION } from "@/lib/help/manual";
 
 interface HelpPanelProps {
   doc: HelpDoc | null;
@@ -107,6 +108,19 @@ export function HelpPanel({ doc, open, onClose }: HelpPanelProps) {
           <p className="mt-8 border-t border-border pt-4 text-center text-[11px] text-muted-foreground/70">
             ¿Te quedó una duda? Escribinos y lo sumamos a esta ayuda.
           </p>
+        </div>
+
+        {/* El manual completo: todas las secciones y toda la Configuración en un PDF. Sale de
+            este mismo contenido (`npm run manual:pdf`); `?v=` evita bajar una copia vieja
+            guardada por el navegador después de regenerarlo. */}
+        <div className="border-t border-border bg-card px-5 py-3">
+          <a
+            href={`${MANUAL_URL}?v=${MANUAL_VERSION}`}
+            download="Manual-Credit-Zero.pdf"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary/[0.06] px-4 py-2.5 text-sm font-medium text-primary ring-1 ring-inset ring-primary/25 transition-colors hover:bg-primary/10 hover:ring-primary/40"
+          >
+            <Download className="h-4 w-4" /> Descargar manual completo (PDF)
+          </a>
         </div>
       </aside>
     </div>,

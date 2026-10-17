@@ -5,7 +5,8 @@ import { Loader2, RefreshCw, AlertCircle, CheckCircle2, AlertTriangle, ChevronDo
 import { Emoji } from "@/components/ui/Emoji";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { HelpHint, type AyudaBloque } from "@/components/configuracion/ConfigForm";
+import { HelpHint } from "@/components/configuracion/ConfigForm";
+import { AYUDA } from "@/lib/help/configuracion";
 import { useConfirm } from "@/components/ui/confirm";
 import { useToast } from "@/components/ui/toast";
 import { formatFechaHora } from "@/lib/utils";
@@ -18,18 +19,6 @@ type Corrida = {
   creado: string;
   url: string;
   disparadoPor: string | null;
-};
-
-const AYUDA_BACKUPS: AyudaBloque = {
-  titulo: "Respaldos",
-  texto:
-    "Copia de seguridad de toda la base de datos. Corre automáticamente todas las noches, cifrada y guardada fuera del proveedor. Desde acá también podés forzar uno ahora mismo.",
-  puntos: [
-    "Automático: cada noche a las 03:00 (no hay que hacer nada).",
-    "Manual: el botón «Backup ahora» genera una copia extra al instante.",
-    "Los respaldos están cifrados: solo se restauran con la clave privada guardada offline.",
-    "No incluye las imágenes subidas (logos/fotos): se guardan aparte en el almacenamiento de archivos.",
-  ],
 };
 
 /** Traduce el estado de una corrida de GitHub Actions a un badge legible. */
@@ -168,7 +157,7 @@ export function BackupsView() {
               </p>
             </div>
           </div>
-          <HelpHint ayuda={AYUDA_BACKUPS} />
+          <HelpHint ayuda={AYUDA.backups} />
         </div>
 
         {/* Indicador de salud (última copia exitosa) — señal de un vistazo */}
