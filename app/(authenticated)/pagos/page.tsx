@@ -12,8 +12,8 @@ import { requireAuth } from "@/lib/auth";
 export default async function PagosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cliente?: string }>;
+  searchParams: Promise<{ cliente?: string; credito?: string }>;
 }) {
-  const [{ cliente }, { role }] = await Promise.all([searchParams, requireAuth()]);
-  return <PagosTable clienteInicial={cliente ?? null} role={role} />;
+  const [{ cliente, credito }, { role }] = await Promise.all([searchParams, requireAuth()]);
+  return <PagosTable clienteInicial={cliente ?? null} creditoInicial={credito ?? null} role={role} />;
 }

@@ -22,7 +22,7 @@ import { Nota } from "@/components/ui/Nota";
  * operador ingresa un DNI o nombre; al elegir el cliente se muestra su ficha
  * 360 a pantalla completa, desde donde se registra el cobro.
  */
-export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: string | null; role?: Role }) {
+export function PagosTable({ clienteInicial = null, creditoInicial = null, role }: { clienteInicial?: string | null; creditoInicial?: string | null; role?: Role }) {
   const [query, setQuery] = useState("");
   const [verTodos, setVerTodos] = useState(false); // F3: lista completa de clientes A→Z
   /**
@@ -39,6 +39,13 @@ export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: s
    * (`clienteInicial`), así que el PRIMER render ya es la ficha.
    */
   const [clienteId, setClienteId] = useState<string | null>(clienteInicial);
+  /**
+   * 🔴 DESDE UN CRÉDITO SE COBRA ESE CRÉDITO (Fernando, 17/10/2026). "Ir a pagar" en la ficha
+   * del CRD-000110 abría al cliente con TODOS sus créditos, cada uno con su botón verde: con el
+   * cliente enfrente, cobrar la cuota del otro crédito era un clic equivocado. Con
+   * `?credito=` la ficha muestra solo ese; ver los demás es una acción explícita.
+   */
+  const [soloCreditoId, setSoloCreditoId] = useState<string | null>(creditoInicial);
   /**
    * Los KPI que son un SUBCONJUNTO de la lista de abajo filtran esa lista al tocarlos.
    * Acota lo que se muestra; el número de la tarjeta sigue siendo el del período completo,
@@ -90,7 +97,7 @@ export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: s
     [clientes],
   );
 
-  const elegir = (c: Cliente) => { setClienteId(c.id); setQuery(""); setVerTodos(false); };
+  const elegir = (c: Cliente) => { setClienteId(c.id); setSoloCreditoId(null); setQuery(""); setVerTodos(false); };
 
   /**
    * Si se entra de nuevo a `/pagos?cliente=<otro>` con la pantalla ya montada, React conserva
@@ -99,8 +106,8 @@ export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: s
    * cambia) ni pisa al cliente que el operador elija después a mano.
    */
   useEffect(() => {
-    if (clienteInicial) setClienteId(clienteInicial);
-  }, [clienteInicial]);
+    if (clienteInicial) { setClienteId(clienteInicial); setSoloCreditoId(creditoInicial); }
+  }, [clienteInicial, creditoInicial]);
 
   /**
    * Limpiar `?cliente=` de la URL: si queda, un F5 más tarde reabre una ficha que el operador
@@ -115,6 +122,7 @@ export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: s
   // Desde un pago reciente → abrir la ficha de su cliente (donde se anula el pago).
   const abrirPorPago = (p: Pago) => {
     setClienteId(p.credito.cliente_id);
+    setSoloCreditoId(null);
     setQuery("");
     setVerTodos(false);
   };
@@ -148,7 +156,10 @@ export function PagosTable({ clienteInicial = null, role }: { clienteInicial?: s
         />
         {/* Ficha principal del cliente, con las acciones en su encabezado */}
         <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <ClienteDetail clienteId={clienteId} variant="pagos" role={role} />
+          <ClienteDetail
+            clienteId={clienteId} variant="pagos" role={role}
+            soloCreditoId={soloCreditoId} onVerTodosLosCreditos={() => setSoloCreditoId(null)}
+          />
         </div>
       </div>
     );

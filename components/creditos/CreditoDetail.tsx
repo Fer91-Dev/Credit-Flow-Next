@@ -1535,7 +1535,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               {/* Celular: "Ir a pagar" a la vista, al lado del título (Fernando, 29/09/2026). */}
               {puedeCobrar && !cobroCerrado && (
                 <Link
-                  href={`/pagos?cliente=${credito.cliente_id}`}
+                  href={`/pagos?cliente=${credito.cliente_id}&credito=${credito.id}`}
                   onClick={(ev) => ev.stopPropagation()}
                   className="ml-1 inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-success-foreground shadow-sm transition-opacity hover:opacity-90 md:hidden"
                 >
@@ -1842,9 +1842,9 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 </Tooltip>
               )}
               {puedeCobrar && !cobroCerrado && (
-                <Tooltip texto="Ir a la terminal de cobro con este cliente cargado">
+                <Tooltip texto="Ir a la terminal de cobro con este crédito cargado">
                   <Link
-                    href={`/pagos?cliente=${credito.cliente_id}`}
+                    href={`/pagos?cliente=${credito.cliente_id}&credito=${credito.id}`}
                     // En el celular este botón vive junto al título "Plan de cuotas" (al final de la
                     // barra quedaba fuera de la pantalla): acá se oculta para no tener dos.
                     className={`${BTN_OPERACION} max-md:hidden bg-success text-success-foreground ring-success/60 hover:bg-success/90`}

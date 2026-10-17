@@ -90,8 +90,14 @@ export function ClienteDetail({
   onEditar,
   onEliminar,
   role,
+  soloCreditoId = null,
+  onVerTodosLosCreditos,
 }: {
   clienteId: string;
+  /** Pagos abierto desde un crédito ("Ir a pagar"): se muestra SOLO ese crédito. */
+  soloCreditoId?: string | null;
+  /** Saca el recorte de `soloCreditoId` (acción explícita del operador). */
+  onVerTodosLosCreditos?: () => void;
   /** "pagos" = solo créditos + plan de cuotas + historial. "cliente" = solo datos personales/laborales. */
   variant?: "full" | "pagos" | "cliente";
   /**
@@ -202,7 +208,14 @@ export function ClienteDetail({
   /** El backend decide; acá solo se refleja (`undefined` en respuestas viejas = permitido). */
   const puedeEditar = cliente.puede_editar !== false;
 
-  const creditos = cliente.creditos ?? [];
+  const todosLosCreditos = cliente.creditos ?? [];
+  /**
+   * Recorte a UN crédito cuando Pagos se abrió desde ese crédito. Si el id no es de este
+   * cliente (link viejo, crédito ajeno), no se recorta nada: mejor la ficha entera que vacía.
+   */
+  const recortado = !!soloCreditoId && todosLosCreditos.some((c) => c.id === soloCreditoId);
+  const creditos = recortado ? todosLosCreditos.filter((c) => c.id === soloCreditoId) : todosLosCreditos;
+  const creditoRecortado = recortado ? creditos[0] : null;
   // VIVOS (activo + vencido): un crédito atrasado sigue siendo del cliente, no historial.
   const activos = creditos.filter((c) => esCreditoVivo(c.estado));
   /**
@@ -442,7 +455,10 @@ export function ClienteDetail({
           </div>
         )}
 
-        {showCreditos && esTerminal && (
+        {/* Cobrando UN crédito, estos totales son de TODOS los del cliente: "Debe hoy" mostraba
+            la suma de los dos créditos encima de uno solo. Las cifras de ese crédito ya están en
+            su tarjeta (capital, cuota, vencido, cobrado). */}
+        {showCreditos && esTerminal && !recortado && (
           <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Lo primero: qué se le pide hoy. Es la razón por la que el cliente está parado
                 del otro lado del mostrador. */}
@@ -668,6 +684,25 @@ export function ClienteDetail({
               })}
             </div>
           </section>
+        )}
+
+        {/* Cobrando un solo crédito: lo dice, y ver los demás es un botón (nunca automático). */}
+        {showCreditos && creditoRecortado && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2">
+            <p className="text-xs text-foreground">
+              Cobrando solo el{" "}
+              <CreditoLink id={creditoRecortado.id} numero={creditoRecortado.numero} numeroOrigen={creditoRecortado.refinancia_a_numero} conIcono={false} className="font-semibold" />
+            </p>
+            {onVerTodosLosCreditos && todosLosCreditos.length > 1 && (
+              <button
+                type="button"
+                onClick={onVerTodosLosCreditos}
+                className="rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                Ver los {todosLosCreditos.length} créditos del cliente
+              </button>
+            )}
+          </div>
         )}
 
         {/* Créditos activos */}
