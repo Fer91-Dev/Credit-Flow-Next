@@ -211,7 +211,9 @@ export async function datosPagare(
     frecuenciaLabel: frecuenciaLabel(frecuencia, catalogo).adjetivo,
     tea,
     cft: cft?.anual ?? null,
-    mora: { activa: mora.moraActiva, tasaDiaria: mora.tasaMoraDiaria, diasGracia, topePct: mora.topeMoraPct },
+    // El pagaré lleva la mora del CONTRATO. El check "Sin mora" (suspendida) es una decisión de
+    // cobranza, reversible: deja de cobrarla, no la saca del título (Fernando, 17/10/2026).
+    mora: { activa: mora.moraActiva || mora.moraSuspendida, tasaDiaria: mora.tasaMoraDiaria, diasGracia, topePct: mora.topeMoraPct },
     documentos: docs,
   };
 
