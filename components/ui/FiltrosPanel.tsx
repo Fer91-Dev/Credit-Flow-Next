@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { SlidersHorizontal, ChevronDown, X } from "lucide-react";
 
 /**
@@ -64,15 +65,40 @@ export function FiltrosPanel({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** Posición del panel en la pantalla (fixed), medida contra el botón. */
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const fuera = (t: Node) => !ref.current?.contains(t) && !panelRef.current?.contains(t);
+    const onDown = (e: MouseEvent) => { if (fuera(e.target as Node)) setOpen(false); };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [open]);
+
+  /*
+    🔴 EL PANEL SE DIBUJA EN EL `body` (portal), NO ADENTRO DEL BOTÓN.
+    Absoluto dentro de una tarjeta con `overflow-hidden` —la banda del Home, que lo necesita
+    para su degradé— quedaba cortado al borde de la tarjeta (Fernando, 17/10/2026). En el
+    body con `position: fixed` no lo recorta ningún contenedor; se re-mide al scrollear.
+  */
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return; }
+    const medir = () => {
+      const b = ref.current?.getBoundingClientRect();
+      if (!b) return;
+      const ancho = Math.min(window.innerWidth * 0.92, width);
+      const left = align === "right" ? b.right - ancho : b.left;
+      setPos({ top: b.bottom + 8, left: Math.max(8, Math.min(left, window.innerWidth - ancho - 8)) });
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    window.addEventListener("scroll", medir, true);
+    return () => { window.removeEventListener("resize", medir); window.removeEventListener("scroll", medir, true); };
+  }, [open, align, width]);
 
   return (
     <div className="relative" ref={ref}>
@@ -95,10 +121,11 @@ export function FiltrosPanel({
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <div
-          className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-40 mt-2 rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 space-y-3`}
-          style={{ width: `min(92vw, ${width}px)` }}
+          ref={panelRef}
+          className="fixed z-50 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-4 shadow-lg shadow-black/40 space-y-3"
+          style={{ width: `min(92vw, ${width}px)`, top: pos.top, left: pos.left, maxHeight: `calc(100dvh - ${pos.top + 8}px)` }}
         >
           {/* Encabezado: título + limpiar (solo si hay activos) + cerrar */}
           <div className="flex items-center justify-between border-b border-border/60 pb-2">
@@ -124,8 +151,9 @@ export function FiltrosPanel({
             </div>
           </div>
           {children}
-        </div>
-    )}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
