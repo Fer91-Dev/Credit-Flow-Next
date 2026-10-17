@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Deslizable } from "@/components/ui/Deslizable";
 import { Emoji } from "@/components/ui/Emoji";
-import { Printer, Check, AlertTriangle } from "lucide-react";
+import { Printer, Check, AlertTriangle, ChevronDown } from "lucide-react";
 import { cargosDeCuota, baseMoraDeCuota, cuotaCerradaSinPago } from "@/lib/domain";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
 import type { CuotaPersistida, EstadoCuota } from "@/lib/swr";
@@ -87,6 +88,8 @@ export interface PlanDeCuotasProps {
 export function PlanDeCuotas({
   cuotas, onCobrar, cobroBloqueado, unidadCuota = "cuota", proximaNro, resaltarProxima, mora, denso, sinAlto, aviso,
 }: PlanDeCuotasProps) {
+  /** Celular, pantalla de cobro: el plan completo queda detrás de "Ver plan completo". */
+  const [verPlan, setVerPlan] = useState(false);
   if (cuotas.length === 0) return null;
 
   // En el celular, celdas más angostas: con el botón de cobro en la segunda columna, cada
@@ -175,8 +178,81 @@ export function PlanDeCuotas({
     </>
   );
 
+  /*
+    🔴 EN EL CELULAR, LA PANTALLA DE COBRO ES CUOTA + MONTO + BOTÓN (Fernando, 17/10/2026: "se
+    pierde mucho porque hay mucha contaminación; solo se debe ver el monto, el botón de cobrar y
+    qué número de cuota es"). La tabla tenía el botón fuera de la pantalla, a la derecha, y abajo
+    cinco tarjetas de "Cómo se calcula" por crédito. Se listan las cuotas que se pueden cobrar
+    hoy —las atrasadas y la próxima— y el plan entero queda a un toque. En la computadora no
+    cambia nada. Con un acuerdo vigente (`cobroBloqueado`) tampoco: ahí el plan no se cobra.
+  */
+  const compacto = !!onCobrar && !cobroBloqueado;
+  const paraCobrar = compacto
+    ? cuotas
+        .filter((q) => q.estado === "vencida" || q.estado === "parcial" || q.nro === nroAPagar)
+        .filter((q) => q.estado === "vencida" || q.estado === "parcial" || q.estado === "pendiente")
+        .sort((a, b) => a.nro - b.nro)
+    : [];
+  const unidad = unidadCuota.charAt(0).toUpperCase() + unidadCuota.slice(1);
+
   return (
     <div className="space-y-2">
+      {compacto && (
+        <div className="space-y-2 md:hidden">
+          {paraCobrar.map((q) => {
+            const importe = q.total_cobrar ?? q.cuota_total;
+            const moraQ = q.mora ?? 0;
+            const pagadoQ = pagadoDeCuota(q);
+            const atraso = q.dias_atraso ?? 0;
+            return (
+              <div
+                key={q.nro}
+                className={`rounded-xl border px-3.5 py-3 ${atraso > 0 ? "border-destructive/30 bg-destructive/[0.06]" : "border-primary/30 bg-primary/[0.06]"}`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    {unidad} {q.nro} <span className="font-normal text-muted-foreground">de {cuotas.length}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    vence {formatFecha(q.fecha_vencimiento)}
+                    {atraso > 0 && <span className="text-destructive"> · {formatDias(atraso)}</span>}
+                  </p>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="min-w-0 font-mono text-xl font-bold tabular-nums text-foreground">${n2(importe)}</p>
+                  <button
+                    type="button"
+                    onClick={() => onCobrar!(q)}
+                    className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-success px-5 text-sm font-semibold text-success-foreground shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    Cobrar
+                  </button>
+                </div>
+                {/* Los dos sumandos salen del mismo importe: siempre cierran al centavo. */}
+                {(moraQ > 0 || pagadoQ > 0) && (
+                  <p className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground">
+                    <span className="whitespace-nowrap">
+                      {pagadoQ > 0 ? "resto de la cuota" : "cuota"} ${n2(Math.round((importe - moraQ) * 100) / 100)}
+                    </span>
+                    {moraQ > 0 && <span className="whitespace-nowrap text-destructive"> + mora ${n2(moraQ)}</span>}
+                    {pagadoQ > 0 && <span className="whitespace-nowrap text-success"> · ya pagó ${n2(pagadoQ)}</span>}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setVerPlan((v) => !v)}
+            aria-expanded={verPlan}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${verPlan ? "rotate-180" : ""}`} />
+            {verPlan ? "Ocultar plan completo" : "Ver plan completo"}
+          </button>
+        </div>
+      )}
+      <div className={`space-y-2 ${compacto && !verPlan ? "max-md:hidden" : ""}`}>
       {/*
         🔴 EL ENCABEZADO Y LOS TOTALES SE PEGAN SIEMPRE, no solo en la versión densa.
 
@@ -891,6 +967,7 @@ export function PlanDeCuotas({
             <div>{aviso}</div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
