@@ -462,7 +462,10 @@ export function PlanDeCuotas({
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
                         <Check className="h-3 w-3 shrink-0" />
                         Pagada
-                        <span className="font-mono tabular-nums">${n2(pagadoDeCuota(q))}</span>
+                        {/* En la compu el monto ya está en "Monto cobrado", dos columnas antes: acá
+                            era el mismo número dos veces y empujaba la tabla fuera de la tarjeta.
+                            En el celular esa columna no existe, así que ahí se queda. */}
+                        <span className="font-mono tabular-nums md:hidden">${n2(pagadoDeCuota(q))}</span>
                       </span>
                     ) : (
                       /* 🔴 CERRADA = UNA LÍNEA (Fernando, 02/10/2026: "acá se ve muy grande todo"). En un
@@ -718,8 +721,19 @@ export function PlanDeCuotas({
                     {comps.length > 0 ? (
                       <div className="flex flex-col items-start gap-1">
                         {comps.map((c) => (
-                          <span key={c.pago_id ?? "anterior"} className="flex h-7 items-center font-mono text-[11px] tabular-nums text-foreground/80">
-                            {c.fecha_hora ? formatFechaHora(c.fecha_hora) : c.fecha ? formatFecha(c.fecha) : "—"}
+                          /* La hora debajo de la fecha: en un renglón la columna medía 165px y
+                             sacaba la tabla de la tarjeta (Fernando, 17/10/2026). */
+                          <span key={c.pago_id ?? "anterior"} className="flex h-7 flex-col justify-center font-mono text-[11px] leading-tight tabular-nums text-foreground/80">
+                            {c.fecha_hora ? (() => {
+                              // "17/10/2026, 10:45 a. m." → fecha arriba, hora abajo (los dos en hora AR).
+                              const [dia, hora] = formatFechaHora(c.fecha_hora).split(", ");
+                              return (
+                                <>
+                                  <span>{dia}</span>
+                                  {hora && <span className="text-[10px] text-muted-foreground">{hora}</span>}
+                                </>
+                              );
+                            })() : c.fecha ? formatFecha(c.fecha) : "—"}
                           </span>
                         ))}
                       </div>
