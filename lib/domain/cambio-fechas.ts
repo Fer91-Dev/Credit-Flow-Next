@@ -66,3 +66,69 @@ export function ledgerRefechado(
     todasSaldadas: abiertas.length === 0,
   };
 }
+
+/**
+ * CUOTAS COBRADAS ANTES DEL SISTEMA (Fernando, 17/10/2026): al mover el vencimiento de una cuota
+ * que ya se cobró, su FECHA DE PAGO se corre los mismos días, y el recibo (RPA) se rehace con la
+ * fecha nueva. El monto no cambia: esa plata ya entró. Ejemplo: CRD-000132, vencimiento
+ * 10/09 → 29/09 (+19 días), pagada el 10/09 → pagada el 29/09.
+ *
+ * Solo para lo cobrado ANTES del sistema (`cronograma.anterior`), que no tiene caja ni pago: un
+ * cobro del sistema (REC) tiene la fecha real en que entró la plata y esa no se toca.
+ */
+const DIA_MS = 86_400_000;
+
+/** `fecha` corrida los mismos días que se movió el vencimiento (`vencAntes` → `vencNuevo`). */
+export function correrComoVencimiento(fecha: string, vencAntes: Date, vencNuevo: Date): string {
+  const d = new Date(`${fecha}T00:00:00.000Z`).getTime() + (vencNuevo.getTime() - vencAntes.getTime());
+  return new Date(Math.round(d / DIA_MS) * DIA_MS).toISOString().slice(0, 10);
+}
+
+/** Lo que importa del snapshot `cronograma.anterior` para re-fechar sus pagos. */
+export interface PagosAnteriores {
+  primerVencimiento: string;
+  pagos?: { nro: number; fecha: string | null }[];
+  parcial?: { nro: number; monto: number; fecha: string | null };
+}
+
+/**
+ * Las fechas de pago anteriores que corresponden a los vencimientos nuevos, por número de
+ * cuota. Solo las que tienen fecha anotada: una sin fecha sigue sin fecha (no se inventa).
+ */
+export function fechasPagoAnterioresSugeridas(
+  anterior: PagosAnteriores,
+  vencAntes: Map<number, Date>,
+  vencNuevo: Map<number, Date>,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  const mover = (nro: number, fecha: string | null) => {
+    const a = vencAntes.get(nro), n = vencNuevo.get(nro);
+    if (fecha && a && n) out[nro] = correrComoVencimiento(fecha, a, n);
+  };
+  for (const p of anterior.pagos ?? []) mover(p.nro, p.fecha);
+  if (anterior.parcial) mover(anterior.parcial.nro, anterior.parcial.fecha);
+  return out;
+}
+
+/** Valida las fechas de pago nuevas: ni antes del otorgamiento ni después de hoy. */
+export function validarFechasPagoAnteriores(fechas: Record<number, string>, fechaInicio: Date, hoy: Date): string | null {
+  for (const [nro, f] of Object.entries(fechas)) {
+    const d = new Date(`${f}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || Number.isNaN(d.getTime())) return `La fecha de pago de la cuota ${nro} no es válida.`;
+    if (d.getTime() > hoy.getTime()) return `La cuota ${nro} quedaría pagada el ${f}, después de hoy. Corregí su fecha de pago.`;
+    if (d.getTime() < fechaInicio.getTime()) return `La cuota ${nro} quedaría pagada el ${f}, antes del otorgamiento. Corregí su fecha de pago.`;
+  }
+  return null;
+}
+
+/** El snapshot `anterior` con el 1er vencimiento y las fechas de pago nuevas. */
+export function anteriorRefechado<T extends PagosAnteriores>(anterior: T, primerVencimiento: Date, fechas: Record<number, string>): T {
+  return {
+    ...anterior,
+    primerVencimiento: primerVencimiento.toISOString().slice(0, 10),
+    ...(anterior.pagos && { pagos: anterior.pagos.map((p) => (fechas[p.nro] ? { ...p, fecha: fechas[p.nro] } : p)) }),
+    ...(anterior.parcial && {
+      parcial: fechas[anterior.parcial.nro] ? { ...anterior.parcial, fecha: fechas[anterior.parcial.nro] } : anterior.parcial,
+    }),
+  };
+}

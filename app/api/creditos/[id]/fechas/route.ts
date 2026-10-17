@@ -5,10 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { lockCreditoTx } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
+import { rehacerRecibosPreviosDelCredito } from "@/lib/recibos-previos";
 import { formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import {
   esCreditoVivo, vencimientosDelPlan, validarCambioFechas, estadoCuotaRefechada, ledgerRefechado,
-  estadoTrasMoverLedger, type CronogramaConfig, type FrecuenciaDef,
+  estadoTrasMoverLedger, fechasPagoAnterioresSugeridas, validarFechasPagoAnteriores, anteriorRefechado,
+  type CronogramaConfig, type FrecuenciaDef, type PagosAnteriores,
 } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -67,7 +69,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const { tenantId } = await requireRole(["admin"], req);
   const { id } = await params;
 
-  let body: { fecha_inicio?: unknown; vencimientos?: unknown; motivo?: unknown };
+  let body: { fecha_inicio?: unknown; vencimientos?: unknown; motivo?: unknown; pagos_anteriores?: unknown };
   try { body = await req.json(); } catch { return errorResponse("Body JSON inválido", "INVALID_JSON", 400); }
 
   const inicio = fecha(body.fecha_inicio);
@@ -102,14 +104,41 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
   const ledger = ledgerRefechado(cuotasNuevas, hoy);
   const estado = estadoTrasMoverLedger(c.estado, ledger);
 
-  // Un crédito anterior al sistema guarda su 1er vencimiento en el snapshot: se mantiene al día.
+  /*
+    Crédito anterior al sistema: su 1er vencimiento y las FECHAS DE PAGO de lo cobrado antes viven
+    en el snapshot. Cada fecha de pago se corre los mismos días que su vencimiento (ver
+    `fechasPagoAnterioresSugeridas`); `pagos_anteriores` ({ nro: "YYYY-MM-DD" }) pisa alguna si
+    el operador la corrigió a mano. Solo se aceptan cuotas que ya tenían fecha de pago anotada.
+  */
   const cronograma = c.cronograma as Record<string, unknown> | null;
-  const anterior = cronograma?.anterior as Record<string, unknown> | undefined;
+  const anterior = cronograma?.anterior as PagosAnteriores | undefined;
+  let fechasPago: Record<number, string> = {};
+  if (anterior) {
+    const sugeridas = fechasPagoAnterioresSugeridas(
+      anterior,
+      new Map(cuotasNuevas.map((q) => [q.nro, q.antes])),
+      new Map(cuotasNuevas.map((q) => [q.nro, q.vencimiento])),
+    );
+    const manual = body.pagos_anteriores && typeof body.pagos_anteriores === "object" ? body.pagos_anteriores as Record<string, unknown> : {};
+    fechasPago = { ...sugeridas };
+    for (const [nro, f] of Object.entries(manual)) {
+      if (Number(nro) in sugeridas && typeof f === "string") fechasPago[Number(nro)] = f;
+    }
+    const errPago = validarFechasPagoAnteriores(fechasPago, inicio, hoy);
+    if (errPago) return errorResponse(errPago, "INVALID_INPUT", 400);
+  }
   const cronogramaNuevo = anterior
-    ? { ...cronograma, anterior: { ...anterior, primerVencimiento: ymd(vencimientos[0]) } }
+    ? { ...cronograma, anterior: anteriorRefechado(anterior, vencimientos[0], fechasPago) }
     : undefined;
+  const pagosAntes = new Map<number, string | null>([
+    ...(anterior?.pagos ?? []).map((p) => [p.nro, p.fecha] as [number, string | null]),
+    ...(anterior?.parcial ? [[anterior.parcial.nro, anterior.parcial.fecha] as [number, string | null]] : []),
+  ]);
+  const pagosMovidos = Object.entries(fechasPago)
+    .filter(([nro, f]) => pagosAntes.get(Number(nro)) !== f)
+    .map(([nro, f]) => ({ nro: Number(nro), antes: pagosAntes.get(Number(nro)), despues: f }));
 
-  await prisma.$transaction(async (tx) => {
+  const recibos = await prisma.$transaction(async (tx) => {
     await lockCreditoTx(tx, tenantId, id);
     // Re-chequeo adentro del lock: un cobro o un acuerdo pudo entrar entre la lectura y acá.
     const vivo = await tx.creditos.findFirst({ where: { ...withTenant(tenantId), id }, select: { estado: true } });
@@ -127,6 +156,8 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         ...(cronogramaNuevo && { cronograma: cronogramaNuevo as object }),
       },
     });
+    // Los recibos de lo cobrado antes dicen la fecha de pago y el vencimiento: se rehacen.
+    return anterior ? rehacerRecibosPreviosDelCredito(tx, tenantId, id) : null;
   });
 
   const [{ refinancia_a_numero }] = await conNumeroDeOrigen(tenantId, [c]);
@@ -137,13 +168,15 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     entidad: "creditos",
     entidadId: id,
     accion: "cambiar_fechas",
-    descripcion: `Crédito ${numeroFmt}: otorgamiento ${ymd(c.fecha_inicio)} → ${ymd(inicio)}, ${cambiadas.length} vencimiento${cambiadas.length === 1 ? "" : "s"} movido${cambiadas.length === 1 ? "" : "s"} — ${motivo}`,
+    descripcion: `Crédito ${numeroFmt}: otorgamiento ${ymd(c.fecha_inicio)} → ${ymd(inicio)}, ${cambiadas.length} vencimiento${cambiadas.length === 1 ? "" : "s"} movido${cambiadas.length === 1 ? "" : "s"}${pagosMovidos.length ? `, ${pagosMovidos.length} fecha${pagosMovidos.length === 1 ? "" : "s"} de pago anterior${pagosMovidos.length === 1 ? "" : "es"}` : ""} — ${motivo}`,
     meta: {
       motivo,
       fecha_inicio: { antes: ymd(c.fecha_inicio), despues: ymd(inicio) },
       vencimientos: cambiadas.map((q) => ({ nro: q.nro, antes: ymd(q.antes), despues: ymd(q.vencimiento) })),
       estado: { antes: c.estado, despues: estado },
       dias_mora: ledger.diasMoraMax,
+      ...(pagosMovidos.length && { pagos_anteriores: pagosMovidos }),
+      ...(recibos && { recibos_previos: recibos }),
     },
   });
 

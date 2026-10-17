@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useState, useRef } from "react";
 import { useSWRConfig } from "swr";
-import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake, UserRound, History, ListChecks } from "lucide-react";
+import { CalendarDays, Wallet, Info, ArrowUpRight, Receipt, Loader2, Printer, RefreshCw, ArrowRight, ShieldCheck, Ban, Trash2, ExternalLink, ChevronDown, Handshake, UserRound, History, ListChecks, Timer, TimerOff } from "lucide-react";
 import { refrescarNotificaciones, useAmortizacion, useCuotas, usePagosByCredito, useCreditos, KEYS, type Credito, type EstadoCuota, type Pago, type CuotaPersistida, useFinanciera, useDiasLegales, useOrigenRefinanciacion, mutarCreditos, mutarPagos } from "@/lib/swr";
 import { type Role } from "@/lib/auth/roles";
 import { abrirRecibo } from "@/lib/recibo";
@@ -17,6 +17,7 @@ import { AnularPagoDialog } from "@/components/pagos/AnularPagoDialog";
 import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
 import { CambiarFechasDialog } from "./CambiarFechasDialog";
+import { SinMoraDialog } from "./SinMoraDialog";
 import { PagareBoton } from "./PagareBoton";
 import { Emoji } from "@/components/ui/Emoji";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
@@ -29,7 +30,7 @@ import { useConfirm } from "@/components/ui/confirm";
 import { formatCreditoNumero, formatFecha, formatFechaHora, formatDias, formatMonto, nombreCompleto } from "@/lib/utils";
 import { Stat } from "@/components/ui/Stat";
 import { Skeleton } from "@/components/ui/skeleton";
-import { anteriorDelCredito, esCreditoVivo, esCreditoIncobrable, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
+import { anteriorDelCredito, moraDesdeCronograma, esCreditoVivo, esCreditoIncobrable, esCreditoCobrable, montoEnPalabras, cargosDeCuota, cuotaCerradaSinPago, interesDelAcuerdo } from "@/lib/domain";
 
 /**
  * Un renglón de la cuenta del acuerdo: etiqueta a la izquierda, importe con signo a la
@@ -380,6 +381,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   // Acciones sobre el CRÉDITO (distintas de las de un pago suelto).
   const [libreDeudaOpen, setLibreDeudaOpen] = useState(false);
   const [fechasOpen, setFechasOpen] = useState(false);
+  const [sinMoraOpen, setSinMoraOpen] = useState(false);
   const [anularCreditoOpen, setAnularCreditoOpen] = useState(false);
   const [anularCreditoMotivo, setAnularCreditoMotivo] = useState("");
   const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
@@ -580,6 +582,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    */
   const puedeAnular = role === "admin";
   const esAdmin = role === "admin";
+  /** Check "Sin mora" de ESTE crédito (snapshot `cronograma.mora.activa`). */
+  const sinMora = moraDesdeCronograma(credito.cronograma)?.activa === false;
   /** El libre deuda solo existe si el crédito está cancelado (el endpoint lo exige igual). */
   const cancelado = credito.estado === "pagado";
   /**
@@ -757,6 +761,14 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                     title="Crédito dado antes de arrancar con el sistema: no movió caja y sus cuotas ya pagadas no figuran"
                   >
                     anterior al sistema
+                  </span>
+                )}
+                {sinMora && (
+                  <span
+                    className="rounded-md bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-info ring-1 ring-inset ring-info/25"
+                    title="A este crédito no se le cobra mora"
+                  >
+                    sin mora
                   </span>
                 )}
                 {credito.tipo_credito === "productos" && credito.producto && (
@@ -1649,6 +1661,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   <CalendarDays className="h-3.5 w-3.5" /> Cambiar fechas
                 </button>
               )}
+              {/* Check "Sin mora" de este crédito (Silvio, 17/10/2026): en el crédito y no en el
+                  cliente, para no apagarle la mora a todos sus créditos. */}
+              {esAdmin && esCreditoCobrable(credito.estado) && (
+                <button
+                  onClick={sinPlegar(() => setSinMoraOpen(true))}
+                  title={sinMora ? "Volver a cobrarle mora a este crédito (desde hoy)" : "Dejar de cobrarle mora a este crédito"}
+                  className={`${BTN_BARRA} ${sinMora ? "!text-info !ring-info/35" : ""}`}
+                >
+                  {sinMora ? <Timer className="h-3.5 w-3.5" /> : <TimerOff className="h-3.5 w-3.5" />} {sinMora ? "Cobrar mora" : "Sin mora"}
+                </button>
+              )}
               {esAdmin && role === "admin" && esCreditoVivo(credito.estado) && (
                 <button
                   onClick={sinPlegar(() => { setIncobrableMotivo(""); setIncobrableOpen(true); })}
@@ -2411,12 +2434,28 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
       {/* Certificado de libre deuda (solo con el crédito cancelado). */}
       <LibreDeudaDialog creditoId={libreDeudaOpen ? credito.id : null} onClose={() => setLibreDeudaOpen(false)} />
 
+      {sinMoraOpen && (
+        <SinMoraDialog
+          creditoId={credito.id}
+          numero={formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
+          sinMora={sinMora}
+          onClose={(guardado) => { setSinMoraOpen(false); if (guardado) { revalidar(); refrescarNotificaciones(); } }}
+        />
+      )}
+
       {fechasOpen && (
         <CambiarFechasDialog
           creditoId={credito.id}
           numero={formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
           fechaInicio={credito.fecha_inicio ?? credito.created_at}
           cuotas={cuotas}
+          pagosAnteriores={(() => {
+            const a = anteriorDelCredito(credito.cronograma);
+            const m: Record<number, string> = {};
+            for (const p of a?.pagos ?? []) if (p.fecha) m[p.nro] = p.fecha;
+            if (a?.parcial?.fecha) m[a.parcial.nro] = a.parcial.fecha;
+            return m;
+          })()}
           onClose={(guardado) => { setFechasOpen(false); if (guardado) { revalidar(); refrescarNotificaciones(); } }}
         />
       )}

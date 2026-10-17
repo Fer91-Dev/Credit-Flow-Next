@@ -35,7 +35,7 @@ export type AuditAccion =
   | "emitir_pagare"
   /** Fecha de otorgamiento y vencimientos corregidos a mano (admin, con motivo). */
   | "cambiar_fechas"
-  /** Check "Sin mora" del cliente: prendido o apagado, con los créditos que alcanzó. */
+  /** Check "Sin mora" de un crédito: prendido o apagado. */
   | "cambiar_mora";
 
 export interface AuditInput {

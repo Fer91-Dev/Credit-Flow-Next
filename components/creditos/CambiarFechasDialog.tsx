@@ -9,6 +9,7 @@ import { Nota } from "@/components/ui/Nota";
 import { useToast } from "@/components/ui/toast";
 import { formatFecha, formatDias, hoyComercial } from "@/lib/utils";
 import type { EstadoCuota } from "@/lib/swr";
+import { correrComoVencimiento } from "@/lib/domain";
 
 const ESTADO_LABEL: Record<string, string> = {
   pendiente: "Pendiente", vencida: "Vencida", parcial: "Parcial", pagada: "Pagada",
@@ -23,12 +24,17 @@ const ESTADO_LABEL: Record<string, string> = {
  * a mano. Solo se mueven fechas: importes, cobros y caja no se tocan. Reglas y por qué en
  * `lib/domain/cambio-fechas.ts`.
  */
-export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, onClose }: {
+export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pagosAnteriores = {}, onClose }: {
   creditoId: string;
   /** "CRD-000110", para el título. */
   numero: string;
   fechaInicio: string;
   cuotas: { nro: number; fecha_vencimiento: string; estado: EstadoCuota }[];
+  /**
+   * Fecha de pago de cada cuota cobrada ANTES del sistema (nro → "YYYY-MM-DD"). Se corre los
+   * mismos días que su vencimiento y el recibo RPA se rehace; los cobros del sistema no se tocan.
+   */
+  pagosAnteriores?: Record<number, string>;
   /** `true` si se guardó (para revalidar el crédito). */
   onClose: (guardado?: boolean) => void;
 }) {
@@ -36,6 +42,8 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
   const [inicio, setInicio] = useState(ymd(fechaInicio));
   const [vencs, setVencs] = useState<string[]>(cuotas.map((q) => ymd(q.fecha_vencimiento)));
   const [motivo, setMotivo] = useState("");
+  /** Fechas de pago corregidas a mano; las demás siguen al vencimiento. */
+  const [pagoManual, setPagoManual] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +65,15 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
     return () => { vigente = false; };
   }, [inicio, creditoId]);
 
+  const pagoDe = (i: number): string | null => {
+    const q = cuotas[i];
+    const orig = pagosAnteriores[q.nro];
+    if (!orig) return null;
+    if (pagoManual[q.nro]) return pagoManual[q.nro];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(vencs[i] ?? "")) return orig;
+    return correrComoVencimiento(orig, new Date(`${ymd(q.fecha_vencimiento)}T00:00:00Z`), new Date(`${vencs[i]}T00:00:00Z`));
+  };
+  const hayPagosAnteriores = cuotas.some((q) => pagosAnteriores[q.nro]);
   const cambioInicio = inicio !== ymd(fechaInicio);
   const cambiadas = vencs.filter((v, i) => v !== ymd(cuotas[i].fecha_vencimiento)).length;
   const sinCambios = !cambioInicio && cambiadas === 0;
@@ -76,7 +93,10 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
       const res = await fetch(`/api/creditos/${creditoId}/fechas`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fecha_inicio: inicio, vencimientos: vencs, motivo: motivo.trim() }),
+        body: JSON.stringify({
+          fecha_inicio: inicio, vencimientos: vencs, motivo: motivo.trim(),
+          pagos_anteriores: Object.fromEntries(cuotas.map((q, i) => [q.nro, pagoDe(i)]).filter(([, f]) => f)),
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) { setError(json.error ?? "No se pudo guardar."); return; }
@@ -96,6 +116,7 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
         <form onSubmit={guardar} className="mt-4 space-y-4">
           <Nota acento="warning" compacta>
             Solo cambian las fechas: importes, cobros y caja quedan igual. Con las fechas nuevas se recalculan el atraso, la mora y el bloqueo por atraso.
+            {hayPagosAnteriores && " Lo cobrado antes del sistema se corre con su vencimiento y su recibo se rehace con la fecha nueva."}
           </Nota>
 
           <Field label="Fecha de otorgamiento">
@@ -110,6 +131,7 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
                   <th className="px-3 py-2 text-left">Estado</th>
                   <th className="px-3 py-2 text-left">Vencimiento actual</th>
                   <th className="px-3 py-2 text-left">Vencimiento nuevo</th>
+                  {hayPagosAnteriores && <th className="px-3 py-2 text-left">Pagada el</th>}
                 </tr>
               </thead>
               <tbody>
@@ -129,6 +151,20 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, on
                           className="h-8 max-w-[11rem] text-xs tabular-nums"
                         />
                       </td>
+                      {hayPagosAnteriores && (
+                        <td className="px-3 py-1">
+                          {pagoDe(i) ? (
+                            <Input
+                              type="date"
+                              value={pagoDe(i) ?? ""}
+                              max={hoy}
+                              onChange={(e) => setPagoManual((m) => ({ ...m, [q.nro]: e.target.value }))}
+                              aria-label={`Fecha de pago de la cuota ${q.nro}`}
+                              className={`h-8 max-w-[11rem] text-xs tabular-nums ${pagoDe(i) !== pagosAnteriores[q.nro] ? "text-primary" : ""}`}
+                            />
+                          ) : <span className="text-xs text-muted-foreground">—</span>}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

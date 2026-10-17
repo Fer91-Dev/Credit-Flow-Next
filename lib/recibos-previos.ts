@@ -9,6 +9,7 @@
  * 🔴 No es caja ni pago: no toca saldos, arqueos ni Reportes (`cobrosAnteriores` ya lo cuenta).
  */
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { withTenant } from "@/app/lib/db";
 import { scopeCreditosVendedor, type AuthContext } from "@/lib/auth";
 import { getConfiguracion, getDocumentosConfig } from "@/lib/config";
@@ -140,4 +141,63 @@ export async function armarReciboPrevioPDF(
     detalleImputacion: documentos.recibo_detalle_imputacion,
   });
   return { pdf, numero: rec.numero };
+}
+
+/**
+ * REHACE los recibos previos de UN crédito después de cambiarle las fechas (Fernando,
+ * 17/10/2026): la fecha de pago y el vencimiento que dice cada papel salen del snapshot, así que
+ * un recibo viejo diría fechas que ya no son.
+ *
+ * Conserva los NÚMEROS: el recibo i-ésimo (por fecha) se actualiza en su lugar. Si el cambio
+ * junta o separa días de pago, sobra o falta alguno: los que sobran se borran y los que faltan
+ * se numeran a continuación. Corre adentro de la transacción del cambio de fechas.
+ */
+export async function rehacerRecibosPreviosDelCredito(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  creditoId: string,
+): Promise<{ actualizados: number[]; creados: number[]; borrados: number[] }> {
+  const c = await tx.creditos.findFirst({
+    where: { ...withTenant(tenantId), id: creditoId },
+    select: {
+      id: true, monto_original: true, cronograma: true, created_at: true,
+      cuotas: {
+        select: {
+          nro: true, fecha_vencimiento: true, cuota_total: true, capital: true, interes: true,
+          pagado_capital: true, pagado_interes: true, pagado_cargos: true, pagado_mora: true,
+        },
+      },
+      recibos_previos: { select: { id: true, numero: true, fecha: true }, orderBy: { fecha: "asc" } },
+    },
+  });
+  const res = { actualizados: [] as number[], creados: [] as number[], borrados: [] as number[] };
+  if (!c || !anteriorDelCredito(c.cronograma)?.pagos) return res;
+
+  const armados = recibosDeCobrosAnteriores(cobrosAnteriores(c).filter((x) => x.fechaInformada), c.cuotas, c.monto_original);
+  const viejos = c.recibos_previos;
+  for (let i = 0; i < Math.min(armados.length, viejos.length); i++) {
+    const a = armados[i];
+    await tx.recibos_previos.update({
+      where: { id: viejos[i].id },
+      data: { fecha: a.fecha, monto: a.monto, capital: a.capital, interes: a.interes, capital_pendiente: a.capital_pendiente, cuotas: a.cuotas as unknown as object },
+    });
+    res.actualizados.push(viejos[i].numero);
+  }
+  for (const v of viejos.slice(armados.length)) {
+    await tx.recibos_previos.delete({ where: { id: v.id } });
+    res.borrados.push(v.numero);
+  }
+  const faltan = armados.slice(viejos.length);
+  if (faltan.length) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`comprobante:${tenantId}:${SERIE_RECIBO_PREVIO}`}, 0))`;
+    const max = await tx.recibos_previos.aggregate({ where: withTenant(tenantId), _max: { numero: true } });
+    let numero = max._max.numero ?? 0;
+    for (const a of faltan) {
+      await tx.recibos_previos.create({
+        data: { tenant_id: tenantId, credito_id: creditoId, numero: ++numero, ...a, cuotas: a.cuotas as unknown as object },
+      });
+      res.creados.push(numero);
+    }
+  }
+  return res;
 }

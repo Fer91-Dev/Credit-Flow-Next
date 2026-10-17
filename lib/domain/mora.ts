@@ -477,19 +477,19 @@ export function evaluarMora(
 }
 
 /**
- * MORA POR CLIENTE (Silvio vía Fernando, 17/10/2026): un check en la ficha que la prende o la
- * apaga para todos los créditos vivos del cliente. Se escribe en el snapshot de cada crédito
- * —que es lo que leen todos los cálculos— en vez de consultarse al cliente en cada cuenta.
+ * EL CHECK "SIN MORA" DE UN CRÉDITO (Silvio vía Fernando, 17/10/2026). Va en el crédito y no en
+ * el cliente: un cliente con varios créditos puede tener uno perdonado y los otros no. Se escribe
+ * en el snapshot `cronograma.mora`, que es lo que leen todas las cuentas.
  *
- *  - APAGAR: `activa: false`. No se le cobra mora, tampoco la que ya había generado y no pagó
- *    (decisión de Fernando). La que ya pagó queda pagada: está en sus recibos.
+ *  - APAGAR: `activa: false`. No se cobra mora, tampoco la que ya se generó y no se pagó
+ *    (decisión de Fernando). La que ya se pagó queda pagada: está en los recibos.
  *  - PRENDER: `activa: true` y `desde` = hoy. Corre desde el día en que se vuelve a prender: no
  *    se cobran punitorios del tiempo que estuvo apagada (decisión de Fernando). Mismo mecanismo
  *    que los créditos anteriores al sistema (`ConfigMora.desde`).
  *
  * Un crédito viejo sin snapshot toma la tasa y el tope vigentes, como hace `moraDelCredito`.
  */
-export function moraSnapshotSegunCliente(
+export function moraSnapshotConCheck(
   snapshot: MoraSnapshot | null | undefined,
   cobraMora: boolean,
   configActual: { tasaMoraDiaria: number; topeMoraPct?: number },

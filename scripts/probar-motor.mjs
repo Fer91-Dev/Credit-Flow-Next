@@ -780,10 +780,10 @@ H("14. EL QUE PAGA PUNTUAL NO PAGA PUNITORIOS");
 
 // ════════════════════════════════════════════════════════════════════════════
 {
-  H("15. CAMBIAR FECHAS Y MORA POR CLIENTE (17/10/2026)");
+  H("15. CAMBIAR FECHAS Y CHECK SIN MORA DEL CRÉDITO (17/10/2026)");
   const { vencimientosDelPlan } = await dom("amortization");
   const { validarCambioFechas, estadoCuotaRefechada, ledgerRefechado } = await dom("cambio-fechas");
-  const { moraSnapshotSegunCliente, moraDelCredito } = await dom("mora");
+  const { moraSnapshotConCheck, moraDelCredito } = await dom("mora");
   const D = (s) => new Date(`${s}T00:00:00.000Z`);
   const ymd = (d) => d.toISOString().slice(0, 10);
   const HOY = D("2026-10-17");
@@ -819,22 +819,40 @@ H("14. EL QUE PAGA PUNTUAL NO PAGA PUNITORIOS");
 
   const snap = { activa: true, tasaDiaria: 0.005, topePct: 50 };
   const cfg = { tasaMoraDiaria: 0.01, topeMoraPct: 0 };
-  const apagada = moraSnapshotSegunCliente(snap, false, cfg, "2026-10-17");
-  ok(apagada.activa === false && apagada.tasaDiaria === 0.005, "apagar la mora del cliente: activa=false, conserva la tasa del crédito");
-  const prendida = moraSnapshotSegunCliente(apagada, true, cfg, "2026-11-01");
+  const apagada = moraSnapshotConCheck(snap, false, cfg, "2026-10-17");
+  ok(apagada.activa === false && apagada.tasaDiaria === 0.005, "apagar la mora del crédito: activa=false, conserva la tasa del crédito");
+  const prendida = moraSnapshotConCheck(apagada, true, cfg, "2026-11-01");
   ok(prendida.activa === true && prendida.desde === "2026-11-01", "volver a prenderla: corre desde ese día");
-  ok(moraSnapshotSegunCliente(snap, true, cfg, "2026-11-01").desde === undefined,
+  ok(moraSnapshotConCheck(snap, true, cfg, "2026-11-01").desde === undefined,
     "prender una mora que ya estaba corriendo no mueve su fecha de inicio");
-  const viejo = moraSnapshotSegunCliente(null, false, cfg, "2026-10-17");
+  const viejo = moraSnapshotConCheck(null, false, cfg, "2026-10-17");
   ok(viejo.activa === false && viejo.tasaDiaria === 0.01, "crédito viejo sin snapshot: toma la tasa vigente y queda apagada");
   // Lo que leen todas las cuentas: con la mora apagada, no se devenga nada.
   const leida = moraDelCredito(apagada, { moraActiva: true, tasaMoraDiaria: 0.01 });
-  ok(leida.moraActiva === false, "moraDelCredito respeta el check del cliente aunque la financiera cobre mora");
+  ok(leida.moraActiva === false, "moraDelCredito respeta el check del crédito aunque la financiera cobre mora");
   // Prendida con `desde`: la cuota vencida el 10/09 recién devenga desde el 01/11.
   const devengada = moraPendienteTotal([{ fechaVencimiento: v[1], baseMora: 100000, pagadoMora: 0 }],
     { tasaDiaria: 0.005, hoy: D("2026-11-11"), moraDesde: D("2026-11-01") });
   ok(cerca(devengada, round2(100000 * 0.005 * 10)), "al volver a prenderla se cobran solo los días desde que se prendió",
     `${F(devengada)} esperado ${F(round2(100000 * 0.005 * 10))}`);
+
+  // Lo cobrado ANTES del sistema se corre con su vencimiento (CRD-000132: 10/09 → 29/09).
+  const { correrComoVencimiento, fechasPagoAnterioresSugeridas, validarFechasPagoAnteriores, anteriorRefechado } = await dom("cambio-fechas");
+  ok(correrComoVencimiento("2026-09-10", D("2026-09-10"), D("2026-09-29")) === "2026-09-29",
+    "pagada el día del vencimiento: sigue pagada el día del vencimiento nuevo");
+  ok(correrComoVencimiento("2026-09-15", D("2026-09-10"), D("2026-10-10")) === "2026-10-15",
+    "pagada 5 días tarde: sigue 5 días tarde respecto del vencimiento nuevo");
+  const ant = { primerVencimiento: "2026-09-10", pagos: [{ nro: 1, fecha: "2026-09-10" }, { nro: 2, fecha: null }], parcial: { nro: 3, monto: 1000, fecha: "2026-10-12" } };
+  const sug = fechasPagoAnterioresSugeridas(ant,
+    new Map([[1, D("2026-09-10")], [2, D("2026-10-10")], [3, D("2026-11-10")]]),
+    new Map([[1, D("2026-09-29")], [2, D("2026-10-29")], [3, D("2026-11-29")]]));
+  ok(sug[1] === "2026-09-29" && !(2 in sug) && sug[3] === "2026-10-31",
+    "se corren las pagadas y la parcial; una sin fecha anotada sigue sin fecha", JSON.stringify(sug));
+  ok(validarFechasPagoAnteriores({ 1: "2026-10-18" }, D("2026-08-29"), HOY) !== null, "una fecha de pago posterior a hoy se rechaza");
+  ok(validarFechasPagoAnteriores({ 1: "2026-08-28" }, D("2026-08-29"), HOY) !== null, "una fecha de pago anterior al otorgamiento se rechaza");
+  const re = anteriorRefechado(ant, D("2026-09-29"), sug);
+  ok(re.primerVencimiento === "2026-09-29" && re.pagos[0].fecha === "2026-09-29" && re.pagos[1].fecha === null && re.parcial.fecha === "2026-10-31" && re.parcial.monto === 1000,
+    "el snapshot queda con el 1er vencimiento y las fechas nuevas; los montos no cambian");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
