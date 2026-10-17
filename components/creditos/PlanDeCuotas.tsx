@@ -899,12 +899,16 @@ export function PlanDeCuotas({
         pagado verde, a cobrar con la banda), y los parámetros congelados del crédito pasan de
         párrafo a tarjetas: el dato grande, la explicación en una línea abajo.
       */}
-      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3.5">
-        <div className="mb-3 flex items-center gap-2">
+      {/* Plegado de entrada (Fernando, 17/10/2026): es para el que quiere ver la cuenta, no
+          para el que cobra. Los avisos de abajo NO se pliegan: frenan un cobro equivocado. */}
+      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+        <details className="group/calc">
+        <summary className="-mx-1 flex cursor-pointer list-none items-center gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 group-open/calc:rotate-180" />
           <Emoji name="balance-scale" className="h-4 w-4" />
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Cómo se calcula</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        </summary>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Formula>
             <Termino tono="base">Cuota</Termino><Op>=</Op>
             <Termino tono="warning">Interés</Termino><Op>+</Op>
@@ -955,6 +959,7 @@ export function PlanDeCuotas({
             )}
           </div>
         )}
+        </details>
         {cobroBloqueado && (
           <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/[0.07] px-3 py-2.5 text-xs leading-relaxed text-foreground/90">
             <Emoji name="prohibited" className="mt-0.5 h-4 w-4" />
