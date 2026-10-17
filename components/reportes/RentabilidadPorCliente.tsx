@@ -6,6 +6,27 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Emoji } from "@/components/ui/Emoji";
 import { formatDias } from "@/lib/utils";
+import { HelpHint, type AyudaBloque } from "@/components/configuracion/ConfigForm";
+
+/** La tabla mezcla lo cobrado, lo que falta y lo que se puede perder: sin esto no se lee (Fernando, 17/10/2026). */
+const AYUDA_POR_CLIENTE: AyudaBloque = {
+  titulo: "Cómo se lee «Por cliente»",
+  texto: "Cuánto dejó cada cliente desde su primer crédito, contando las cuotas cobradas antes del sistema. No usa el período de arriba. Las columnas no se suman entre sí: cada una mira la misma cartera desde otro lado.",
+  opciones: [
+    { opcion: "Prestado", efecto: "La plata que salió de la caja para ese cliente. Sin refinanciaciones (pasan deuda vieja a un crédito nuevo) ni anulados." },
+    { opcion: "Cobrado", efecto: "Todo lo que pagó, en el sistema y antes del sistema: la devolución del préstamo más la ganancia." },
+    { opcion: "Ganancia cobrada", efecto: "La parte de lo cobrado que no es devolución del préstamo: interés, punitorios y cargos. La tabla se ordena por esta columna." },
+    { opcion: "Ganancia por cobrar", efecto: "El interés que falta cobrar de sus créditos abiertos, si paga todo." },
+    { opcion: "Deuda vencida", efecto: "Las cuotas vencidas sin pagar (capital + interés, sin punitorios)." },
+    { opcion: "En riesgo", efecto: "El capital que falta recuperar de los créditos con el atraso con que hay que refinanciar o más; abajo, el atraso del más atrasado. No se resta de la ganancia hasta declararlo incobrable; si dice «incobrable», ya se restó." },
+  ],
+  ejemplo: "Prestado $1.416.000,00 y cobrado $1.592.000,00: el cliente ya devolvió $176.000,00 más de lo prestado. Debe $1.330.000,00 vencidos (deuda vencida) y de ese crédito faltan $820.429,61 de capital (en riesgo): es la misma deuda vista de dos formas, no se suman. Aunque no pagara más, ya dejó ganancia.",
+  puntos: [
+    "Cobrado − Prestado positivo = el cliente ya devolvió todo y dejó ganancia.",
+    "«—» en las tres columnas de la derecha = todo cancelado.",
+    "Las tarjetas «Deuda vencida» y «En riesgo» filtran la tabla.",
+  ],
+};
 
 const n2 = (x: number) => x.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const $ = (x: number) => `$${n2(x)}`;
@@ -74,6 +95,7 @@ export function RentabilidadPorCliente() {
         <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
           desde el primer crédito · incluye lo cobrado antes del sistema
         </span>
+        <div className="ml-auto"><HelpHint ayuda={AYUDA_POR_CLIENTE} /></div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
