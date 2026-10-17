@@ -83,6 +83,10 @@ export interface Cliente {
   no_contactar?: boolean | null;
   no_contactar_motivo?: string | null;
   no_contactar_desde?: string | null;
+  /** Check "Sin mora" (admin): no se le cobran punitorios. Ver PATCH /api/clientes/[id]/mora. */
+  sin_mora?: boolean | null;
+  sin_mora_motivo?: string | null;
+  sin_mora_desde?: string | null;
   tipo_credito?: string;
   created_at: string;
   // Datos personales ampliados

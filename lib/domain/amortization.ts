@@ -153,6 +153,28 @@ export function sumarMeses(fecha: Date, n: number): Date {
 }
 
 /**
+ * Las FECHAS de un plan (sin montos): la grilla —corte + día fijo si es mensual y está
+ * configurado; si no, un período por cuota desde el desembolso— y el corrimiento a día hábil.
+ *
+ * Es la misma cuenta que usa `construirPlanAmortizacion`, separada para poder re-fechar un
+ * crédito ya otorgado ("Cambiar fechas") con SU cronograma congelado sin rehacer los montos:
+ * la cuota no depende del día en que vence, solo de la cantidad de períodos.
+ */
+export function vencimientosDelPlan(
+  fechaInicio: Date,
+  nCuotas: number,
+  frecuencia: Frecuencia,
+  cronograma?: CronogramaConfig,
+  catalogoFrecuencias?: FrecuenciaDef[],
+): Date[] {
+  const esMensual = resolverFrecuencia(frecuencia, catalogoFrecuencias).esMensual ?? false;
+  const grilla =
+    (cronograma && esMensual ? calcularVencimientos(fechaInicio, nCuotas, cronograma) : null)
+    ?? Array.from({ length: nCuotas }, (_, k) => sumarPeriodos(fechaInicio, k + 1, frecuencia, catalogoFrecuencias));
+  return ajustarADiasHabiles(grilla, cronograma ?? {});
+}
+
+/**
  * Construye la tabla de amortización completa.
  * Trabaja en centavos para que la suma de capitales sea EXACTAMENTE el principal;
  * la última cuota absorbe el ajuste de redondeo.
@@ -201,14 +223,7 @@ export function construirPlanAmortizacion(
    * solo en mensual: un crédito semanal podía vencer un domingo o un 25 de diciembre, y los
    * feriados cargados en Configuración no movían absolutamente nada.
    */
-  const esMensual = resolverFrecuencia(frecuencia, catalogoFrecuencias).esMensual ?? false;
-  const grilla =
-    (opciones?.cronograma && esMensual
-      ? calcularVencimientos(fechaInicio, nCuotas, opciones.cronograma)
-      : null)
-    ?? Array.from({ length: nCuotas }, (_, k) =>
-      sumarPeriodos(fechaInicio, k + 1, frecuencia, catalogoFrecuencias));
-  const vencimientos = ajustarADiasHabiles(grilla, opciones?.cronograma ?? {});
+  const vencimientos = vencimientosDelPlan(fechaInicio, nCuotas, frecuencia, opciones?.cronograma, catalogoFrecuencias);
 
   const cuotaCents = toCents(cuota);
   let saldoCents = toCents(principalAmortizar);

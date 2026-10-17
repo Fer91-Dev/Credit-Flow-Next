@@ -779,6 +779,65 @@ H("14. EL QUE PAGA PUNTUAL NO PAGA PUNITORIOS");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+{
+  H("15. CAMBIAR FECHAS Y MORA POR CLIENTE (17/10/2026)");
+  const { vencimientosDelPlan } = await dom("amortization");
+  const { validarCambioFechas, estadoCuotaRefechada, ledgerRefechado } = await dom("cambio-fechas");
+  const { moraSnapshotSegunCliente, moraDelCredito } = await dom("mora");
+  const D = (s) => new Date(`${s}T00:00:00.000Z`);
+  const ymd = (d) => d.toISOString().slice(0, 10);
+  const HOY = D("2026-10-17");
+
+  // El caso que lo originó: CRD-000110, mensual de 3 cuotas, otorgado el 10/07 y no el 10/06.
+  const v = vencimientosDelPlan(D("2026-07-10"), 3, "mensual", { diaCorte: null, diaVencimiento: null });
+  ok(v.map(ymd).join(",") === "2026-08-10,2026-09-10,2026-10-10",
+    "otorgado el 10/07, mensual de 3: vence 10/08, 10/09 y 10/10", v.map(ymd).join(", "));
+  // Sin cronograma, el motor de siempre da las mismas fechas: la extracción no cambió el plan.
+  const plan = construirPlanAmortizacion(280000, 435.72, 3, D("2026-07-10"), "nominal_anual", "mensual");
+  ok(plan.cuotas.map((c) => ymd(c.fecha)).join(",") === v.map(ymd).join(","),
+    "el plan del motor y los vencimientos re-fechados son la MISMA cuenta");
+  // Re-fechar no toca importes: la cuota no depende del día.
+  const planJunio = construirPlanAmortizacion(280000, 435.72, 3, D("2026-06-10"), "nominal_anual", "mensual");
+  ok(plan.cuotas.every((c, i) => c.cuotaTotal === planJunio.cuotas[i].cuotaTotal && c.interes === planJunio.cuotas[i].interes),
+    "otorgado un mes antes o después, las cuotas valen lo mismo (capital e interés)");
+
+  ok(validarCambioFechas(D("2026-07-10"), v, 3, HOY) === null, "fechas en orden: se aceptan");
+  ok(validarCambioFechas(D("2026-10-18"), v, 3, HOY) !== null, "otorgamiento posterior a hoy: se rechaza");
+  ok(validarCambioFechas(D("2026-08-10"), v, 3, HOY) !== null, "cuota 1 el mismo día del otorgamiento: se rechaza");
+  ok(validarCambioFechas(D("2026-07-10"), [v[0], v[2], v[1]], 3, HOY) !== null, "vencimientos desordenados: se rechaza");
+  ok(validarCambioFechas(D("2026-07-10"), v.slice(0, 2), 3, HOY) !== null, "faltan vencimientos: se rechaza");
+
+  ok(estadoCuotaRefechada("pendiente", D("2026-10-10"), HOY) === "vencida", "pendiente con vencimiento pasado → vencida");
+  ok(estadoCuotaRefechada("vencida", D("2026-11-10"), HOY) === "pendiente", "vencida movida al futuro → pendiente");
+  ok(estadoCuotaRefechada("pagada", D("2026-11-10"), HOY) === "pagada" && estadoCuotaRefechada("parcial", D("2026-11-10"), HOY) === "parcial",
+    "pagada y parcial no cambian de estado al mover la fecha");
+  const l = ledgerRefechado([
+    { estado: "pagada", vencimiento: v[0] }, { estado: "vencida", vencimiento: v[1] }, { estado: "vencida", vencimiento: v[2] },
+  ], HOY);
+  ok(ymd(l.proximoPago) === "2026-09-10" && l.diasMoraMax === 37 && !l.todasSaldadas,
+    "CRD-000110 con las fechas bien: próximo pago 10/09 y 37 días de atraso (no 68)", `${ymd(l.proximoPago)} · ${l.diasMoraMax}`);
+
+  const snap = { activa: true, tasaDiaria: 0.005, topePct: 50 };
+  const cfg = { tasaMoraDiaria: 0.01, topeMoraPct: 0 };
+  const apagada = moraSnapshotSegunCliente(snap, false, cfg, "2026-10-17");
+  ok(apagada.activa === false && apagada.tasaDiaria === 0.005, "apagar la mora del cliente: activa=false, conserva la tasa del crédito");
+  const prendida = moraSnapshotSegunCliente(apagada, true, cfg, "2026-11-01");
+  ok(prendida.activa === true && prendida.desde === "2026-11-01", "volver a prenderla: corre desde ese día");
+  ok(moraSnapshotSegunCliente(snap, true, cfg, "2026-11-01").desde === undefined,
+    "prender una mora que ya estaba corriendo no mueve su fecha de inicio");
+  const viejo = moraSnapshotSegunCliente(null, false, cfg, "2026-10-17");
+  ok(viejo.activa === false && viejo.tasaDiaria === 0.01, "crédito viejo sin snapshot: toma la tasa vigente y queda apagada");
+  // Lo que leen todas las cuentas: con la mora apagada, no se devenga nada.
+  const leida = moraDelCredito(apagada, { moraActiva: true, tasaMoraDiaria: 0.01 });
+  ok(leida.moraActiva === false, "moraDelCredito respeta el check del cliente aunque la financiera cobre mora");
+  // Prendida con `desde`: la cuota vencida el 10/09 recién devenga desde el 01/11.
+  const devengada = moraPendienteTotal([{ fechaVencimiento: v[1], baseMora: 100000, pagadoMora: 0 }],
+    { tasaDiaria: 0.005, hoy: D("2026-11-11"), moraDesde: D("2026-11-01") });
+  ok(cerca(devengada, round2(100000 * 0.005 * 10)), "al volver a prenderla se cobran solo los días desde que se prendió",
+    `${F(devengada)} esperado ${F(round2(100000 * 0.005 * 10))}`);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 rmSync(dir, { recursive: true, force: true });
 console.log(`\n${"═".repeat(70)}`);
 if (fallos === 0) console.log(`  ${pruebas}/${pruebas} — EL MOTOR CUADRA`);

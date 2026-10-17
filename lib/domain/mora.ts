@@ -475,3 +475,31 @@ export function evaluarMora(
     interesMora: interesMora(valorCuota, dias, config),
   };
 }
+
+/**
+ * MORA POR CLIENTE (Silvio vía Fernando, 17/10/2026): un check en la ficha que la prende o la
+ * apaga para todos los créditos vivos del cliente. Se escribe en el snapshot de cada crédito
+ * —que es lo que leen todos los cálculos— en vez de consultarse al cliente en cada cuenta.
+ *
+ *  - APAGAR: `activa: false`. No se le cobra mora, tampoco la que ya había generado y no pagó
+ *    (decisión de Fernando). La que ya pagó queda pagada: está en sus recibos.
+ *  - PRENDER: `activa: true` y `desde` = hoy. Corre desde el día en que se vuelve a prender: no
+ *    se cobran punitorios del tiempo que estuvo apagada (decisión de Fernando). Mismo mecanismo
+ *    que los créditos anteriores al sistema (`ConfigMora.desde`).
+ *
+ * Un crédito viejo sin snapshot toma la tasa y el tope vigentes, como hace `moraDelCredito`.
+ */
+export function moraSnapshotSegunCliente(
+  snapshot: MoraSnapshot | null | undefined,
+  cobraMora: boolean,
+  configActual: { tasaMoraDiaria: number; topeMoraPct?: number },
+  hoyYmd: string,
+): MoraSnapshot {
+  const base: MoraSnapshot = snapshot && typeof snapshot.tasaDiaria === "number"
+    ? { ...snapshot }
+    : { activa: true, tasaDiaria: configActual.tasaMoraDiaria, topePct: configActual.topeMoraPct ?? 0 };
+  if (!cobraMora) return { ...base, activa: false };
+  // Si ya estaba corriendo, no se toca: prender algo prendido no tiene que mover el `desde`.
+  if (snapshot?.activa === true) return base;
+  return { ...base, activa: true, desde: hoyYmd };
+}

@@ -16,6 +16,7 @@ import { imprimirPlanPagos } from "@/lib/plan-print";
 import { AnularPagoDialog } from "@/components/pagos/AnularPagoDialog";
 import { imprimirEstadoCuenta } from "@/lib/estado-cuenta-print";
 import { LibreDeudaDialog } from "./LibreDeudaDialog";
+import { CambiarFechasDialog } from "./CambiarFechasDialog";
 import { PagareBoton } from "./PagareBoton";
 import { Emoji } from "@/components/ui/Emoji";
 import { calcularPuenteDeuda, PuenteDeudaPanel } from "@/components/creditos/PuenteDeuda";
@@ -378,6 +379,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const [anularPago, setAnularPago] = useState<Pago | null>(null);
   // Acciones sobre el CRÉDITO (distintas de las de un pago suelto).
   const [libreDeudaOpen, setLibreDeudaOpen] = useState(false);
+  const [fechasOpen, setFechasOpen] = useState(false);
   const [anularCreditoOpen, setAnularCreditoOpen] = useState(false);
   const [anularCreditoMotivo, setAnularCreditoMotivo] = useState("");
   const [accionPagos, setAccionPagos] = useState<"devolver" | "conservar">("devolver");
@@ -1633,6 +1635,20 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 pone recién el hover según lo que hace cada una—.
               */}
               <div className={GRUPO_BARRA} role="group" aria-label="Administración del crédito">
+              {/* Corregir el otorgamiento y los vencimientos (Silvio, 17/10/2026). Con acuerdo
+                  vigente no: el acuerdo tiene su propio calendario armado sobre estas fechas. */}
+              {esAdmin && esCreditoVivo(credito.estado) && cuotas.length > 0 && (
+                <button
+                  onClick={sinPlegar(() => setFechasOpen(true))}
+                  disabled={!!credito.acuerdo}
+                  title={credito.acuerdo
+                    ? "Tiene un acuerdo de pago vigente: anulalo antes de cambiar las fechas"
+                    : "Corregir la fecha de otorgamiento y los vencimientos"}
+                  className={`${BTN_BARRA} disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" /> Cambiar fechas
+                </button>
+              )}
               {esAdmin && role === "admin" && esCreditoVivo(credito.estado) && (
                 <button
                   onClick={sinPlegar(() => { setIncobrableMotivo(""); setIncobrableOpen(true); })}
@@ -2394,6 +2410,16 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
 
       {/* Certificado de libre deuda (solo con el crédito cancelado). */}
       <LibreDeudaDialog creditoId={libreDeudaOpen ? credito.id : null} onClose={() => setLibreDeudaOpen(false)} />
+
+      {fechasOpen && (
+        <CambiarFechasDialog
+          creditoId={credito.id}
+          numero={formatCreditoNumero(credito.numero, credito.refinancia_a_numero)}
+          fechaInicio={credito.fecha_inicio ?? credito.created_at}
+          cuotas={cuotas}
+          onClose={(guardado) => { setFechasOpen(false); if (guardado) { revalidar(); refrescarNotificaciones(); } }}
+        />
+      )}
     </div>
   );
 }

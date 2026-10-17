@@ -86,7 +86,7 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
   const credito = await prisma.$transaction(async (tx) => {
     const cliente = await tx.clientes.findFirst({
       where: { ...withTenant(tenantId), id: e.clienteId },
-      select: { id: true, nombre: true, apellido: true, estado: true },
+      select: { id: true, nombre: true, apellido: true, estado: true, sin_mora: true },
     });
     if (!cliente) throw new Error("Cliente no encontrado");
     if (cliente.estado === "inactivo") throw new Error(`${nombreCompleto(cliente)} está dado de baja.`);
@@ -108,7 +108,8 @@ export async function cargarCreditoAnterior(e: EntradaCreditoAnterior): Promise<
         frecuencia: a.frecuencia,
         frecuencia_def: resolverFrecuencia(a.frecuencia, config.simulador.frecuencias) as object,
         cargos: CARGOS_APAGADOS as object,
-        cronograma: cronograma as object,
+        // Cliente con el check "Sin mora": el crédito se carga ya sin punitorios.
+        cronograma: (cliente.sin_mora ? { ...cronograma, mora: { ...cronograma.mora, activa: false } } : cronograma) as object,
         fecha_inicio: fechaYmd(e.fechaOtorgamiento),
         // Sin cuotas pendientes = ya cancelado antes del sistema.
         proximo_pago: a.pendientes[0]?.fecha ?? null,

@@ -50,3 +50,4 @@ export * from "./reportes";
 export * from "./productos-reporte";
 export * from "./cierre-turno";
 export * from "./agenda-cobranza";
+export * from "./cambio-fechas";

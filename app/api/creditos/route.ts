@@ -1142,7 +1142,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     // Como la mora se recalcula al vuelo, sin esto cambiar la tasa reescribía hacia atrás
     // los punitorios de todos los morosos.
     mora: {
-      activa: configActual.moraActiva,
+      // Un cliente marcado "Sin mora" (check de su ficha) recibe el crédito ya sin punitorios.
+      activa: configActual.moraActiva && !cliente.sin_mora,
       tasaDiaria: configActual.tasaMoraDiaria,
       // El TECHO de la mora también se congela. Si mañana la financiera lo baja (o lo saca),
       // los créditos ya otorgados conservan el que estaba vigente cuando el cliente firmó:

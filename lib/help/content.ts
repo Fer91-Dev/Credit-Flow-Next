@@ -138,6 +138,17 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Domicilio", desc: "Provincia y localidad se eligen encadenadas; si es departamento aparecen piso y depto. Al guardar, el domicilio se UBICA en el mapa (OpenStreetMap): la ficha muestra el barrio y las coordenadas, un mapa en miniatura con el marcador, y el botón «Ubicar» para volver a intentarlo si el mapa no lo encontró o se corrigió la dirección. Si el mapa la puso mal (pasa: OpenStreetMap tiene calles de Tucumán con la numeración corrida), «Corregir» acepta las coordenadas pegadas desde Google Maps —clic derecho en el lugar → copiar— y esa ubicación queda por encima del mapa: no se pisa aunque se edite el domicilio; solo «Reubicar» vuelve al mapa." },
           { term: "Zona de cobranza", desc: "Si se deja vacía, se completa sola con el barrio del domicilio. Lo que se escribe vale más: y el sistema lo recuerda —«este barrio es esta zona»— para los próximos clientes del mismo barrio. Es la zona que arma la planilla del cobrador." },
           { term: "Baja", desc: "Dar de baja un cliente se bloquea si tiene créditos activos o vencidos: primero hay que resolverlos." },
+          { term: "Sin mora", desc: "Botón de la ficha, solo para el admin. Deja de cobrarle mora (punitorios) al cliente en todos sus créditos que se siguen cobrando, y los créditos que se le den después nacen sin mora. Pide un motivo, que queda en la auditoría. En la ficha aparece la etiqueta «Sin mora»." },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Sin mora: qué pasa al prenderlo y al sacarlo",
+        items: [
+          "Al dejarlo sin mora no se le cobra nada de mora, tampoco la que ya había generado y todavía no pagó.",
+          "La mora que ya pagó no se devuelve: está en sus recibos.",
+          "Los días de atraso se siguen contando: el cliente sigue apareciendo en la agenda, en morosos y en el bloqueo por atraso.",
+          "Con «Cobrar mora» vuelve a cobrársele, pero desde ese día: no se cobra el tiempo que estuvo sin mora.",
         ],
       },
     ],
@@ -188,6 +199,18 @@ const HELP: Record<string, HelpDoc> = {
           { term: "Anular", desc: "Deshace el crédito conservando todo y registrando el motivo; revierte la caja. Es lo recomendado para corregir." },
           { term: "Eliminar", desc: "Borrado definitivo. Se bloquea si el crédito tiene pagos o un desembolso: en ese caso hay que anular." },
           { term: "Refinanciar", desc: "Solo créditos en mora: consolida la deuda viva (capital + interés + cargos + mora) en un crédito nuevo, con quita opcional. No mueve caja: la deuda se traslada." },
+          { term: "Cambiar fechas", desc: "Solo admin, en créditos activos o vencidos. Corrige la fecha de otorgamiento y los vencimientos. Al cambiar el otorgamiento, los vencimientos se recalculan solos con la frecuencia del crédito, y después se puede ajustar cada uno a mano. Pide un motivo, que queda en la auditoría." },
+        ],
+      },
+      {
+        kind: "tips",
+        titulo: "Qué cambia y qué no al cambiar fechas",
+        items: [
+          "No cambia ningún importe: la cuota vale lo mismo porque depende de la cantidad de cuotas, no del día en que vence cada una.",
+          "Sí cambian el atraso, la mora, el bloqueo por atraso (refinanciación obligatoria) y el estado del crédito. Ejemplo: un crédito cargado como otorgado el 10/06/2026 que se dio el 10/07/2026 pasa de 68 días de atraso a 37, y vuelve a poder cobrarse normal.",
+          "Lo ya cobrado no se toca: la mora que un cobro ya imputó queda en su recibo. La caja tampoco se mueve.",
+          "Con un acuerdo de pago vigente no se puede: el acuerdo se armó sobre los vencimientos de hoy. Primero hay que anularlo.",
+          "La fecha de otorgamiento no puede ser posterior a hoy, la cuota 1 tiene que vencer después del otorgamiento y cada cuota después de la anterior.",
         ],
       },
       {

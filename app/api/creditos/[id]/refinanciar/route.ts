@@ -780,7 +780,8 @@ export const POST = withErrorHandler(async (req: NextRequest, { params }: RouteP
     // dos: sin `mora` los punitorios se recalculaban con la tasa del día en que alguien los
     // mirara, y sin `redondeo` la tabla de amortización se reescribía al cambiar la config.
     mora: {
-      activa: config.moraActiva,
+      // El check "Sin mora" del cliente pasa al crédito nuevo, como en el otorgamiento.
+      activa: config.moraActiva && !credito.cliente.sin_mora,
       tasaDiaria: config.tasaMoraDiaria,
       // El crédito NUEVO nace con el techo vigente hoy, congelado igual que al otorgar.
       topePct: config.topeMoraPct,
