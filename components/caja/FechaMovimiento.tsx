@@ -11,25 +11,39 @@ import { formatFecha, formatFechaHora } from "@/lib/utils";
  * fecha contable; cuando se cargó otro día, se dice al lado, chico, porque también importa.
  * Si es el mismo día —el caso de todos los días— se muestra fecha y hora como siempre.
  */
-export function partesFechaMovimiento(m: { fecha: string; created_at?: string | null }): { principal: string; cargado: string | null } {
+type FechaMov = { fecha: string; created_at?: string | null; otorgamiento_en_otra_fecha?: string | null };
+
+export function partesFechaMovimiento(m: FechaMov): { principal: string; cargado: string | null } {
   const contable = formatFecha(m.fecha);
   if (!m.created_at) return { principal: contable, cargado: null };
   const carga = formatFechaHora(m.created_at);
   return carga.startsWith(contable) ? { principal: carga, cargado: null } : { principal: contable, cargado: carga };
 }
 
-/** Para CSV, comprobante impreso y renglones de texto. */
-export function fechaMovimientoTexto(m: { fecha: string; created_at?: string | null }): string {
-  const p = partesFechaMovimiento(m);
-  return p.cargado ? `${p.principal} (cargado el ${p.cargado})` : p.principal;
+/**
+ * Desembolso (o comisión) que quedó en la caja otro día que el otorgamiento: se cambió la
+ * fecha del crédito con un turno cerrado y el asiento no se movió (opción A, 17/10/2026).
+ * Se dice debajo de la fecha, igual que "cargado el", para que el desfase no sea un misterio.
+ */
+function otorgadoTexto(m: FechaMov): string | null {
+  return m.otorgamiento_en_otra_fecha ? `crédito otorgado el ${formatFecha(m.otorgamiento_en_otra_fecha)}` : null;
 }
 
-export function FechaMovimiento({ m, className = "" }: { m: { fecha: string; created_at?: string | null }; className?: string }) {
+/** Para CSV, comprobante impreso y renglones de texto. */
+export function fechaMovimientoTexto(m: FechaMov): string {
   const p = partesFechaMovimiento(m);
+  const extras = [p.cargado && `cargado el ${p.cargado}`, otorgadoTexto(m)].filter(Boolean);
+  return extras.length ? `${p.principal} (${extras.join("; ")})` : p.principal;
+}
+
+export function FechaMovimiento({ m, className = "" }: { m: FechaMov; className?: string }) {
+  const p = partesFechaMovimiento(m);
+  const otorgado = otorgadoTexto(m);
   return (
     <span className={`inline-block leading-tight tabular-nums whitespace-nowrap ${className}`}>
       <span className="block">{p.principal}</span>
       {p.cargado && <span className="block text-[11px] text-muted-foreground/70">cargado el {p.cargado}</span>}
+      {otorgado && <span className="block text-[11px] text-warning">{otorgado}</span>}
     </span>
   );
 }

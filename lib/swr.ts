@@ -813,6 +813,8 @@ export interface CuotasCredito {
    * por qué son más bajos. `null` = no hay ninguna.
    */
   promocion: { pct: number; campana: string; vence: string | null; ahorro: number } | null;
+  /** El desembolso quedó en la caja otro día que el otorgamiento (fecha cambiada con el turno cerrado). */
+  desembolso_en_otra_fecha?: { fecha: string; comprobante: string | null } | null;
   /** Si se puede cobrar hoy (misma regla que `POST /api/pagos`) y, si no, por qué. */
   cobro?: { permitido: boolean; motivo: string | null; sugerencia: string | null; puede_autorizar: boolean };
   frecuencia: string;
@@ -984,6 +986,8 @@ export interface MovimientoCaja {
   /** N° del crédito que la refinanciación reemplaza → el movimiento se muestra como REF-xxxxxx. */
   credito_refinancia_a_numero?: number | null;
   cliente: string | null;
+  /** Desembolso/comisión asentado otro día que el otorgamiento: la fecha del otorgamiento (YYYY-MM-DD). */
+  otorgamiento_en_otra_fecha?: string | null;
 }
 
 /** Fila del registro central de comprobantes (movimiento numerado). */

@@ -2,7 +2,7 @@ import { requireRole, scopeCreditosVendedor } from "@/lib/auth";
 import { successResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { esCuentaValida, type Cuenta } from "@/lib/domain";
+import { esCuentaValida, type Cuenta, otorgamientoEnOtraFecha } from "@/lib/domain";
 import { formatComprobante, SERIE_RECIBO_PREVIO } from "@/lib/comprobantes";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
 import { nombreCompleto } from "@/lib/utils";
@@ -82,7 +82,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     prisma.movimientos_caja.findMany({
       where,
       include: {
-        credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } },
+        credito: { select: { numero: true, fecha_inicio: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } },
         vendedor: { select: { nombre: true } },
       },
       orderBy: [{ created_at: "desc" }, { id: "desc" }],
@@ -122,6 +122,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     credito_numero: m.credito?.numero ?? null,
     credito_refinancia_a_numero: m.credito?.es_refinanciacion && m.credito.refinancia_a ? origenesRefi.get(m.credito.refinancia_a) ?? null : null,
     cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
+    otorgamiento_en_otra_fecha: otorgamientoEnOtraFecha(m.tipo, m.fecha, m.credito?.fecha_inicio),
     vendedor: m.vendedor?.nombre ?? null, // null = caja principal
   }));
 

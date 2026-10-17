@@ -183,7 +183,7 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pa
           )}
           {cambioInicio && caja.filter((m) => !m.se_mueve && m.turno_cerrado).map((m) => (
             <Nota key={m.comprobante} acento="warning" compacta>
-              {m.comprobante} sigue en la caja el {formatFecha(m.fecha)}: la caja está cerrada hasta el {formatFecha(m.turno_cerrado!)}. Caja y Reportes van a mostrar el otorgamiento en fechas distintas.
+              {m.comprobante} sigue en la caja el {formatFecha(m.fecha)}: la caja está cerrada hasta el {formatFecha(m.turno_cerrado!)}. El crédito y el movimiento de caja van a mostrar las dos fechas.
             </Nota>
           ))}
 

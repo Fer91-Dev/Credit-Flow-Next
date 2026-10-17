@@ -3,7 +3,7 @@ import { successResponse, errorResponse, withErrorHandler, assertSameOrigin } fr
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
 import { registrarAuditoria } from "@/lib/audit";
-import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento, formatPesos } from "@/lib/domain";
+import { montoConSigno, totalesCaja, saldosPorCuenta, esCuentaValida, etiquetaCaja, CUENTA_LABEL, type TipoMovimiento, formatPesos, otorgamientoEnOtraFecha } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { assertFondosSuficientesTx } from "@/lib/caja-fondos";
 import { numerosRefinanciados } from "@/lib/creditos-numero";
@@ -46,7 +46,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   const [movimientos, saldoMovs, porVendedor, fichas] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: whereRango,
-      include: { credito: { select: { numero: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } } },
+      include: { credito: { select: { numero: true, fecha_inicio: true, es_refinanciacion: true, refinancia_a: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       take: 1000,
     }),
@@ -160,6 +160,7 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       credito_numero: m.credito?.numero ?? null,
       credito_refinancia_a_numero: m.credito?.es_refinanciacion && m.credito.refinancia_a ? origenesRefi.get(m.credito.refinancia_a) ?? null : null,
       cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
+      otorgamiento_en_otra_fecha: otorgamientoEnOtraFecha(m.tipo, m.fecha, m.credito?.fecha_inicio),
     })),
   });
 });

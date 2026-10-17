@@ -132,3 +132,17 @@ export function anteriorRefechado<T extends PagosAnteriores>(anterior: T, primer
     }),
   };
 }
+
+/** Asientos de caja que nacen con el otorgamiento y se mueven con él (ver `cajaDelOtorgamiento`). */
+export const TIPOS_CAJA_OTORGAMIENTO = ["desembolso", "comision_otorgamiento"] as const;
+
+/**
+ * La fecha de otorgamiento del crédito cuando su asiento de caja quedó en OTRO día (Fernando,
+ * 17/10/2026, opción A): se cambió la fecha con un turno cerrado y el asiento no se movió para
+ * no tocar un arqueo ya contado. Devuelve "YYYY-MM-DD" para mostrarlo junto al asiento, o null
+ * si coinciden o el asiento no es del otorgamiento. Se deriva al leer: no se guarda en ningún lado.
+ */
+export function otorgamientoEnOtraFecha(tipo: string, fechaAsiento: Date, fechaInicio: Date | null | undefined): string | null {
+  if (!fechaInicio || !(TIPOS_CAJA_OTORGAMIENTO as readonly string[]).includes(tipo)) return null;
+  return fechaAsiento.getTime() === fechaInicio.getTime() ? null : fechaInicio.toISOString().slice(0, 10);
+}

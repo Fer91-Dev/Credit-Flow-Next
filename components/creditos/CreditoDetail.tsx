@@ -833,6 +833,17 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                   ? <> · atribuido a {credito.vendedor.nombre}</>
                   : null}
               </p>
+              {/* Desembolso en otro día: se cambió la fecha con el turno de caja cerrado y el
+                  asiento quedó donde se contó (opción A, 17/10/2026). */}
+              {metaCuotas?.desembolso_en_otra_fecha && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  En caja el{" "}
+                  <span className="font-medium text-foreground">{formatFecha(metaCuotas.desembolso_en_otra_fecha.fecha)}</span>
+                  {metaCuotas.desembolso_en_otra_fecha.comprobante && (
+                    <> · <span className="font-mono">{metaCuotas.desembolso_en_otra_fecha.comprobante}</span></>
+                  )}
+                </p>
+              )}
             </div>
           </div>
 

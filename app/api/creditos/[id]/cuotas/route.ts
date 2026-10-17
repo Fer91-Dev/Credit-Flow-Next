@@ -3,7 +3,7 @@ import { scopeCreditoParaCobrar } from "@/lib/cobranza-scope";
 import { successResponse, errorResponse, withErrorHandler } from "@/app/lib/api";
 import { withTenant } from "@/app/lib/db";
 import { prisma } from "@/lib/prisma";
-import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, configMoraDeCuota, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota, anteriorDelCredito } from "@/lib/domain";
+import { cuotaCerradaSinPago, frecuenciaLabel, normalizarFrecuencia, diasAtraso, round2, interesMora, configMoraDeCuota, moraRestanteDeCuota, moraDelCredito, moraDesdeCronograma, topeMoraDeCuota, fechaTopeMora, topeMoraPorFallecimiento, topeMoraPorIncobrable, topeMoraMasTemprano, promoVigenteAl, type FrecuenciaDef, baseMoraDeCuota, pendienteSinMoraDeCuota, anteriorDelCredito, otorgamientoEnOtraFecha } from "@/lib/domain";
 import { getConfiguracion, getCobranzaConfig } from "@/lib/config";
 import { recibosPorCuotaDeAcuerdo } from "@/lib/acuerdos";
 import { entregasDeRefinanciacion } from "@/lib/entrega-refinanciacion";
@@ -40,6 +40,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     where: { ...withTenant(tenantId), ...(await scopeCreditoParaCobrar({ role, vendedorId, tenantId })), id },
     select: {
       id: true,
+      fecha_inicio: true, // para decir si el desembolso quedó en la caja otro día
       frecuencia: true,
       frecuencia_def: true,
       cronograma: true, // condiciones de mora congeladas al otorgar
@@ -470,7 +471,7 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
    * (anulado < cumplido < roto < vigente), justo al revés de lo que hace falta.
    */
   // Las dos juntas, y se queda con el vigente si lo hay.
-  const [acuerdoVigente, acuerdoUltimo] = await Promise.all([
+  const [acuerdoVigente, acuerdoUltimo, desembolso] = await Promise.all([
     prisma.acuerdos_pago.findFirst({
       where: { ...withTenant(tenantId), credito_id: id, estado: "vigente" },
       select: SELECT_ACUERDO,
@@ -480,7 +481,19 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       orderBy: { created_at: "desc" },
       select: SELECT_ACUERDO,
     }),
+    /*
+      El desembolso, para ver si quedó en la caja OTRO día que el otorgamiento (Fernando,
+      17/10/2026, opción A): se cambió la fecha con un turno cerrado y el asiento no se movió
+      para no tocar un arqueo ya contado. La ficha lo dice, así nadie lo busca en el día del
+      otorgamiento y no lo encuentra. Índice (tenant_id, credito_id).
+    */
+    prisma.movimientos_caja.findFirst({
+      where: { ...withTenant(tenantId), credito_id: id, tipo: "desembolso" },
+      select: { tipo: true, fecha: true, serie: true, numero: true },
+      orderBy: { created_at: "asc" },
+    }),
   ]);
+  const otorgadoEnOtraFecha = desembolso ? otorgamientoEnOtraFecha(desembolso.tipo, desembolso.fecha, credito.fecha_inicio) : null;
   const acuerdo = acuerdoVigente ?? acuerdoUltimo;
   const proximaAcuerdo = acuerdo?.cuotas.find((c) => c.estado !== "pagada") ?? null;
   /**
@@ -498,6 +511,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
 
   return successResponse({
     credito_id: credito.id,
+    desembolso_en_otra_fecha: desembolso && otorgadoEnOtraFecha
+      ? { fecha: desembolso.fecha.toISOString().slice(0, 10), comprobante: formatComprobante(desembolso.serie, desembolso.numero) }
+      : null,
     cliente: credito.cliente ? nombreCompleto(credito.cliente) : null,
     /**
      * Si NO se puede cobrar, por qué y qué hacer en su lugar. `puede_autorizar` es true solo

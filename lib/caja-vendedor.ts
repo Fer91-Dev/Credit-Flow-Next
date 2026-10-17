@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withTenant } from "@/app/lib/db";
 import { ApiError } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/audit";
-import { saldosPorCuenta, totalesCaja, round2, esCuentaValida, CUENTA_LABEL, etiquetaCaja, type Cuenta, formatPesos } from "@/lib/domain";
+import { saldosPorCuenta, totalesCaja, round2, esCuentaValida, CUENTA_LABEL, etiquetaCaja, type Cuenta, formatPesos, otorgamientoEnOtraFecha } from "@/lib/domain";
 import { siguienteNumeroComprobante, formatComprobante, type SerieComprobante } from "@/lib/comprobantes";
 import { getDolarBlueVenta } from "@/lib/cotizacion";
 import { nombreCompleto, hoyComercial } from "@/lib/utils";
@@ -20,7 +20,7 @@ export async function cajaDeVendedor(tenantId: string, vendedorId: string | null
   const [movimientos, saldoMovs] = await Promise.all([
     prisma.movimientos_caja.findMany({
       where: { ...withTenant(tenantId), vendedor_id: vendedorId },
-      include: { credito: { select: { numero: true, cliente: { select: { nombre: true, apellido: true } } } } },
+      include: { credito: { select: { numero: true, fecha_inicio: true, cliente: { select: { nombre: true, apellido: true } } } } },
       orderBy: [{ fecha: "desc" }, { created_at: "desc" }],
       // La pantalla muestra los últimos 500; el CSV (`todos`) pide la historia entera, con un
       // techo de seguridad para que una caja enorme no tumbe la respuesta.
@@ -86,6 +86,7 @@ export async function cajaDeVendedor(tenantId: string, vendedorId: string | null
       descripcion: m.descripcion,
       credito_numero: m.credito?.numero ?? null,
       cliente: m.credito?.cliente ? nombreCompleto(m.credito.cliente) : null,
+      otorgamiento_en_otra_fecha: otorgamientoEnOtraFecha(m.tipo, m.fecha, m.credito?.fecha_inicio),
     })),
   };
 }
