@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import {
-  Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Timer, TimerOff, Sparkles, Handshake, MapPin,
+  Pencil, Trash2, CalendarClock, ChevronDown, Loader2, Mail, MessageCircle, Phone, Printer, ShieldCheck, Ban, Receipt, AlertTriangle, History, BellOff, Wallet, Sparkles, Handshake, MapPin,
 } from "lucide-react";
 import { refrescarNotificaciones, useClienteDetalle, useAccionesCobranza, useCuotas, KEYS, type CreditoConFinanzas, type EstadoCuota, type CuotaPersistida, type CuotasCredito, type PagoImputado, useDiasLegales, useOrigenRefinanciacion, useFinanciera, mutarCreditos, mutarPagos } from "@/lib/swr";
 import { StatusBadge, type BadgeVariant } from "@/components/ui/StatusBadge";
@@ -29,7 +29,6 @@ import { ClienteBureauPanel } from "@/components/clientes/ClienteBureauPanel";
 import { ContactarDialog } from "@/components/clientes/ContactarDialog";
 import { EstadoClienteDialog } from "@/components/clientes/EstadoClienteDialog";
 import { NoContactarDialog } from "@/components/clientes/NoContactarDialog";
-import { SinMoraDialog } from "@/components/clientes/SinMoraDialog";
 import { ProntuarioPanel } from "@/components/clientes/ProntuarioPanel";
 import { abrirRecibo } from "@/lib/recibo";
 import { AnularPagoDialog, type PagoAAnular } from "@/components/pagos/AnularPagoDialog";
@@ -120,7 +119,6 @@ export function ClienteDetail({
   const [contactar, setContactar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
   const [noContactar, setNoContactar] = useState(false);
-  const [sinMoraOpen, setSinMoraOpen] = useState(false);
   /**
    * Cuota que se está cobrando desde el plan (null = cerrado).
    *
@@ -246,7 +244,6 @@ export function ClienteDetail({
   // le escribe, no devenga punitorios y no se lo persigue hasta que la financiera resuelva.
   const fallecido = deudaEnRevision(cliente);
   const sinContacto = cliente.no_contactar === true;
-  const sinMora = cliente.sin_mora === true;
   const estadoLabel = ESTADO_CLIENTE_LABEL[normalizarEstadoCliente(cliente.estado)];
   const estadoVariant = ESTADO_CLIENTE_VARIANT[normalizarEstadoCliente(cliente.estado)];
 
@@ -318,14 +315,6 @@ export function ClienteDetail({
                       <BellOff className="h-3 w-3" /> No contactar
                     </span>
                   )}
-                  {sinMora && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-info"
-                      title={cliente.sin_mora_motivo ?? "No se le cobra mora"}
-                    >
-                      <TimerOff className="h-3 w-3" /> Sin mora
-                    </span>
-                  )}
                   {/* Un crédito en LEGALES se dice acá arriba, con el nombre: es lo que
                       cambia la conversación entera, y estaba solo en la tarjeta del crédito
                       —abajo del todo y con el plan desplegado—. */}
@@ -375,22 +364,6 @@ export function ClienteDetail({
                       }`}
                     >
                       <BellOff className="h-4 w-4 shrink-0" /> {sinContacto ? "Rehabilitar" : "No contactar"}
-                    </button>
-                  )}
-                  {/* Cobrar o no mora es una decisión sobre plata: solo el admin ve el botón
-                      (el servidor lo exige igual). */}
-                  {showCreditos && role === "admin" && (
-                    <button
-                      type="button"
-                      onClick={() => setSinMoraOpen(true)}
-                      title={sinMora ? "Volver a cobrarle mora (desde hoy)" : "Dejar de cobrarle mora"}
-                      className={`inline-flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-0.5 py-1.5 text-[10px] font-medium leading-tight tracking-tight transition-colors sm:tracking-normal sm:h-9 sm:flex-none sm:flex-row sm:gap-2 sm:px-3.5 sm:py-0 sm:text-sm ring-1 ring-inset ${
-                        sinMora
-                          ? "bg-info/10 text-info ring-info/30 hover:bg-info/20"
-                          : "bg-muted/40 text-foreground ring-border hover:bg-muted hover:ring-primary/40"
-                      }`}
-                    >
-                      {sinMora ? <Timer className="h-4 w-4 shrink-0" /> : <TimerOff className="h-4 w-4 shrink-0" />} {sinMora ? "Cobrar mora" : "Sin mora"}
                     </button>
                   )}
                   {/* Un vendedor solo modifica clientes con los que tiene al menos un crédito.
@@ -886,18 +859,6 @@ export function ClienteDetail({
           cliente={cliente}
           esAdmin={role === "admin"}
           onClose={(guardado) => { setNoContactar(false); if (guardado) mutate(); }}
-        />
-      )}
-
-      {sinMoraOpen && (
-        <SinMoraDialog
-          cliente={cliente}
-          creditosVivos={creditos.filter((c) => esCreditoCobrable(c.estado)).length}
-          onClose={(guardado) => {
-            setSinMoraOpen(false);
-            // La mora cambia en todos sus créditos: se revalida la ficha y las listas de créditos.
-            if (guardado) { mutate(); mutarCreditos(); globalMutate(KEYS.dashboard); globalMutate((k) => typeof k === "string" && k.startsWith("/api/creditos/")); }
-          }}
         />
       )}
 
