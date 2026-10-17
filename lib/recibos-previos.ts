@@ -24,18 +24,23 @@ export { SERIE_RECIBO_PREVIO };
 export interface PagoPrevioSinFecha { creditoId: string; numeroCredito: number | null; cliente: string; nro: number; monto: number }
 
 /**
- * Crea los recibos que falten. Idempotente: un crédito que ya tiene sus recibos no se toca, así
- * que se puede correr después de cada carga. La numeración sigue el orden de las fechas de pago.
+ * Crea los recibos que falten. Idempotente: un día de pago que ya tiene su recibo no se toca, así
+ * que se puede correr después de cada carga o de anotar una fecha que faltaba. La numeración
+ * sigue el orden de las fechas de pago.
+ *
+ * Los recibos se arman con TODOS los cobros fechados del crédito (lo que queda de cada cuota es
+ * acumulado) y después se descartan los días que ya tienen el suyo.
  */
 export async function generarRecibosPrevios(
   tenantId: string,
   opciones: { soloContar?: boolean } = {},
 ): Promise<{ creados: number; sinFecha: PagoPrevioSinFecha[] }> {
   const creditos = await prisma.creditos.findMany({
-    where: { ...withTenant(tenantId), estado: { not: "anulado" }, recibos_previos: { none: {} } },
+    where: { ...withTenant(tenantId), estado: { not: "anulado" } },
     select: {
       id: true, numero: true, monto_original: true, cronograma: true, created_at: true,
       cliente: { select: { nombre: true, apellido: true } },
+      recibos_previos: { select: { fecha: true } },
     },
   });
   const anteriores = creditos.filter((c) => anteriorDelCredito(c.cronograma)?.pagos);
@@ -60,8 +65,9 @@ export async function generarRecibosPrevios(
     for (const x of cobros.filter((x) => !x.fechaInformada)) {
       sinFecha.push({ creditoId: c.id, numeroCredito: c.numero, cliente: nombreCompleto(c.cliente), nro: x.nro, monto: x.total });
     }
+    const yaTiene = new Set(c.recibos_previos.map((r) => r.fecha.getTime()));
     for (const r of recibosDeCobrosAnteriores(cobros.filter((x) => x.fechaInformada), qs, c.monto_original)) {
-      filas.push({ credito_id: c.id, ...r });
+      if (!yaTiene.has(r.fecha.getTime())) filas.push({ credito_id: c.id, ...r });
     }
   }
   filas.sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
