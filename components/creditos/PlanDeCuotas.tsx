@@ -138,6 +138,8 @@ export function PlanDeCuotas({
   const condonadoTotal = Math.round(cuotas.reduce((s, q) => s + (q.condonado ?? 0), 0) * 100) / 100;
   /** Lo que de esa mora TODAVIA no se cobro. Decide si el total va en rojo o no. */
   const moraPendienteVista = cuotas.reduce((s, q) => s + (q.mora ?? 0), 0);
+  /** Check "Sin mora" del crédito: lo que se dejó de cobrar (se muestra tachado, no suma a nada). */
+  const moraSinCobrarTotal = Math.round(cuotas.reduce((s, q) => s + (q.mora_sin_cobrar ?? 0), 0) * 100) / 100;
   /**
    * 🔴 CUÁNTA DE ESA MORA ENTRÓ DE VERDAD.
    *
@@ -322,6 +324,7 @@ export function PlanDeCuotas({
               const b = CUOTA_BADGE[q.estado];
               const moraPend = q.mora ?? 0;
               const moraDev = moraDevengadaDeCuota(q);
+              const sinCobrar = q.mora_sin_cobrar ?? 0;
               const conPagos = tienePagos(q);
               // En el orden en que se cobraron: un historial se lee del primero al último.
               const comps = [...(q.comprobantes ?? [])].sort((a, c) => (a.fecha_hora ?? "").localeCompare(c.fecha_hora ?? ""));
@@ -513,9 +516,11 @@ export function PlanDeCuotas({
                   */}
                   <td
                     className={`${celda} text-right font-mono tabular-nums`}
-                    title={detalleMora ?? undefined}
+                    title={detalleMora ?? (sinCobrar > 0 ? "Crédito sin mora: se calcula y se muestra, pero no se cobra" : undefined)}
                   >
-                    {moraDev > 0 ? (
+                    {moraDev > 0 || sinCobrar > 0 ? (
+                      <>
+                      {moraDev > 0 && (
                       <>
                         {/*
                           🔴 TRES ESTADOS DE LA MORA, TRES COLORES. Y cada uno significa algo.
@@ -561,6 +566,16 @@ export function PlanDeCuotas({
                             al refinanciar
                           </span>
                         ) : null}
+                      </>
+                      )}
+                      {/* Check "Sin mora": la mora se ve TACHADA —se calcula, no se cobra— para
+                          que siga a la vista lo que se está dejando de cobrar (Fernando, 17/10/2026). */}
+                      {sinCobrar > 0 && (
+                        <>
+                          <span className="block text-muted-foreground line-through decoration-muted-foreground/70">${n2(sinCobrar)}</span>
+                          <span className="block font-sans text-[10px] font-normal leading-tight text-info">sin cobrar</span>
+                        </>
+                      )}
                       </>
                     ) : (
                       /* El hueco se marca con un guion tenue y CENTRADO en la columna: alineado
@@ -760,6 +775,17 @@ export function PlanDeCuotas({
                     ) : moraPendienteVista <= 0 ? (
                       <span className="block text-[10px] font-normal text-success">cobrada</span>
                     ) : null}
+                    {moraSinCobrarTotal > 0 && (
+                      <>
+                        <span className="block font-normal text-muted-foreground line-through decoration-muted-foreground/70">${n2(moraSinCobrarTotal)}</span>
+                        <span className="block font-sans text-[10px] font-normal leading-tight text-info">sin cobrar</span>
+                      </>
+                    )}
+                  </>
+                ) : moraSinCobrarTotal > 0 ? (
+                  <>
+                    <span className="block font-normal text-muted-foreground line-through decoration-muted-foreground/70">${n2(moraSinCobrarTotal)}</span>
+                    <span className="block font-sans text-[10px] font-normal leading-tight text-info">sin cobrar</span>
                   </>
                 ) : <span className="text-muted-foreground/20">—</span>}
               </td>

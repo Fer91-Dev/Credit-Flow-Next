@@ -6,7 +6,7 @@ import { getConfiguracion } from "@/lib/config";
 import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { lockCreditoTx } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
-import { formatCreditoNumero, hoyComercial } from "@/lib/utils";
+import { formatCreditoNumero } from "@/lib/utils";
 import { ESTADOS_COBRABLES, moraDesdeCronograma, moraDelCredito, moraSnapshotConCheck } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -20,7 +20,8 @@ interface RouteParams {
  *
  * Va en el crédito y no en el cliente: un cliente con varios créditos puede tener uno perdonado y
  * los demás no (Fernando). Solo admin: perdonar punitorios es una decisión sobre plata. Reglas en
- * `moraSnapshotConCheck`: apagar borra la mora sin pagar; prender la hace correr desde hoy.
+ * `moraSnapshotConCheck`: sin mora = se calcula y se muestra tachada, pero no se cobra; al
+ * volver a cobrarla aparece toda, con su cuenta de siempre.
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
@@ -45,11 +46,13 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
 
   const config = await getConfiguracion(tenantId);
   const actual = moraDelCredito(moraDesdeCronograma(credito.cronograma), config);
-  if (actual.moraActiva === !sinMora) {
+  if (actual.moraSuspendida === sinMora) {
     return errorResponse(sinMora ? "Este crédito ya está sin mora." : "Este crédito ya cobra mora.", "INVALID_STATE", 409);
   }
-  const hoyYmd = hoyComercial().toISOString().slice(0, 10);
-  const mora = moraSnapshotConCheck(moraDesdeCronograma(credito.cronograma), !sinMora, config, hoyYmd);
+  if (sinMora && !actual.moraActiva) {
+    return errorResponse("Este crédito no genera mora (estaba apagada al otorgarlo): no hay nada que dejar de cobrar.", "INVALID_STATE", 409);
+  }
+  const mora = moraSnapshotConCheck(moraDesdeCronograma(credito.cronograma), !sinMora, config);
 
   await prisma.$transaction(async (tx) => {
     // Mismo lock que el cobro: no cambiar la mora mientras se imputa un pago sobre ella.
@@ -66,7 +69,7 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     entidad: "creditos",
     entidadId: id,
     accion: "cambiar_mora",
-    descripcion: `Crédito ${formatCreditoNumero(credito.numero, refinancia_a_numero)}: ${sinMora ? "SIN mora" : `vuelve a cobrar mora desde ${hoyYmd}`} — ${motivo}`,
+    descripcion: `Crédito ${formatCreditoNumero(credito.numero, refinancia_a_numero)}: ${sinMora ? "SIN mora (se muestra, no se cobra)" : "vuelve a cobrar mora"} — ${motivo}`,
     meta: { sin_mora: sinMora, motivo, mora },
   });
 

@@ -817,23 +817,26 @@ H("14. EL QUE PAGA PUNTUAL NO PAGA PUNITORIOS");
   ok(ymd(l.proximoPago) === "2026-09-10" && l.diasMoraMax === 37 && !l.todasSaldadas,
     "CRD-000110 con las fechas bien: próximo pago 10/09 y 37 días de atraso (no 68)", `${ymd(l.proximoPago)} · ${l.diasMoraMax}`);
 
-  const snap = { activa: true, tasaDiaria: 0.005, topePct: 50 };
-  const cfg = { tasaMoraDiaria: 0.01, topeMoraPct: 0 };
-  const apagada = moraSnapshotConCheck(snap, false, cfg, "2026-10-17");
-  ok(apagada.activa === false && apagada.tasaDiaria === 0.005, "apagar la mora del crédito: activa=false, conserva la tasa del crédito");
-  const prendida = moraSnapshotConCheck(apagada, true, cfg, "2026-11-01");
-  ok(prendida.activa === true && prendida.desde === "2026-11-01", "volver a prenderla: corre desde ese día");
-  ok(moraSnapshotConCheck(snap, true, cfg, "2026-11-01").desde === undefined,
-    "prender una mora que ya estaba corriendo no mueve su fecha de inicio");
-  const viejo = moraSnapshotConCheck(null, false, cfg, "2026-10-17");
-  ok(viejo.activa === false && viejo.tasaDiaria === 0.01, "crédito viejo sin snapshot: toma la tasa vigente y queda apagada");
-  // Lo que leen todas las cuentas: con la mora apagada, no se devenga nada.
-  const leida = moraDelCredito(apagada, { moraActiva: true, tasaMoraDiaria: 0.01 });
-  ok(leida.moraActiva === false, "moraDelCredito respeta el check del crédito aunque la financiera cobre mora");
-  // Prendida con `desde`: la cuota vencida el 10/09 recién devenga desde el 01/11.
+  const snap = { activa: true, tasaDiaria: 0.005, topePct: 50, desde: "2026-10-16" };
+  const cfg = { moraActiva: true, tasaMoraDiaria: 0.01, topeMoraPct: 0 };
+  const sin = moraSnapshotConCheck(snap, false, cfg);
+  ok(sin.suspendida === true && sin.activa === true && sin.tasaDiaria === 0.005 && sin.desde === "2026-10-16",
+    "sin mora: queda suspendida y conserva tasa, tope y desde (no se borra nada)");
+  const leida = moraDelCredito(sin, { moraActiva: true, tasaMoraDiaria: 0.01 });
+  ok(leida.moraActiva === false && leida.moraSuspendida === true,
+    "suspendida: las cuentas de cobro la ven apagada y la pantalla sabe que hay que mostrarla tachada");
+  const vuelve = moraSnapshotConCheck(sin, true, cfg);
+  ok(!("suspendida" in vuelve) && vuelve.desde === "2026-10-16" && vuelve.activa === true,
+    "🔴 al volver a cobrarla, la cuenta es la de siempre: el desde NO pasa a hoy");
+  const otra = moraDelCredito(vuelve, { moraActiva: true, tasaMoraDiaria: 0.01 });
+  ok(otra.moraActiva === true && otra.moraSuspendida === false && ymd(otra.moraDesde) === "2026-10-16",
+    "reactivada, corre desde donde corría (la carga del crédito anterior)");
+  const viejo = moraSnapshotConCheck(null, false, cfg);
+  ok(viejo.suspendida === true && viejo.activa === true && viejo.tasaDiaria === 0.01, "crédito viejo sin snapshot: toma la tasa vigente y queda suspendida");
+  // Reactivada: devenga TODO desde el vencimiento, incluidos los días en que estuvo sin mora.
   const devengada = moraPendienteTotal([{ fechaVencimiento: v[1], baseMora: 100000, pagadoMora: 0 }],
-    { tasaDiaria: 0.005, hoy: D("2026-11-11"), moraDesde: D("2026-11-01") });
-  ok(cerca(devengada, round2(100000 * 0.005 * 10)), "al volver a prenderla se cobran solo los días desde que se prendió",
+    { tasaDiaria: 0.005, hoy: D("2026-09-20") });
+  ok(cerca(devengada, round2(100000 * 0.005 * 10)), "la mora reactivada cuenta desde el vencimiento como siempre",
     `${F(devengada)} esperado ${F(round2(100000 * 0.005 * 10))}`);
 
   // Lo cobrado ANTES del sistema se corre con su vencimiento (CRD-000132: 10/09 → 29/09).

@@ -12,9 +12,9 @@ import { useToast } from "@/components/ui/toast";
  * El check "Sin mora" de UN crédito (Silvio, 17/10/2026). Solo admin. Va en el crédito y no en
  * el cliente: un cliente con varios créditos puede tener uno sin mora y los demás con mora.
  *
- * Apagar: no se cobran punitorios, tampoco los ya generados sin pagar. Prender: la mora vuelve a
- * correr desde hoy, sin cobrar el tiempo que estuvo apagada. Las dos reglas las decidió
- * Fernando; viven en `moraSnapshotConCheck`.
+ * Sin mora: la mora se sigue calculando y se ve tachada en el plan, pero no se cobra. Cobrar
+ * mora: vuelve toda, con su cuenta de siempre (no arranca de cero). Reglas de Fernando
+ * (17/10/2026); viven en `moraSnapshotConCheck`.
  */
 export function SinMoraDialog({ creditoId, numero, sinMora, onClose }: {
   creditoId: string;
@@ -64,13 +64,15 @@ export function SinMoraDialog({ creditoId, numero, sinMora, onClose }: {
           <Nota acento="warning">
             {sinMora ? (
               <ul className="space-y-1">
-                <li>La mora vuelve a correr <strong>desde hoy</strong>: no se cobra el tiempo que estuvo sin mora.</li>
+                <li>Se vuelve a cobrar <strong>toda la mora</strong> que se ve tachada, incluida la de los días en que estuvo sin mora.</li>
+                <li>Sigue contando como siempre: desde cada vencimiento (o desde la carga, si es anterior al sistema).</li>
               </ul>
             ) : (
               <ul className="space-y-1">
-                <li>No se cobra mora: <strong>tampoco la que ya generó</strong> y todavía no se pagó.</li>
-                <li>La mora que <strong>ya se pagó</strong> no se devuelve: está en los recibos.</li>
-                <li>Los días de atraso se siguen contando (agenda, bloqueo por atraso, morosos).</li>
+                <li>La mora <strong>se sigue calculando</strong> y se ve <strong>tachada</strong> en el plan, pero <strong>no se cobra</strong>.</li>
+                <li>No entra en «A cobrar», ni en el cobro, ni en la deuda.</li>
+                <li>Si después se vuelve a cobrar, aparece toda: no se pierde ni arranca de cero.</li>
+                <li>La mora que <strong>ya se pagó</strong> queda pagada: está en los recibos.</li>
               </ul>
             )}
           </Nota>

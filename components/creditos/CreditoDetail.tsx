@@ -307,6 +307,13 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
    * así el pie de la tabla, la tarjeta de arriba y los botones verdes no pueden discrepar.
    */
   const deudaTotal = Math.round(cuotas.reduce((s, q) => s + (q.total_cobrar ?? q.cuota_total), 0) * 100) / 100;
+  /*
+    La mora que DEBE (la de "Deuda total"), no la devengada: `moraTotalPlan` suma también la ya
+    cobrada, y el pie de la deuda decía "mora $840,00" sobre un crédito que ya la había pagado
+    (CRD-000110 en dev, 17/10/2026). Con el check "Sin mora", lo que se deja de cobrar va aparte.
+  */
+  const moraDebe = Math.round(cuotas.reduce((s, q) => s + (q.mora ?? 0), 0) * 100) / 100;
+  const moraSinCobrar = Math.round(cuotas.reduce((s, q) => s + (q.mora_sin_cobrar ?? 0), 0) * 100) / 100;
   const unidadCuota = amortizacion?.parametros.frecuencia_label.cuotaSingular ?? "cuota";
   /**
    * 🔴 LA MORA SALE DE LAS CUOTAS, NO DEL CRÉDITO QUE LLEGÓ POR PROP.
@@ -583,7 +590,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
   const puedeAnular = role === "admin";
   const esAdmin = role === "admin";
   /** Check "Sin mora" de ESTE crédito (snapshot `cronograma.mora.activa`). */
-  const sinMora = moraDesdeCronograma(credito.cronograma)?.activa === false;
+  const sinMora = moraDesdeCronograma(credito.cronograma)?.suspendida === true;
   /** El libre deuda solo existe si el crédito está cancelado (el endpoint lo exige igual). */
   const cancelado = credito.estado === "pagado";
   /**
@@ -766,7 +773,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
                 {sinMora && (
                   <span
                     className="rounded-md bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-info ring-1 ring-inset ring-info/25"
-                    title="A este crédito no se le cobra mora"
+                    title="A este crédito no se le cobra mora: se calcula y se ve tachada en el plan"
                   >
                     sin mora
                   </span>
@@ -875,7 +882,7 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
           <Stat icon="money-bag" label="Deuda total" accent={deudaTotal > 0 ? "warning" : "success"} cargando={loadingCuotas}
             tag={DEL_CREDITO}
             value={`$${n2(deudaTotal)}`}
-            sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraTotalPlan > 0 ? ` · mora $${n2(moraTotalPlan)}` : ""}` : undefined} />
+            sub={deudaTotal > 0 ? `capital $${n2(credito.saldo_pendiente)}${moraDebe > 0 ? ` · mora $${n2(moraDebe)}` : ""}${moraSinCobrar > 0 ? ` · mora sin cobrar $${n2(moraSinCobrar)}` : ""}` : undefined} />
           )}
           {/* CUÁL y CUÁNTO, no "la cuota" en abstracto: el operador necesita saber qué le
               toca cobrar ahora. Antes mostraba el importe genérico del plan, que no dice
@@ -1663,7 +1670,8 @@ export function CreditoDetail({ credito, role, onRefinanciar, onCerrar, onAbrirC
               )}
               {/* Check "Sin mora" de este crédito (Silvio, 17/10/2026): en el crédito y no en el
                   cliente, para no apagarle la mora a todos sus créditos. */}
-              {esAdmin && esCreditoCobrable(credito.estado) && (
+              {/* Un crédito otorgado con la mora apagada no tiene nada que dejar de cobrar. */}
+              {esAdmin && esCreditoCobrable(credito.estado) && (sinMora || moraDesdeCronograma(credito.cronograma)?.activa !== false) && (
                 <button
                   onClick={sinPlegar(() => setSinMoraOpen(true))}
                   title={sinMora ? "Volver a cobrarle mora a este crédito (desde hoy)" : "Dejar de cobrarle mora a este crédito"}

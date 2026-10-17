@@ -736,6 +736,8 @@ export interface CuotaPersistida {
    * que ya no existe.
    */
   mora_historica?: number | null;
+  /** Check "Sin mora" del crédito: la mora que esta cuota generó y NO se cobra (se muestra tachada). */
+  mora_sin_cobrar?: number;
   /** Días de atraso de ESTA cuota. Es lo que explica el importe de mora de al lado; viene del
    *  server para que use el mismo "hoy comercial" con el que se calculó esa mora. */
   dias_atraso?: number;
@@ -802,7 +804,7 @@ export interface CuotasCredito {
     }[];
   } | null;
   /** Condiciones de mora CONGELADAS del crédito: explican de dónde sale cada punitorio. */
-  mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number; desde?: string | null };
+  mora: { activa: boolean; tasaDiaria: number; diasGracia: number; topePct: number; desde?: string | null; suspendida?: boolean };
   /** Si el crédito se refinanció: el día en que este plan se cerró y la deuda se mudó. */
   refinanciado_al?: string | null;
   /**

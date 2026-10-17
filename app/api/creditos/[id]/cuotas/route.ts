@@ -286,6 +286,24 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     );
     // La quita de campaña reduce lo que se cobra, con la MISMA cuenta que `POST /pagos`.
     const moraPend = round2(moraRestantePlena * factorMora);
+    /*
+      Check "Sin mora" del crédito: la mora NO se cobra (`moraPend` es 0, porque `moraActiva` ya
+      viene apagada), pero se sigue calculando con la cuenta de siempre para mostrarla tachada
+      (Fernando, 17/10/2026). Es lo que volvería a cobrarse si se saca el check.
+    */
+    const moraSinCobrar = moraCred.moraSuspendida
+      ? round2(moraRestanteDeCuota(
+          {
+            fechaVencimiento: c.fecha_vencimiento,
+            baseMora: baseMoraDeCuota(c),
+            pagadoMora: c.pagado_mora,
+            condonadoMora: c.condonado_mora,
+            pendienteSinMora: condonada ? 0 : pendienteSinMoraDeCuota(c),
+          },
+          diasQueDevengan,
+          { moraActiva: true, tasaDiaria: moraCred.tasaMoraDiaria, diasGracia: graciaCred, topePct: moraCred.topeMoraPct, desde: moraCred.moraDesde },
+        ) * factorMora)
+      : 0;
     ahorroPromo = round2(ahorroPromo + Math.max(0, round2(moraRestantePlena - moraPend)));
     const pendienteCuota = condonada
       ? 0
@@ -370,6 +388,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
       restante_capital,
       // Mora devengada de ESTA cuota (0 si no venció o si la financiera la tiene apagada).
       mora: moraPend,
+      /** Con el check "Sin mora": la que se está dejando de cobrar (se muestra tachada). */
+      mora_sin_cobrar: moraSinCobrar,
       /* Solo en un crédito REFINANCIADO: lo que esta cuota había devengado el día en que la
          deuda se mudó. Es histórico y no se cobra — ver el bloque de `fechaRefi`. */
       mora_historica: fechaRefi && moraCred.moraActiva
@@ -565,6 +585,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
     refinanciado_al: fechaRefi,
     mora: {
       activa: moraCred.moraActiva,
+      /** Check "Sin mora" del crédito: se calcula y se muestra, pero no se cobra. */
+      suspendida: moraCred.moraSuspendida,
       tasaDiaria: moraCred.tasaMoraDiaria,
       diasGracia: graciaCred,
       topePct: moraCred.topeMoraPct,

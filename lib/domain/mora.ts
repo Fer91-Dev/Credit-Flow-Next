@@ -232,6 +232,12 @@ export interface MoraSnapshot {
   topePct?: number;
   /** "YYYY-MM-DD": la mora corre desde ese día (créditos anteriores al sistema). Ver `ConfigMora.desde`. */
   desde?: string;
+  /**
+   * Check "Sin mora" del crédito (Fernando, 17/10/2026): la mora se SIGUE CALCULANDO —la pantalla
+   * la muestra tachada— pero no se cobra. Al sacar el check vuelve a cobrarse toda, con su cuenta
+   * de siempre (no arranca de cero). Ver `moraSnapshotConCheck`.
+   */
+  suspendida?: boolean;
 }
 
 /**
@@ -249,10 +255,13 @@ export interface MoraSnapshot {
 export function moraDelCredito(
   snapshot: MoraSnapshot | null | undefined,
   configActual: { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct?: number },
-): { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct: number; moraDesde: Date | null } {
+): { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct: number; moraDesde: Date | null; moraSuspendida: boolean } {
   if (snapshot && typeof snapshot.tasaDiaria === "number" && typeof snapshot.activa === "boolean") {
     return {
-      moraActiva: snapshot.activa,
+      // Suspendida = no se cobra. Todas las cuentas de cobro leen `moraActiva`, así que con esto
+      // alcanza; la pantalla usa `moraSuspendida` para mostrar igual lo que se está dejando de cobrar.
+      moraActiva: snapshot.activa && snapshot.suspendida !== true,
+      moraSuspendida: snapshot.activa && snapshot.suspendida === true,
       tasaMoraDiaria: snapshot.tasaDiaria,
       // Un crédito otorgado ANTES de que existiera el tope no tiene el campo: sigue sin techo.
       // Ponerle el tope de hoy le reescribiría la deuda por atrás, que es justo lo que el
@@ -268,6 +277,7 @@ export function moraDelCredito(
     tasaMoraDiaria: configActual.tasaMoraDiaria,
     topeMoraPct: configActual.topeMoraPct ?? 0,
     moraDesde: null,
+    moraSuspendida: false,
   };
 }
 
@@ -481,25 +491,25 @@ export function evaluarMora(
  * el cliente: un cliente con varios créditos puede tener uno perdonado y los otros no. Se escribe
  * en el snapshot `cronograma.mora`, que es lo que leen todas las cuentas.
  *
- *  - APAGAR: `activa: false`. No se cobra mora, tampoco la que ya se generó y no se pagó
- *    (decisión de Fernando). La que ya se pagó queda pagada: está en los recibos.
- *  - PRENDER: `activa: true` y `desde` = hoy. Corre desde el día en que se vuelve a prender: no
- *    se cobran punitorios del tiempo que estuvo apagada (decisión de Fernando). Mismo mecanismo
- *    que los créditos anteriores al sistema (`ConfigMora.desde`).
+ *  - SIN MORA: `suspendida: true`. La mora se sigue calculando y se ve tachada en el plan, pero
+ *    no se cobra: no entra en "A cobrar", ni en el cobro, ni en la deuda.
+ *  - COBRAR MORA: se saca la marca y vuelve TODA, con su cuenta de siempre —desde cada
+ *    vencimiento, o desde la carga si es anterior al sistema—, incluidos los días en que estuvo
+ *    suspendida. Fernando: no tiene que borrarse ni arrancar de cero al reactivarla.
  *
- * Un crédito viejo sin snapshot toma la tasa y el tope vigentes, como hace `moraDelCredito`.
+ * Tasa, tope y `desde` no se tocan. Un crédito viejo sin snapshot toma las condiciones vigentes,
+ * como hace `moraDelCredito`.
  */
 export function moraSnapshotConCheck(
   snapshot: MoraSnapshot | null | undefined,
   cobraMora: boolean,
-  configActual: { tasaMoraDiaria: number; topeMoraPct?: number },
-  hoyYmd: string,
+  configActual: { moraActiva: boolean; tasaMoraDiaria: number; topeMoraPct?: number },
 ): MoraSnapshot {
   const base: MoraSnapshot = snapshot && typeof snapshot.tasaDiaria === "number"
     ? { ...snapshot }
-    : { activa: true, tasaDiaria: configActual.tasaMoraDiaria, topePct: configActual.topeMoraPct ?? 0 };
-  if (!cobraMora) return { ...base, activa: false };
-  // Si ya estaba corriendo, no se toca: prender algo prendido no tiene que mover el `desde`.
-  if (snapshot?.activa === true) return base;
-  return { ...base, activa: true, desde: hoyYmd };
+    : { activa: configActual.moraActiva, tasaDiaria: configActual.tasaMoraDiaria, topePct: configActual.topeMoraPct ?? 0 };
+  if (!cobraMora) return { ...base, suspendida: true };
+  const { suspendida: _, ...sinMarca } = base;
+  void _;
+  return sinMarca;
 }
