@@ -198,7 +198,8 @@ const HELP: Record<string, HelpDoc> = {
         items: [
           "No cambia ningún importe: la cuota vale lo mismo porque depende de la cantidad de cuotas, no del día en que vence cada una.",
           "Sí cambian el atraso, la mora, el bloqueo por atraso (refinanciación obligatoria) y el estado del crédito. Ejemplo: un crédito cargado como otorgado el 10/06/2026 que se dio el 10/07/2026 pasa de 68 días de atraso a 37, y vuelve a poder cobrarse normal.",
-          "Lo ya cobrado no se toca: la mora que un cobro ya imputó queda en su recibo. La caja tampoco se mueve.",
+          "Lo ya cobrado no se toca: la mora que un cobro ya imputó queda en su recibo.",
+          "La caja: el desembolso (y la comisión cobrada al otorgar) se mueve solo a la fecha nueva si los turnos de caja de las dos fechas están abiertos. Si alguno está cerrado queda donde estaba —no se cambia un arqueo ya firmado— y el modal lo avisa antes de guardar: Caja y Reportes van a mostrar el otorgamiento en fechas distintas. El saldo de la caja no cambia en ningún caso, así que no hacen falta ajustes de caja.",
           "Con un acuerdo de pago vigente no se puede: el acuerdo se armó sobre los vencimientos de hoy. Primero hay que anularlo.",
           "La fecha de otorgamiento no puede ser posterior a hoy, la cuota 1 tiene que vencer después del otorgamiento y cada cuota después de la anterior.",
           "En un crédito anterior al sistema, las cuotas cobradas antes se corren con su vencimiento: si la cuota 1 pasa del 10/09 al 29/09, su fecha de pago también pasa del 10/09 al 29/09, y su recibo se rehace con la fecha nueva y el mismo número. El monto no cambia. La columna «Pagada el» del modal deja corregirla a mano.",

@@ -6,11 +6,14 @@ import { conNumeroDeOrigen } from "@/lib/creditos-numero";
 import { lockCreditoTx } from "@/lib/locks";
 import { registrarAuditoria } from "@/lib/audit";
 import { rehacerRecibosPreviosDelCredito } from "@/lib/recibos-previos";
+import { turnoCerradoPara } from "@/lib/cierre-turno";
+import { lockCuentaTx } from "@/lib/caja-fondos";
+import { formatComprobante } from "@/lib/comprobantes";
 import { formatCreditoNumero, hoyComercial } from "@/lib/utils";
 import {
   esCreditoVivo, vencimientosDelPlan, validarCambioFechas, estadoCuotaRefechada, ledgerRefechado,
   estadoTrasMoverLedger, fechasPagoAnterioresSugeridas, validarFechasPagoAnteriores, anteriorRefechado,
-  type CronogramaConfig, type FrecuenciaDef, type PagosAnteriores,
+  esCuentaValida, type CronogramaConfig, type FrecuenciaDef, type PagosAnteriores,
 } from "@/lib/domain";
 import type { NextRequest } from "next/server";
 
@@ -41,6 +44,36 @@ function sugerir(c: NonNullable<Awaited<ReturnType<typeof cargar>>>, inicio: Dat
 }
 
 /**
+ * LA CAJA AL CAMBIAR EL OTORGAMIENTO (Fernando, 17/10/2026). El desembolso —y la comisión de
+ * otorgamiento cobrada en el acto— se asentaron con la fecha del otorgamiento. Si cambia:
+ *  - con los DOS turnos abiertos (el del día viejo y el del nuevo), el asiento se mueve solo;
+ *  - si alguno está cerrado, queda donde está: mover un asiento adentro de un turno cerrado
+ *    cambiaría un acta ya firmada (misma regla que `assertTurnoAbierto` y que otorgar con fecha
+ *    pasada, que con el turno cerrado desembolsa con la fecha de hoy). El modal lo avisa antes.
+ * Nunca hacen falta ajustes de caja: el saldo no cambia, solo el día del asiento.
+ */
+async function cajaDelOtorgamiento(tenantId: string, creditoId: string, inicio: Date) {
+  const movs = await prisma.movimientos_caja.findMany({
+    where: { ...withTenant(tenantId), credito_id: creditoId, tipo: { in: ["desembolso", "comision_otorgamiento"] } },
+    select: { id: true, tipo: true, fecha: true, vendedor_id: true, cuenta: true, serie: true, numero: true },
+    orderBy: { created_at: "asc" },
+  });
+  return Promise.all(movs.map(async (m) => {
+    const cuenta = esCuentaValida(m.cuenta) ? m.cuenta : "efectivo";
+    const mismoDia = m.fecha.getTime() === inicio.getTime();
+    const cerrado = mismoDia ? null
+      : (await turnoCerradoPara(tenantId, m.vendedor_id, cuenta, m.fecha)) ?? (await turnoCerradoPara(tenantId, m.vendedor_id, cuenta, inicio));
+    return {
+      id: m.id, tipo: m.tipo, vendedor_id: m.vendedor_id, cuenta,
+      comprobante: formatComprobante(m.serie, m.numero) ?? m.tipo,
+      fecha: ymd(m.fecha),
+      se_mueve: !mismoDia && !cerrado,
+      turno_cerrado: cerrado ? ymd(cerrado) : null,
+    };
+  }));
+}
+
+/**
  * GET /api/creditos/[id]/fechas?inicio=YYYY-MM-DD
  * Los vencimientos que le corresponden al crédito si se hubiera otorgado ese día, con SU
  * cronograma congelado (frecuencia, día fijo, corte, días no hábiles). Solo sugiere: el
@@ -53,7 +86,8 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
   if (!inicio) return errorResponse("Fecha de otorgamiento inválida", "INVALID_INPUT", 400);
   const c = await cargar(tenantId, id);
   if (!c) return errorResponse("Crédito no encontrado", "NOT_FOUND", 404);
-  return successResponse({ vencimientos: sugerir(c, inicio).map(ymd) });
+  const caja = (await cajaDelOtorgamiento(tenantId, id, inicio)).map(({ comprobante, tipo, fecha, se_mueve, turno_cerrado }) => ({ comprobante, tipo, fecha, se_mueve, turno_cerrado }));
+  return successResponse({ vencimientos: sugerir(c, inicio).map(ymd), caja });
 });
 
 /**
@@ -61,8 +95,9 @@ export const GET = withErrorHandler(async (req: NextRequest, { params }: RoutePa
  * Body: { fecha_inicio: "YYYY-MM-DD", vencimientos: ["YYYY-MM-DD", …] (uno por cuota), motivo }
  *
  * Solo admin, solo créditos vivos y sin acuerdo de pago vigente (el acuerdo tiene su propio
- * calendario, armado sobre los vencimientos de hoy). No toca importes, cobros ni caja: ver
- * `lib/domain/cambio-fechas.ts`.
+ * calendario, armado sobre los vencimientos de hoy). No toca importes ni cobros (ver
+ * `lib/domain/cambio-fechas.ts`); el desembolso se mueve con el otorgamiento solo si sus turnos
+ * de caja están abiertos (ver `cajaDelOtorgamiento`).
  */
 export const PATCH = withErrorHandler(async (req: NextRequest, { params }: RouteParams) => {
   assertSameOrigin(req);
@@ -138,6 +173,8 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
     .filter(([nro, f]) => pagosAntes.get(Number(nro)) !== f)
     .map(([nro, f]) => ({ nro: Number(nro), antes: pagosAntes.get(Number(nro)), despues: f }));
 
+  const caja = ymd(inicio) !== ymd(c.fecha_inicio) ? await cajaDelOtorgamiento(tenantId, id, inicio) : [];
+
   const recibos = await prisma.$transaction(async (tx) => {
     await lockCreditoTx(tx, tenantId, id);
     // Re-chequeo adentro del lock: un cobro o un acuerdo pudo entrar entre la lectura y acá.
@@ -156,6 +193,16 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
         ...(cronogramaNuevo && { cronograma: cronogramaNuevo as object }),
       },
     });
+    // Desembolso / comisión: se mueven con el otorgamiento si sus turnos están abiertos.
+    for (const m of caja.filter((x) => x.se_mueve)) {
+      await lockCuentaTx(tx, tenantId, m.vendedor_id, m.cuenta);
+      // Con el lock de la cuenta tomado, un cierre que entró recién ya está escrito: se re-chequea.
+      const fecha = new Date(`${m.fecha}T00:00:00.000Z`);
+      if ((await turnoCerradoPara(tenantId, m.vendedor_id, m.cuenta, fecha)) || (await turnoCerradoPara(tenantId, m.vendedor_id, m.cuenta, inicio))) {
+        throw new ApiError("Se cerró un turno de caja mientras tanto. Volvé a abrir «Cambiar fechas» para ver el aviso actualizado.", "TURNO_CERRADO", 409);
+      }
+      await tx.movimientos_caja.update({ where: { id: m.id }, data: { fecha: inicio } });
+    }
     // Los recibos de lo cobrado antes dicen la fecha de pago y el vencimiento: se rehacen.
     return anterior ? rehacerRecibosPreviosDelCredito(tx, tenantId, id) : null;
   });
@@ -177,8 +224,14 @@ export const PATCH = withErrorHandler(async (req: NextRequest, { params }: Route
       dias_mora: ledger.diasMoraMax,
       ...(pagosMovidos.length && { pagos_anteriores: pagosMovidos }),
       ...(recibos && { recibos_previos: recibos }),
+      ...(caja.length && {
+        caja: caja.map((m) => ({ comprobante: m.comprobante, antes: m.fecha, despues: m.se_mueve ? ymd(inicio) : m.fecha, turno_cerrado: m.turno_cerrado })),
+      }),
     },
   });
 
-  return successResponse({ estado, dias_mora: ledger.diasMoraMax, proximo_pago: ledger.proximoPago ? ymd(ledger.proximoPago) : null });
+  return successResponse({
+    estado, dias_mora: ledger.diasMoraMax, proximo_pago: ledger.proximoPago ? ymd(ledger.proximoPago) : null,
+    caja: caja.map((m) => ({ comprobante: m.comprobante, se_movio: m.se_mueve, fecha: m.se_mueve ? ymd(inicio) : m.fecha, turno_cerrado: m.turno_cerrado })),
+  });
 });

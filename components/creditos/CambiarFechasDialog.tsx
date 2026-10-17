@@ -47,6 +47,8 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pa
   const [busy, setBusy] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Qué pasa en la caja con la fecha de otorgamiento elegida (lo dice el servidor). */
+  const [caja, setCaja] = useState<{ comprobante: string; tipo: string; fecha: string; se_mueve: boolean; turno_cerrado: string | null }[]>([]);
   const toast = useToast();
   const primera = useRef(true);
 
@@ -59,7 +61,7 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pa
     setRecalculando(true);
     fetch(`/api/creditos/${creditoId}/fechas?inicio=${inicio}`)
       .then((r) => r.json())
-      .then((j) => { if (vigente && j.ok) setVencs(j.data.vencimientos); })
+      .then((j) => { if (vigente && j.ok) { setVencs(j.data.vencimientos); setCaja(j.data.caja ?? []); } })
       .catch(() => { /* se pueden cargar a mano */ })
       .finally(() => { if (vigente) setRecalculando(false); });
     return () => { vigente = false; };
@@ -115,7 +117,7 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pa
         <ModalHeader icon="calendar" title={`Cambiar fechas de ${numero}`} subtitle="Otorgamiento y vencimientos" />
         <form onSubmit={guardar} className="mt-4 space-y-4">
           <Nota acento="warning" compacta>
-            Solo cambian las fechas: importes, cobros y caja quedan igual. Con las fechas nuevas se recalculan el atraso, la mora y el bloqueo por atraso.
+            Solo cambian las fechas: importes y cobros quedan igual. Con las fechas nuevas se recalculan el atraso, la mora y el bloqueo por atraso.
             {hayPagosAnteriores && " Lo cobrado antes del sistema se corre con su vencimiento y su recibo se rehace con la fecha nueva."}
           </Nota>
 
@@ -171,6 +173,19 @@ export function CambiarFechasDialog({ creditoId, numero, fechaInicio, cuotas, pa
               </tbody>
             </table>
           </div>
+
+          {/* La caja del otorgamiento: se mueve sola con los turnos abiertos; con uno cerrado se
+              avisa ANTES de guardar, porque Caja y Reportes van a quedar en fechas distintas. */}
+          {cambioInicio && caja.some((m) => m.se_mueve) && (
+            <Nota acento="primary" compacta>
+              En la caja, {caja.filter((m) => m.se_mueve).map((m) => m.comprobante).join(" y ")} también pasa{caja.filter((m) => m.se_mueve).length > 1 ? "n" : ""} al {formatFecha(inicio)}.
+            </Nota>
+          )}
+          {cambioInicio && caja.filter((m) => !m.se_mueve && m.turno_cerrado).map((m) => (
+            <Nota key={m.comprobante} acento="warning" compacta>
+              {m.comprobante} sigue en la caja el {formatFecha(m.fecha)}: la caja está cerrada hasta el {formatFecha(m.turno_cerrado!)}. Caja y Reportes van a mostrar el otorgamiento en fechas distintas.
+            </Nota>
+          ))}
 
           {!sinCambios && proxima >= 0 && (
             <Nota acento="primary" compacta>
